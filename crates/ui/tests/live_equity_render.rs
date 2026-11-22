@@ -222,6 +222,110 @@
 //! | P7-6 compare reaches the chart's range | `widgets/chart.rs` `ChartProgram::equity_range` | `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &self.compare)` → `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &[])` | lib: C7 (C7a), C8; pixel: LR-207e (the compare-only curve is gone), T7(b) `compare_two_run_overlay_renders_both_series` and `compare_screen_two_run_overlay_renders_both_series` (the second curve is scaled to the primary's range alone and leaves the plot) | lib 684 of 686 (C1-C6, C9, C10 pass a primary or call the free helper); every other pixel test in this file and `lab_buy_sell_overlay_render.rs` | measured (orchestrator's gate, lib + both pixel files); LR-207e added after the fixer's lib measurement (the earlier form of this probe was killed only by the corpus-gated `lab_binance_render.rs` `binance_sourced_equity_curve_rasterizes`, which skips without `data/binance`) |
 //! | P7-7 the window ends at the last CLOSE | `widgets/chart.rs` `bar_window_ms` | `        bars.last().map(\|b\| b.close_ts.unix_millis()),` → `        bars.last().map(\|b\| b.open_ts.unix_millis()),` | lib: C9 (a sample at the last close is hidden) | lib 685 of 686 (the `bars_207` bars open and close at the same instant); pixel REASONED green: no fixture sample lies in (last open, last close] (`lab_runs_report_at` stops at bar 50) | lib measured; pixel REASONED |
 //! | P7-8 the chart's range keeps the window | `widgets/chart.rs` `ChartProgram::equity_range` | `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &self.compare)` → `        compute_equity_range(self.equity.as_ref(), &self.compare, None, None)` | lib: C6 (its out-of-window half), C7 (C7b), C10 (range (−395000, 10495000) vs the derived (99975, 100525)); pixel REASONED: LR-207a and LR3 (the out-of-window overlay reserves the gutter and strokes its clamped edge), LR-207d (scene A: the chart reserves the gutter, the histogram's free helper does not) | lib 683 of 686 (C1-C5, C8, C9 use the free helper or no bars) | lib measured; pixel REASONED |
+//!
+//! ## bug-log #206 — Compare's scan walks the ONE layout (PHASE 4d)
+//!
+//! Compare's `compare::cache::scan_one_root` walked `<root>/<x>/reports/`
+//! only (container depth 0): on `evidence/` it considered 108 of the 197
+//! in-contract reports git lists (108 at container depth 0, 89 at container
+//! depth 1; CS5's tally on the unfixed scan, measured 2026-11-21). It now
+//! walks `ui::reports::layout` (ADR-0055 D8, container depth ≤ 1); inside
+//! one root the container-depth-0 report claims an identical filename first
+//! and keeps a tuple on an equal `generated:`. No shipped build shows the
+//! change: production renders no matrix (it never sets `strategies_config`);
+//! the fixtures build's Compare screen body (toolbar, K7 subtitle, matrix,
+//! overlay panel; `fake_strategies_config`, the config the `cockpit` bin
+//! sets), rendered by a one-off harness, gives byte-identical PNGs before and
+//! after the fix (measured 2026-11-21 over the real `[lab-runs/, evidence/]`:
+//! the same 66 cell keys both times, 62 of them multi-symbol, the K7
+//! subtitle's input; one winner moves, at `(sma_crossover, BTCUSDT)`, a row
+//! the fixtures config does not have),
+//! and no file under `evidence/` is a companion equity CSV, so no committed
+//! report draws an overlay. The proof is hermetic:
+//!
+//! - **CR1** [`compare_screen_overlay_renders_runs_from_a_container_depth_1_root`]
+//!   — the two-run scene at `<tmp>/evidence/v1/<slug>/reports/`, scanned by
+//!   `scan_report_roots` over `<tmp>/evidence`, both runs selected on the
+//!   real Compare screen: `ACCENT` and `ACCENT_2` each ≥ `OVERLAY_DREW_MIN`
+//!   in the chart band. RED before the fix at its precondition (run A's cell
+//!   had 0 points: nothing was scanned). PNG `/tmp/compare_206_depth1.png`.
+//! - **CR2** [`compare_screen_overlay_draws_nothing_from_a_container_depth_2_root`]
+//!   — the same scene at `<tmp>/evidence/v9/x/<slug>/reports/` (container
+//!   depth 2): the files exist, neither cell is scanned, and neither colour
+//!   reaches `OVERLAY_DREW_MIN`. PNG `/tmp/compare_206_depth2.png`.
+//! - **CS1-CS5** — `compare::cache` lib tests: CS1
+//!   `scan_admits_a_container_depth_1_report` (and its `source_report_path`
+//!   keeps the container), CS2 `scan_skips_a_container_depth_2_report`, CS3
+//!   `scan_tally_over_the_layout_tree_counts_exactly_its_listed_rows` (the
+//!   #205 fixture TREE: discovered = its 6 listed rows; 5 distinct names
+//!   `MalformedFrontmatter`, 1 `DuplicateFilename`; its `backtest-dir.md`
+//!   directory is no candidate), CS4a
+//!   `duplicate_filename_inside_a_root_goes_to_container_depth_0`, CS4b
+//!   `equal_generated_inside_a_root_goes_to_container_depth_0` (CS4a and CS4b
+//!   run once with a container sorting before the slug, `a0`, and once after
+//!   it, `zz`), CS4c `equal_generated_inside_one_dir_goes_to_the_first_by_path`,
+//!   CS5 `compare_scan_discovers_every_git_listed_report` (live: discovered ≥
+//!   the git-listed in-contract reports; it prints the tally), CS6
+//!   `scan_skips_an_uppercase_md_report` (a `….MD` name is no candidate; the
+//!   same bytes named `….md` in another root are admitted), CS7
+//!   `scan_report_roots_identical_filename_lab_runs_wins` (the later root's
+//!   copy is strictly newer, so only the cross-root filename rule keeps the
+//!   `lab-runs/` copy; tally 2 discovered, 1 admitted, 1 `DuplicateFilename`).
+//! - **ST1, ST2** — `state` lib tests: `lab_run_completed_ok_resets_compare_index`
+//!   and `lab_run_completed_err_resets_compare_index_too`. A completed Lab run
+//!   clears Compare's cold-boot tag on Ok AND Err (#208's reason: a run that
+//!   failed on its CSV write can leave a readable `.md`); `LabRunProgressDone`
+//!   keeps it (the control). AD-10: no shipped build can show the reset. The
+//!   one build that draws a matrix, the `fixtures` `cockpit`, completes every
+//!   run with `Ok`, whose reset predates this fix; `cockpit_live`, the only
+//!   bin that completes with `Err`, never sets `strategies_config`; and the
+//!   scan reads `default_report_roots()`, with no root seam. So both tests set
+//!   the tag by hand.
+//!
+//! **Before the fix** (measured 2026-11-21: HEAD `1f4ec79481d4`'s production
+//! `compare/cache.rs`, everything above its `#[cfg(test)]`, under the new
+//! tests module; `layout.rs` and `state.rs` stay fixed; the lib run): RED CS1 (discovered 0 ≠ 1), CS3 (4 ≠ 6: 3
+//! `MalformedFrontmatter` and 1 `Unreadable`; REASONED, the three are the two
+//! container-depth-0 rows and `reports/reports`, the one is the
+//! `backtest-dir.md` directory), CS4a and CS4b (1 ≠ 2), CS5 (108 < 197), CS6
+//! (discovered 1, admitted 1 ≠ 0, 0: the old scan matched the extension
+//! case-insensitively); GREEN CS2, CS4c, CS7 and the other 693 lib tests. CR1
+//! was RED at its precondition and CR2 GREEN (the fixer's run of this file
+//! before the fix). ST1 and ST2 have no before-state in that splice: P6-9
+//! below moves the reset back into the `Ok` arm, which turns ST2 RED and
+//! leaves ST1 GREEN.
+//!
+//! CR1 and CR2 print `#206 pixel margin …` on stderr, CS5 its tally; run with
+//! `--nocapture`.
+//!
+//! ### T-T4 probe table (bug-log #206)
+//!
+//! Same protocol as the #205 table above; paths under `crates/ui/src/`. Each
+//! OLD occurs exactly once in its file. P6-3′'s OLD starts with a newline
+//! (`\n`): the same line without it also occurs, indented deeper, in the
+//! layout test helper `expected_dirs`, and both copies differ only in their
+//! indentation, so no single-line OLD selects `report_dirs`'s sort. Test keys
+//! LY*, D*, E*, R*, LR* are `reports_populated_curve_render.rs`'s legend.
+//! Every row was measured on 2026-11-21: applied, run, restored, strictly one
+//! probe at a time. Each probe ran the lib, this file and
+//! `session_log_replays_66_a4.rs` (5 of 5 under every probe), plus "RPC" =
+//! `reports_populated_curve_render.rs` (13 tests) for the probes that touch
+//! `reports/layout.rs`. "lib" = `cargo test -p ui --lib` (702 tests); "this
+//! file" = 25 tests.
+//!
+//! | Probe | File / symbol | OLD → NEW | RED | GREEN | Measured |
+//! |---|---|---|---|---|---|
+//! | P6-1 container depth 0 only | `compare/cache.rs` `scan_one_root` | `    for rd in layout::report_dirs(root) {` → `    for rd in layout::report_dirs(root).into_iter().filter(\|rd\| rd.container_depth == 0) {` | lib: CS1 (discovered 0 ≠ 1), CS3 (2 ≠ 6: 2 `MalformedFrontmatter`, the container-depth-0 rows only), CS4a and CS4b (1 ≠ 2, at their `a0` half), CS5 (108 < 197); pixel: CR1 (its precondition: 0 points) | lib 697 of 702 (CS2, CS4c, CS6, CS7, ST1, ST2 and every existing test); this file 24 of 25 (CR2 and every existing test) | measured |
+//! | P6-2 the bound is 0 | `reports/layout.rs` `MAX_CONTAINER_DEPTH` | `pub const MAX_CONTAINER_DEPTH: usize = 1;` → `pub const MAX_CONTAINER_DEPTH: usize = 0;` | lib (22): P6-1's five, LY1, LY3, LY5, D1, D2, D3, E1, E2b, E3, E3b, E4, E4c, E5, #208's `cached_miss_is_not_re_read_until_clear_under_evidence` and `clear_replaces_a_stale_committed_hit_with_the_newer_lab_runs_report`, and #208's two `state` tests (`lab_run_completed_ok_clears_equity_cache_hits_and_misses`, `lab_run_completed_err_clears_equity_cache_too`); this file (3): CR1, LR1, LR3; RPC (7): R1-R5, R6, R7a | lib 680 of 702 (CS2, CS4c, CS6, CS7, ST1, ST2 and the rest); this file 22 of 25 (CR2, LR2 and the rest); RPC 6 of 13 | measured |
+//! | P6-2′ the bound is 2 | same | `pub const MAX_CONTAINER_DEPTH: usize = 1;` → `pub const MAX_CONTAINER_DEPTH: usize = 2;` | lib (7): CS2 (discovered 1 ≠ 0), CS3 (7 ≠ 6: the TREE's container-depth-2 row), E1b, LY1, LY3, LY5, D1; this file (2): CR2 (its precondition: the cell is scanned), LR2; RPC (1): R7b | lib 695 of 702 (CS1, CS4a, CS4b, CS4c, CS5: git lists no container-depth-2 report and CS5 asserts ≥); this file 23 of 25 (CR1, LR1, LR3); RPC 12 of 13 | measured |
+//! | P6-3 reversed dir order | `compare/cache.rs` `scan_one_root` | `    for rd in layout::report_dirs(root) {` → `    for rd in layout::report_dirs(root).into_iter().rev() {` | lib: CS4a, CS4b (the container-depth-1 copy is met first: 0.99, not 0.11) | lib 700 of 702 (CS3: its counts do not depend on which copy is first); this file 25 of 25 | measured |
+//! | P6-3′ full-path dir order | `reports/layout.rs` `report_dirs` | `\n    out.sort_by(\|a, b\| (a.container_depth, &a.dir).cmp(&(b.container_depth, &b.dir)));` → `\n    out.sort_by(\|a, b\| a.dir.cmp(&b.dir));` | lib: CS4a, CS4b (at their `a0` half; the `zz` half alone would pass), LY1, LY3 | lib 698 of 702 (the Lab's `report_dirs_for_slug` and the Reports loader's `discover_reports_in` sort on their own); this file 25 of 25; RPC 13 of 13 | measured |
+//! | P6-4 `reports` as a container | `reports/layout.rs` `child_dirs` | `        .filter(\|p\| p.is_dir() && p.file_name() != Some(OsStr::new(REPORTS_DIR)))` → `        .filter(\|p\| p.is_dir())` | lib: CS3 (8 ≠ 6: the TREE's `reports/reports` and `reports/inner/reports` rows), LY1, LY3, D1 | lib 698 of 702 (CS5: the probe can only add dirs, and it asserts ≥); this file 25 of 25; RPC 13 of 13 | measured |
+//! | P6-5 reversed file order | `reports/layout.rs` `backtest_files` | `    out.sort_unstable();` → `    out.sort_unstable_by(\|a, b\| b.cmp(a));` | lib: CS4c (0.99, not 0.11), LY4 | lib 700 of 702 (CS4a and CS4b put their two reports in different dirs); this file 25 of 25; RPC 13 of 13 | measured |
+//! | P6-6 an equal stamp replaces | `compare/cache.rs` `scan_one_root` | `                    cell.generated_at.as_str() <= existing.generated_at.as_str()` → `                    cell.generated_at.as_str() < existing.generated_at.as_str()` | lib: CS4b, CS4c (0.99, not 0.11) | lib 700 of 702 (CS4a: its duplicate is skipped before it is parsed); this file 25 of 25 | measured |
+//! | P6-7 the scan lists its own files | `compare/cache.rs` `scan_one_root` | `        for report_path in layout::backtest_files(&rd.dir) {` → an inline `fs::read_dir(&rd.dir)` walk that keeps `backtest-*` files whose extension `eq_ignore_ascii_case("md")`, sorted (HEAD's file test) | lib: CS6 (discovered 1, admitted 1 ≠ 0, 0) | lib 701 of 702 (CS4c: the inline walk sorts by path too); this file 25 of 25 | measured |
+//! | P6-8 roots forget each other's names | `compare/cache.rs` `scan_report_roots` | `        scan_one_root(root, &mut cache, &mut seen_filenames, &mut tally);` → `        scan_one_root(root, &mut cache, &mut BTreeSet::new(), &mut tally);` | lib: CS7 (admitted 2 ≠ 1, no `DuplicateFilename`) | lib 701 of 702 (CS4a: its duplicate is inside one root); this file 25 of 25 | measured |
+//! | P6-9 the reset is `Ok`-only again | `state.rs` `Message::LabRunCompleted` arm | two replaces: drop `            model.compare_screen_state.last_indexed_at = None;\n` before `            // Bug #54`, and add it after `                    model.lab_state.last_run_notice = None;\n` at the end of the `Ok` arm | lib: ST2 | lib 701 of 702 (ST1: the `Ok` arm still resets); this file 25 of 25 | measured |
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::cast_precision_loss)]
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -1870,10 +1974,12 @@ fn write_companion_equity_csv(
 }
 
 /// Build a Compare-screen `Cockpit` whose cache is hydrated by the PRODUCTION
-/// `scan_report_roots` over a two-run `lab-runs/` scene (reports + companion
-/// CSVs), with a populated `strategies_config` so the real matrix renders.
-fn compare_cockpit_from_two_run_scene(lab_runs: &std::path::Path) -> Cockpit {
-    let (cache, _tally) = ui::compare::cache::scan_report_roots(&[lab_runs.to_path_buf()]);
+/// `scan_report_roots` over the report root `root` holding a two-run scene
+/// (reports + companion CSVs) — a `lab-runs/` root, or the `evidence/` root of
+/// the bug-log #206 tests — with a populated `strategies_config` so the real
+/// matrix renders.
+fn compare_cockpit_from_two_run_scene(root: &std::path::Path) -> Cockpit {
+    let (cache, _tally) = ui::compare::cache::scan_report_roots(&[root.to_path_buf()]);
 
     let mut c = Cockpit::new();
     c.current_screen = Screen::Compare;
@@ -1961,43 +2067,48 @@ strategy:
 /// ~100k level, run B at the ~60k level (disjoint y-bands).
 fn write_two_run_scene_with_csvs(tmp: &tempfile::TempDir) -> std::path::PathBuf {
     let lab_runs = tmp.path().join("lab-runs");
-    // Run A — momentum/XRPUSDT @ 100k.
-    write_lab_run(
-        &lab_runs,
-        "v1-cross-sectional-momentum",
-        "backtest-20260601-120000-top10-2024-h1-momentum.md",
-        &scan_report_with_strategy(
+    write_two_run_scene_at(&lab_runs);
+    lab_runs
+}
+
+/// The two-run scene of [`write_two_run_scene_with_csvs`], the same bytes,
+/// under any directory `root` (`<root>/<slug>/reports/` per run; bug-log #206
+/// puts `root` one and two containers below an `evidence/` root). Returns the
+/// two `.md` report paths, run A first.
+fn write_two_run_scene_at(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    // (slug, report name, scenario, strategy id, strategy kind, equity level)
+    let runs = [
+        // Run A — momentum/XRPUSDT @ 100k.
+        (
+            "v1-cross-sectional-momentum",
+            "backtest-20260601-120000-top10-2024-h1-momentum.md",
             "top10-2024-h1-momentum",
             "top10_momentum_h1",
             "cross_sectional_momentum",
             100_000,
         ),
-    );
-    write_companion_equity_csv(
-        &lab_runs,
-        "v1-cross-sectional-momentum",
-        "backtest-20260601-120000-top10-2024-h1-momentum.md",
-        100_000,
-    );
-    // Run B — sma/BTCUSDT @ 60k.
-    write_lab_run(
-        &lab_runs,
-        "v0-paper-sma",
-        "backtest-20260601-130000-btc-2023-1m-sma-cross.md",
-        &scan_report_with_strategy(
+        // Run B — sma/BTCUSDT @ 60k.
+        (
+            "v0-paper-sma",
+            "backtest-20260601-130000-btc-2023-1m-sma-cross.md",
             "btc-2023-1m-sma-cross",
             "btc_sma_cross",
             "sma_crossover",
             60_000,
         ),
-    );
-    write_companion_equity_csv(
-        &lab_runs,
-        "v0-paper-sma",
-        "backtest-20260601-130000-btc-2023-1m-sma-cross.md",
-        60_000,
-    );
-    lab_runs
+    ];
+    runs.iter()
+        .map(|&(slug, fname, scenario, strategy_id, kind, level)| {
+            write_lab_run(
+                root,
+                slug,
+                fname,
+                &scan_report_with_strategy(scenario, strategy_id, kind, level),
+            );
+            write_companion_equity_csv(root, slug, fname, level);
+            root.join(slug).join("reports").join(fname)
+        })
+        .collect()
 }
 
 /// Crop band for the overlay CHART within the Compare screen body. The screen
@@ -2166,5 +2277,98 @@ fn compare_screen_single_run_overlay_draws_no_accent2() {
         "single-run Compare screen overlay must draw NO second (ACCENT_2) curve, but saw \
          {accent2} ACCENT_2 pixels in the chart band (≥ {OVERLAY_DREW_MIN}). The two-curve \
          discriminator is reading chrome/chip/AA bleed — not the actual second run."
+    );
+}
+
+// ── PHASE 4d — bug-log #206: Compare's scan walks container depth ≤ 1 ───────
+
+/// CR1's PNG (read by a human; a failed save never fails the test).
+const CR1_PNG: &str = "/tmp/compare_206_depth1.png";
+/// CR2's PNG.
+const CR2_PNG: &str = "/tmp/compare_206_depth2.png";
+
+/// **CR1 — bug-log #206.** The two-run scene at `<tmp>/evidence/v1/<slug>/reports/`
+/// (container depth 1, the committed layout since `1395520629dc`) is scanned
+/// by the PRODUCTION `scan_report_roots` over the `evidence/` root, both runs
+/// are selected on the real Compare screen, and both curves draw (`ACCENT` and
+/// `ACCENT_2` each ≥ `OVERLAY_DREW_MIN` in the chart band). A cell missing
+/// from the scan FAILS the precondition; it never skips. RED before the fix:
+/// the scan walked `<root>/<x>/reports/` only, so the cache was empty.
+#[test]
+fn compare_screen_overlay_renders_runs_from_a_container_depth_1_root() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let evidence = tmp.path().join("evidence");
+    write_two_run_scene_at(&evidence.join("v1"));
+    let mut c = compare_cockpit_from_two_run_scene(&evidence);
+    let (slot_a, slot_b) = scene_slots();
+    for slot in [&slot_a, &slot_b] {
+        let points = c
+            .compare_screen_state
+            .cache
+            .get(slot)
+            .map_or(0, |cell| cell.equity_series_ts.len());
+        assert!(
+            points >= 2,
+            "the container-depth-1 run {slot:?} must scan into a cell with a >=2-point series \
+             (got {points}) (#206)"
+        );
+    }
+    update(&mut c, Message::CompareToggleOverlay(slot_a));
+    update(&mut c, Message::CompareToggleOverlay(slot_b));
+    let shot = render_compare_screen(c);
+    dump_png(&shot, CR1_PNG);
+    let (accent, accent2) = count_curve_pixels_chart_band(&shot);
+    eprintln!(
+        "#206 pixel margin CR1: ACCENT {accent} px, ACCENT_2 {accent2} px in the chart band \
+         (threshold >= {OVERLAY_DREW_MIN} each)"
+    );
+    assert!(
+        accent >= OVERLAY_DREW_MIN,
+        "CR1: run A (ACCENT) from a container-depth-1 report drew only {accent} px (expected >= \
+         {OVERLAY_DREW_MIN}) (#206). PNG: {CR1_PNG}"
+    );
+    assert!(
+        accent2 >= OVERLAY_DREW_MIN,
+        "CR1: run B (ACCENT_2) from a container-depth-1 report drew only {accent2} px (expected \
+         >= {OVERLAY_DREW_MIN}) (#206). PNG: {CR1_PNG}"
+    );
+}
+
+/// **CR2 — CR1's pair (bug-log #206).** The same scene one container deeper,
+/// `<tmp>/evidence/v9/x/<slug>/reports/` (container depth 2, out of contract,
+/// ADR-0055 D8): the files exist, the scan yields neither cell, and with both
+/// slots selected neither curve draws (each colour < `OVERLAY_DREW_MIN`).
+#[test]
+fn compare_screen_overlay_draws_nothing_from_a_container_depth_2_root() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let evidence = tmp.path().join("evidence");
+    for report in write_two_run_scene_at(&evidence.join("v9").join("x")) {
+        assert!(
+            report.is_file(),
+            "the container-depth-2 fixture {} must exist, so the negative is not 'file missing'",
+            report.display()
+        );
+    }
+    let mut c = compare_cockpit_from_two_run_scene(&evidence);
+    let (slot_a, slot_b) = scene_slots();
+    for slot in [&slot_a, &slot_b] {
+        assert!(
+            !c.compare_screen_state.cache.contains_key(slot),
+            "a container-depth-2 run {slot:?} must not scan into a cell (ADR-0055 D8)"
+        );
+    }
+    update(&mut c, Message::CompareToggleOverlay(slot_a));
+    update(&mut c, Message::CompareToggleOverlay(slot_b));
+    let shot = render_compare_screen(c);
+    dump_png(&shot, CR2_PNG);
+    let (accent, accent2) = count_curve_pixels_chart_band(&shot);
+    eprintln!(
+        "#206 pixel margin CR2: ACCENT {accent} px, ACCENT_2 {accent2} px in the chart band \
+         (threshold < {OVERLAY_DREW_MIN} each)"
+    );
+    assert!(
+        accent < OVERLAY_DREW_MIN && accent2 < OVERLAY_DREW_MIN,
+        "CR2: nothing may draw from a container-depth-2 report, but ACCENT {accent} px and \
+         ACCENT_2 {accent2} px (threshold < {OVERLAY_DREW_MIN}). PNG: {CR2_PNG}"
     );
 }

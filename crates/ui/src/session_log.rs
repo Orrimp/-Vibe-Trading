@@ -56,7 +56,8 @@ pub enum Rejected {
     UnknownScenario,
     /// Parsed and identified, but the body carries no KPI table to read.
     NoKpiTable,
-    /// A higher-priority root already claimed this filename (ADR-0055 § D5 #2).
+    /// A higher-priority root (ADR-0055 § D5 #2), or an earlier dir of the same
+    /// root in ADR-0055 D8 order (bug-log #206), already claimed this filename.
     DuplicateFilename,
 }
 

@@ -21,19 +21,19 @@
 //! - **Order (the D8 tie rule).** Report dirs come in (container depth, path)
 //!   order — every container-depth-0 dir before any container-depth-1 dir, then
 //!   by path — and the files of one dir by path. A reader that keeps the FIRST
-//!   best candidate (the Lab) therefore keeps a container-depth-0 report on a
-//!   tie within one root, whether the container name sorts before or after
-//!   the slug name.
+//!   of equal candidates — the Lab on an equal score; Compare on an identical
+//!   filename or an equal `generated:` (bug-log #206) — therefore keeps a
+//!   container-depth-0 report on a tie within one root, whether the container
+//!   name sorts before or after the slug name.
 //! - **Symlinks are followed** (`Path::is_dir` follows them): a symlinked slug
 //!   dir or container is walked like a real one, so a report outside the root
 //!   can be listed through it. A symlink loop (`loop -> <root>`) is walked at
 //!   most [`MAX_CONTAINER_DEPTH`] levels deep, so the walk terminates; it can
 //!   list one real dir under two paths. Pinned by LY5 (unix).
 //!
-//! Readers: the Reports picker (`reports::loader::discover_reports_in`) and the
-//! Lab's report lookup (`lab::equity_loader`). Compare's scan
-//! (`compare::cache::scan_one_root`) does not use this module yet (bug-log
-//! #206).
+//! Readers: the Reports picker (`reports::loader::discover_reports_in`), the
+//! Lab's report lookup (`lab::equity_loader`) and, since bug-log #206,
+//! Compare's scan (`compare::cache::scan_one_root`).
 //!
 //! **K2 never-panic.** An absent or unreadable directory contributes nothing
 //! (a `tracing` breadcrumb, never an error, never a panic).

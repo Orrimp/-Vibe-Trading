@@ -3265,11 +3265,11 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             }
             // lab-run-save-compare T5 / R5 / Q6 — Compare cold-boot index. On
             // the FIRST navigation to Compare (cache un-indexed), scan the
-            // two-root union (`lab-runs/` FIRST, then `spec/`) so persisted Lab
-            // runs AND committed reports populate the matrix. Synchronous read
-            // of small Markdown files (the existing `scan_spec_tree` budget,
-            // R3.5); re-scans only after `invalidate_compare_index` clears the
-            // tag (e.g. on a fresh Lab run completing).
+            // two-root union (`lab-runs/` FIRST, then `evidence/`) so persisted
+            // Lab runs AND committed reports populate the matrix. Synchronous
+            // read of small Markdown files (the existing `scan_spec_tree`
+            // budget, R3.5); re-scans only after a completed Lab run clears the
+            // tag (`Message::LabRunCompleted`, Ok or Err; bug-log #206).
             if s == Screen::Compare && model.compare_screen_state.last_indexed_at.is_none() {
                 let roots = crate::lab::equity_loader::default_report_roots();
                 let (cache, tally) = crate::compare::cache::scan_report_roots(&roots);
@@ -3531,6 +3531,12 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             // old ones); Err can follow a written `.md` (its CSV write failed).
             // One new report can satisfy OTHER tuples' misses (#212).
             model.equity_cache.get_mut().clear();
+            // lab-run-save-compare T5 / R5, bug-log #206: clear the Compare
+            // cold-boot tag on Ok AND Err, for #208's reason above, so the next
+            // Compare visit re-scans the two-root union and indexes a report the
+            // run left behind (no restart needed). Cheap: the re-scan fires on
+            // that visit, not here.
+            model.compare_screen_state.last_indexed_at = None;
             // Bug #54 — track success/failure so Run button can render
             // RunState::Failed and the screen can show the error message
             // instead of silently flipping back to "Run".
@@ -3542,13 +3548,6 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
                 Ok(_) => {
                     model.lab_state.last_run_error = None;
                     model.lab_state.last_run_notice = None;
-                    // lab-run-save-compare T5 / R5 — a successful run persists a
-                    // new report under `lab-runs/`. Clear the Compare cold-boot
-                    // tag so the next Compare navigation re-scans the two-root
-                    // union and surfaces the just-persisted run (no restart
-                    // needed). Cheap: the re-scan only fires on the next visit
-                    // to Compare, not here.
-                    model.compare_screen_state.last_indexed_at = None;
                 }
                 Err(raw) => {
                     use crate::lab::runner::preload_notice::{RunMessageKind, classify};
@@ -7084,6 +7083,47 @@ mod tests {
     #[test]
     fn lab_run_completed_err_clears_equity_cache_too() {
         completed_run_clears_equity_cache_208(Err(SmolStr::new(
+            "report write error: write equity csv: No space left on device (os error 28)",
+        )));
+    }
+
+    // ── bug-log #206: every completed Lab run resets the Compare index ──────
+
+    /// The Compare cold-boot tag is set (as if Compare had been indexed); an
+    /// unrelated message (the control) keeps it; `outcome` clears it, so the
+    /// next Compare visit re-scans. The tag is set by hand, not by a
+    /// `SwitchScreen(Compare)` scan, so neither test scans the real report
+    /// roots (the arm's `probe_summary` still checks the CWD-relative
+    /// `data/yahoo`, as #208's tests do).
+    fn completed_run_resets_compare_index_206(outcome: crate::lab::runner::LabRunResult) {
+        let mut c = Cockpit::new();
+        let stamp = Some(time::OffsetDateTime::UNIX_EPOCH);
+        c.compare_screen_state.last_indexed_at = stamp;
+        update(&mut c, Message::LabRunProgressDone);
+        assert_eq!(
+            c.compare_screen_state.last_indexed_at, stamp,
+            "control: a message that is not a completed run keeps the Compare index"
+        );
+        update(&mut c, Message::LabRunCompleted(outcome));
+        assert!(
+            c.compare_screen_state.last_indexed_at.is_none(),
+            "a completed Lab run must clear the Compare index so the next Compare \
+             visit re-scans"
+        );
+    }
+
+    /// bug-log #206 — `LabRunCompleted(Ok)` resets the Compare index.
+    #[test]
+    fn lab_run_completed_ok_resets_compare_index() {
+        completed_run_resets_compare_index_206(Ok(empty_run_summary_208()));
+    }
+
+    /// bug-log #206 — `LabRunCompleted(Err)` resets it too: a run that failed
+    /// on its CSV write can leave a readable `.md` behind (#208), and Compare
+    /// reads the `.md`.
+    #[test]
+    fn lab_run_completed_err_resets_compare_index_too() {
+        completed_run_resets_compare_index_206(Err(SmolStr::new(
             "report write error: write equity csv: No space left on device (os error 28)",
         )));
     }

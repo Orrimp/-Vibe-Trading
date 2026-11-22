@@ -2,7 +2,7 @@
 //!
 //! Exposes:
 //! - `scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange), CachedCell>`
-//!   — cold-boot glob + frontmatter parse.
+//!   — cold-boot layout walk + frontmatter parse.
 //! - `lookup_cell(strategy_id, symbol, range, cache) -> Option<&CachedCell>`
 //!   — O(log n) lookup into an already-built cache.
 //! - `parse_frontmatter(content: &str) -> Option<BTreeMap<SmolStr, SmolStr>>`
@@ -17,6 +17,15 @@
 //! - For lines inside the `strategy:` block (detected via 2-space indent),
 //!   stores under a `strategy.<key>` namespace.
 //! - Returns `None` on any parse error (fail-soft per K2).
+//!
+//! ## The walk (bug-log #206)
+//!
+//! Every root is walked through the ONE report-root layout,
+//! `crate::reports::layout` (ADR-0055 § D8):
+//! `<root>[/<container>]/<slug>/reports/backtest-*.md` at container depth
+//! ≤ `layout::MAX_CONTAINER_DEPTH`, report dirs in (container depth, path)
+//! order and each dir's files by path. A cell is keyed by its frontmatter's
+//! `strategy.id`; no directory name is read as a strategy or a slug.
 //!
 //! ## Scenario → universe mapping (R3.2)
 //!
@@ -350,7 +359,8 @@ fn extract_equity_curve_tail(body: &str, max_points: usize) -> Vec<f64> {
     }
 }
 
-/// Scan a SINGLE report root for all backtest report `.md` files and build a
+/// Scan a SINGLE report root for its `backtest-*.md` reports (walked as the
+/// module doc's "The walk" says, bug-log #206) and build a
 /// `BTreeMap<(strategy_id, symbol, range), CachedCell>` cache.
 ///
 /// Only the most-recent report per `(strategy_id, symbol, range)` tuple
@@ -378,10 +388,15 @@ pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange)
 ///
 /// 1. Search order is the slice order: `lab-runs/` first.
 /// 2. On an **identical filename across roots** (same `backtest-<stamp>-<scenario>.md`
-///    in both `lab-runs/` and `spec/`), the FIRST root's copy wins — the later
+///    in both `lab-runs/` and `evidence/`), the FIRST root's copy wins — the later
 ///    root's same-named file is skipped before it is even parsed.
 /// 3. Within the union, the existing **most-recent-`generated:`-wins**
 ///    per-tuple tiebreaker decides which report represents a tuple in Compare.
+/// 4. **Inside one root** (bug-log #206) the walk's ADR-0055 D8 order settles
+///    the same two first-wins rules: an identical filename keeps its first
+///    copy and an equal `generated:` keeps the first report, container depth 0
+///    before container depth 1, then by path. A strictly newer `generated:`
+///    still wins at either container depth.
 ///
 /// # The tally (story 6-11 AC3)
 ///
@@ -400,9 +415,9 @@ pub fn scan_report_roots(
 ) {
     let mut cache: BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> = BTreeMap::new();
     let mut tally = crate::session_log::ScanTally::default();
-    // Filenames already claimed by a higher-priority (earlier) root. The
-    // collision rule (ADR-0055 § D5 #2): identical filename ⇒ lab-runs wins,
-    // so a later root's same-named file is skipped.
+    // Filenames already claimed by an earlier root (ADR-0055 § D5 #2:
+    // lab-runs wins) or by an earlier report dir of the same root (D8 order,
+    // bug-log #206), so a later same-named file is skipped.
     let mut seen_filenames: BTreeSet<SmolStr> = BTreeSet::new();
     for root in roots {
         scan_one_root(root, &mut cache, &mut seen_filenames, &mut tally);
@@ -412,56 +427,34 @@ pub fn scan_report_roots(
 
 /// Scan one report root into `cache`, honoring the cross-root filename
 /// collision rule via `seen_filenames` (earlier roots win).
+///
+/// bug-log #206 — walks the ONE report-root layout (`crate::reports::layout`,
+/// ADR-0055 § D8): `<root>[/<container>]/<slug>/reports/backtest-*.md` at
+/// container depth ≤ `layout::MAX_CONTAINER_DEPTH`, `reports` never a
+/// container or a slug, report dirs in (container depth, path) order and each
+/// dir's files by path. Within one root that order settles both first-wins
+/// rules below (the identical-filename skip and the equal-`generated:` skip)
+/// for the container-depth-0 report, then the first by path. An absent or
+/// unreadable directory contributes nothing; the layout logs it (K2).
 fn scan_one_root(
-    spec_root: &Path,
+    root: &Path,
     cache: &mut BTreeMap<(SmolStr, Symbol, DateRange), CachedCell>,
     seen_filenames: &mut BTreeSet<SmolStr>,
     tally: &mut crate::session_log::ScanTally,
 ) {
+    use crate::reports::layout;
     use crate::session_log::Rejected;
     use std::fs;
 
-    // Walk spec_root/**/ looking for backtest-*.md files.
-    let Ok(outer) = fs::read_dir(spec_root) else {
-        // A missing root is normal (a fresh checkout has no `lab-runs/`);
-        // fail soft. `trace!` (not `warn!`) so the absent-lab-runs case is
-        // not noisy on every cold boot.
-        tracing::trace!(
-            "compare::cache: report root not found or not a directory: {}",
-            spec_root.display()
-        );
-        return;
-    };
-
-    for entry in outer.flatten() {
-        let strategy_dir = entry.path();
-        if !strategy_dir.is_dir() {
-            continue;
-        }
-        let reports_dir = strategy_dir.join("reports");
-        if !reports_dir.is_dir() {
-            continue;
-        }
-
-        let Ok(reports) = fs::read_dir(&reports_dir) else {
-            continue;
-        };
-
-        for report_entry in reports.flatten() {
-            let report_path = report_entry.path();
+    for rd in layout::report_dirs(root) {
+        for report_path in layout::backtest_files(&rd.dir) {
             let Some(fname) = report_path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if !fname.starts_with("backtest-")
-                || !std::path::Path::new(fname)
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-            {
-                continue;
-            }
 
-            // Collision rule: if an earlier (higher-priority) root already
-            // claimed this exact filename, skip it (lab-runs wins).
+            // Collision rule: if an earlier root (lab-runs wins, ADR-0055 § D5)
+            // or an earlier report dir of this root (D8 order) already claimed
+            // this exact filename, skip it.
             let fname_key = SmolStr::new(fname);
             if !seen_filenames.insert(fname_key) {
                 tally.reject(Rejected::DuplicateFilename);
@@ -508,7 +501,7 @@ fn scan_one_root(
             // Use the repo-relative path as the cell identifier.
             // Build a repo-relative path by stripping the root's parent prefix.
             let source_path = report_path
-                .strip_prefix(spec_root.parent().unwrap_or(spec_root))
+                .strip_prefix(root.parent().unwrap_or(root))
                 .map_or_else(
                     |_| report_path.to_string_lossy().to_string(),
                     |p| p.to_string_lossy().to_string(),
@@ -548,7 +541,8 @@ fn scan_one_root(
             for symbol in &universe {
                 let key = (strategy_id.clone(), symbol.clone(), range.clone());
 
-                // R3.3: keep only the most-recent report per tuple.
+                // R3.3: keep only the most-recent report per tuple; an equal
+                // `generated:` keeps the first one in D8 order.
                 if cache.get(&key).is_some_and(|existing| {
                     cell.generated_at.as_str() <= existing.generated_at.as_str()
                 }) {
@@ -810,8 +804,13 @@ strategy:
     }
 
     /// T5 / ADR-0055 § D5 #2 — on an IDENTICAL filename across `lab-runs/` and
-    /// `spec/`, the `lab-runs/` copy wins (it is searched first). Same filename,
-    /// different Sharpe in each root → the union must surface the lab-runs value.
+    /// `evidence/` (here a root named `spec`, the corpus's name before
+    /// 2026-07-25), the `lab-runs/` copy wins (it is searched first). Same
+    /// filename, different Sharpe in each root → the union must surface the
+    /// lab-runs value. bug-log #206: the `evidence/` copy is strictly NEWER, so
+    /// only the filename rule keeps the `lab-runs/` copy (an equal `generated:`
+    /// would keep it by the first-wins rule alone), and the tally counts the
+    /// skipped copy.
     #[test]
     fn scan_report_roots_identical_filename_lab_runs_wins() {
         let tmp = tempfile::tempdir().unwrap();
@@ -828,12 +827,18 @@ strategy:
         write_report(
             &spec.join("v0-paper-sma").join("reports"),
             fname,
-            &btc_report("2026-01-01T00:00:00Z", "0.11"), // spec Sharpe (same name)
+            &btc_report("2026-01-02T00:00:00Z", "0.11"), // spec Sharpe (same name, newer)
         );
 
         // Production order: lab-runs FIRST.
         let roots = [lab_runs, spec];
-        let (cache, _tally) = scan_report_roots(&roots);
+        let (cache, got) = scan_report_roots(&roots);
+        assert_eq!(
+            got,
+            tally(2, 1, &[(Rejected::DuplicateFilename, 1)]),
+            "identical filename: the later root's copy is discovered and skipped as a \
+             duplicate (#206)"
+        );
         let btc = cache
             .get(&(
                 SmolStr::new("btc_sma_cross"),
@@ -985,5 +990,396 @@ strategy:
             ))
             .expect("single-root spec scan resolves the report");
         assert!((btc.sharpe - 0.55).abs() < 1e-9);
+    }
+
+    // ── bug-log #206 — the scan walks the ONE report-root layout (ADR-0055 D8) ──
+
+    use std::path::PathBuf;
+
+    use crate::reports::layout::test_tree::{self, TREE};
+    use crate::session_log::{Rejected, ScanTally};
+    use crate::test_support::evidence_oracle;
+
+    /// The slug of every #206 fixture dir.
+    const SLUG_206: &str = "v0-paper-sma";
+    /// Container names that sort BEFORE (`a0`) and AFTER (`zz`) [`SLUG_206`],
+    /// so each order test below holds whichever way the full paths sort.
+    const CONTAINERS_206: [&str; 2] = ["a0", "zz"];
+    /// The one `generated:` stamp of the #206 fixtures (ties are the point).
+    const GENERATED_206: &str = "2026-01-01T00:00:00Z";
+    /// The report name of the #206 fixtures.
+    const FNAME_206: &str = "backtest-20260101-000000-btc-2023-1m-sma-cross.md";
+    /// The same name one second later: it sorts AFTER [`FNAME_206`].
+    const FNAME_206_LATER: &str = "backtest-20260101-000001-btc-2023-1m-sma-cross.md";
+    /// The Sharpe of the report the D8 order must keep, and of the one it must not.
+    const SHARPE_KEPT: &str = "0.11";
+    const SHARPE_SHADOWED: &str = "0.99";
+
+    /// The cell key `btc_report` scans into: its `strategy.id`, the one symbol
+    /// of its `btc-*` scenario and the default range.
+    fn btc_key() -> (SmolStr, Symbol, DateRange) {
+        (
+            SmolStr::new("btc_sma_cross"),
+            Symbol::new("BTCUSDT"),
+            DateRange::default(),
+        )
+    }
+
+    /// The Sharpe a fixture wrote, parsed from the string the fixture used.
+    fn sharpe_of(fixture: &str) -> f64 {
+        fixture.parse().unwrap()
+    }
+
+    /// A tally with `discovered` candidates, `admitted` of them admitted and the
+    /// rest in `rejected` (written out per test from its fixture).
+    fn tally(discovered: usize, admitted: usize, rejected: &[(Rejected, usize)]) -> ScanTally {
+        ScanTally {
+            discovered,
+            admitted,
+            rejected: rejected.iter().copied().collect(),
+        }
+    }
+
+    /// CS1 — a report at container depth 1 (`<root>/<container>/<slug>/reports/`,
+    /// the committed layout) is discovered and admitted, and its
+    /// `source_report_path` keeps the container. RED before the fix: the scan
+    /// walked `<root>/<x>/reports/` only.
+    #[test]
+    fn scan_admits_a_container_depth_1_report() {
+        let tmp = tempfile::tempdir().unwrap();
+        let evidence = tmp.path().join("evidence");
+        let sharpe = "0.77";
+        write_report(
+            &evidence.join("v1").join(SLUG_206).join("reports"),
+            FNAME_206,
+            &btc_report(GENERATED_206, sharpe),
+        );
+        let (cache, got) = scan_report_roots(&[evidence]);
+        assert_eq!(
+            got,
+            tally(1, 1, &[]),
+            "one report at container depth 1 must be discovered and admitted (#206)"
+        );
+        let cell = cache
+            .get(&btc_key())
+            .expect("the container-depth-1 report must scan into its cell (#206)");
+        assert!(
+            (cell.sharpe - sharpe_of(sharpe)).abs() < 1e-9,
+            "the cell must carry the fixture's Sharpe {sharpe}; got {}",
+            cell.sharpe
+        );
+        let want = Path::new("evidence")
+            .join("v1")
+            .join(SLUG_206)
+            .join("reports")
+            .join(FNAME_206);
+        assert_eq!(
+            Path::new(cell.source_report_path.as_str()),
+            want.as_path(),
+            "source_report_path is relative to the root's parent and keeps the container"
+        );
+    }
+
+    /// CS2 — CS1's pair: the same bytes one container deeper (container depth
+    /// 2, out of contract) are not read. The file exists, so the negative is
+    /// not "file missing".
+    #[test]
+    fn scan_skips_a_container_depth_2_report() {
+        let tmp = tempfile::tempdir().unwrap();
+        let evidence = tmp.path().join("evidence");
+        let dir = evidence.join("v9").join("x").join(SLUG_206).join("reports");
+        write_report(&dir, FNAME_206, &btc_report(GENERATED_206, "0.77"));
+        assert!(
+            dir.join(FNAME_206).is_file(),
+            "the container-depth-2 fixture must exist"
+        );
+        let (cache, got) = scan_report_roots(&[evidence]);
+        assert_eq!(
+            got,
+            ScanTally::default(),
+            "a container-depth-2 report must not be considered (ADR-0055 D8)"
+        );
+        assert!(
+            cache.is_empty(),
+            "a container-depth-2 report must yield no cell"
+        );
+    }
+
+    /// CS3 — over the shared layout TREE (bug-log #205) the scan considers
+    /// exactly the rows the TREE lists, and nothing it does not. Expected,
+    /// derived from the TREE: discovered = the listed rows; no row carries
+    /// frontmatter, so the first copy of each distinct name is
+    /// `MalformedFrontmatter` and every later copy is `DuplicateFilename`;
+    /// admitted = 0. A TREE directory named `backtest-dir.md` is not a
+    /// candidate (the layout lists files only).
+    #[test]
+    fn scan_tally_over_the_layout_tree_counts_exactly_its_listed_rows() {
+        let tmp = tempfile::tempdir().unwrap();
+        test_tree::build(tmp.path());
+        let listed: Vec<&str> = TREE
+            .iter()
+            .filter(|r| r.listed.is_some())
+            .map(|r| r.path)
+            .collect();
+        // Container depth from the row's own path: `<slug>/reports/<file>` = 0;
+        // `None` for a row less than three components deep.
+        let depth = |p: &str| p.split('/').count().checked_sub(3);
+        assert!(
+            listed.iter().any(|p| depth(p) == Some(0)),
+            "the TREE must list a container-depth-0 row"
+        );
+        assert!(
+            listed.iter().any(|p| depth(p) == Some(1)),
+            "the TREE must list a container-depth-1 row"
+        );
+        let unlisted_reports: Vec<&str> = TREE
+            .iter()
+            .filter(|r| {
+                r.listed.is_none()
+                    && !r.is_dir
+                    && r.path
+                        .rsplit('/')
+                        .next()
+                        .is_some_and(evidence_oracle::is_backtest_name)
+            })
+            .map(|r| r.path)
+            .collect();
+        assert!(
+            unlisted_reports.iter().any(|p| p.starts_with("reports/")),
+            "the TREE must hold a backtest-*.md under a `reports` container"
+        );
+        assert!(
+            unlisted_reports
+                .iter()
+                .any(|p| depth(p) == Some(2) && p.split('/').nth(3) == Some("reports")),
+            "the TREE must hold a backtest-*.md at container depth 2"
+        );
+        for p in &listed {
+            let content = std::fs::read_to_string(tmp.path().join(p)).unwrap();
+            assert_ne!(
+                content.lines().next(),
+                Some("---"),
+                "a TREE row must carry no frontmatter: {p}"
+            );
+        }
+        let distinct: BTreeSet<&str> = listed.iter().filter_map(|p| p.rsplit('/').next()).collect();
+        assert!(
+            listed.len() > distinct.len(),
+            "the TREE must list one name twice, else the duplicate bucket pins nothing"
+        );
+        let want = tally(
+            listed.len(),
+            0,
+            &[
+                (Rejected::MalformedFrontmatter, distinct.len()),
+                (Rejected::DuplicateFilename, listed.len() - distinct.len()),
+            ],
+        );
+        let (cache, got) = scan_report_roots(&[tmp.path().to_path_buf()]);
+        assert_eq!(
+            got, want,
+            "the scan must consider exactly the TREE's listed rows (#206)"
+        );
+        assert!(cache.is_empty(), "no TREE row is a readable report");
+    }
+
+    /// The report dirs of the `CS4a`/`CS4b` fixtures under `root`: container depth
+    /// 0, then container depth 1 under `container`.
+    fn depth_0_and_1_dirs(root: &Path, container: &str) -> (PathBuf, PathBuf) {
+        (
+            root.join(SLUG_206).join("reports"),
+            root.join(container).join(SLUG_206).join("reports"),
+        )
+    }
+
+    /// The two-sided precondition of `CS4a`/`CS4b`: the container-depth-1 dir sorts
+    /// before the container-depth-0 dir by path under `a0` and after it under
+    /// `zz`, so neither full-path order nor its reverse can pass both halves.
+    fn assert_containers_straddle_the_slug(root: &Path) {
+        let before: Vec<bool> = CONTAINERS_206
+            .iter()
+            .map(|c| {
+                let (d0, d1) = depth_0_and_1_dirs(root, c);
+                d1 < d0
+            })
+            .collect();
+        assert_eq!(
+            before,
+            [true, false],
+            "`a0` must sort before the slug and `zz` after it"
+        );
+    }
+
+    /// `CS4a` — inside one root, an identical filename at container depth 0 and
+    /// at container depth 1: the container-depth-0 copy is admitted and the
+    /// other is a `DuplicateFilename` (ADR-0055 D8 order), whether the container
+    /// sorts before or after the slug.
+    #[test]
+    fn duplicate_filename_inside_a_root_goes_to_container_depth_0() {
+        for container in CONTAINERS_206 {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("evidence");
+            assert_containers_straddle_the_slug(&root);
+            let (d0, d1) = depth_0_and_1_dirs(&root, container);
+            write_report(&d0, FNAME_206, &btc_report(GENERATED_206, SHARPE_KEPT));
+            write_report(&d1, FNAME_206, &btc_report(GENERATED_206, SHARPE_SHADOWED));
+            let (cache, got) = scan_report_roots(&[root]);
+            assert_eq!(
+                got,
+                tally(2, 1, &[(Rejected::DuplicateFilename, 1)]),
+                "container {container}: two copies of one name, the second a duplicate (#206)"
+            );
+            let cell = cache.get(&btc_key()).expect("the BTC cell must be present");
+            assert!(
+                (cell.sharpe - sharpe_of(SHARPE_KEPT)).abs() < 1e-9,
+                "container {container}: the container-depth-0 copy ({SHARPE_KEPT}) must win, not \
+                 the container-depth-1 copy ({SHARPE_SHADOWED}); got {}",
+                cell.sharpe
+            );
+        }
+    }
+
+    /// `CS4b` — inside one root, two names with an equal `generated:` for one
+    /// tuple, the container-depth-1 one sorting FIRST by name: the
+    /// container-depth-0 report is kept (D8 order, then `<=` keeps the first),
+    /// whether the container sorts before or after the slug.
+    #[test]
+    fn equal_generated_inside_a_root_goes_to_container_depth_0() {
+        assert!(
+            FNAME_206 < FNAME_206_LATER,
+            "the depth-1 name must sort first"
+        );
+        for container in CONTAINERS_206 {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("evidence");
+            assert_containers_straddle_the_slug(&root);
+            let (d0, d1) = depth_0_and_1_dirs(&root, container);
+            write_report(
+                &d0,
+                FNAME_206_LATER,
+                &btc_report(GENERATED_206, SHARPE_KEPT),
+            );
+            write_report(&d1, FNAME_206, &btc_report(GENERATED_206, SHARPE_SHADOWED));
+            let (cache, got) = scan_report_roots(&[root]);
+            assert_eq!(
+                got,
+                tally(2, 2, &[]),
+                "container {container}: two distinct names, both admitted (#206)"
+            );
+            let cell = cache.get(&btc_key()).expect("the BTC cell must be present");
+            assert!(
+                (cell.sharpe - sharpe_of(SHARPE_KEPT)).abs() < 1e-9,
+                "container {container}: on an equal `generated:` the container-depth-0 report \
+                 ({SHARPE_KEPT}) must be kept, not the container-depth-1 one \
+                 ({SHARPE_SHADOWED}); got {}",
+                cell.sharpe
+            );
+        }
+    }
+
+    /// `CS4c` — inside one dir, two names with an equal `generated:` for one
+    /// tuple: the first by path is kept. The later name is written first, so
+    /// creation order cannot stand in for path order.
+    #[test]
+    fn equal_generated_inside_one_dir_goes_to_the_first_by_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("evidence");
+        let dir = root.join(SLUG_206).join("reports");
+        assert!(
+            dir.join(FNAME_206) < dir.join(FNAME_206_LATER),
+            "the kept name must sort first by path"
+        );
+        write_report(
+            &dir,
+            FNAME_206_LATER,
+            &btc_report(GENERATED_206, SHARPE_SHADOWED),
+        );
+        write_report(&dir, FNAME_206, &btc_report(GENERATED_206, SHARPE_KEPT));
+        let (cache, got) = scan_report_roots(&[root]);
+        assert_eq!(got, tally(2, 2, &[]), "two distinct names, both admitted");
+        let cell = cache.get(&btc_key()).expect("the BTC cell must be present");
+        assert!(
+            (cell.sharpe - sharpe_of(SHARPE_KEPT)).abs() < 1e-9,
+            "on an equal `generated:` inside one dir the first by path ({SHARPE_KEPT}) must be \
+             kept, not {SHARPE_SHADOWED}; got {}",
+            cell.sharpe
+        );
+    }
+
+    /// The workspace root (`crates/ui` → `crates` → root).
+    fn workspace_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+    }
+
+    /// CS5 — LIVE: the scan of the real `evidence/` root considers at least as
+    /// many reports as git lists in contract (`evidence_oracle`, tracked or
+    /// untracked on disk), at container depth 0 AND 1. Counts only, in the
+    /// subset form (#189); a tracked report deleted from disk stays in the
+    /// listing and turns it red (#66). Before the fix it considered only the
+    /// container-depth-0 reports. Prints the tally (`--nocapture`).
+    #[test]
+    fn compare_scan_discovers_every_git_listed_report() {
+        let ws = workspace_root();
+        let listed: Vec<Vec<String>> =
+            evidence_oracle::git_listed_files(&mut evidence_oracle::live_git(&ws))
+                .unwrap_or_else(|e| panic!("the #206 evidence oracle must run: {e}"))
+                .into_iter()
+                .filter(|c| evidence_oracle::is_contract_report(c))
+                .collect();
+        let d0 = listed.iter().filter(|c| c.len() == 4).count();
+        let d1 = listed.iter().filter(|c| c.len() == 5).count();
+        assert!(d0 >= 1, "the oracle must hold a container-depth-0 report");
+        assert!(d1 >= 1, "the oracle must hold a container-depth-1 report");
+        let evidence = ws.join("evidence");
+        assert!(evidence.is_dir(), "the workspace must hold evidence/");
+        let (_cache, got) = scan_report_roots(&[evidence]);
+        eprintln!(
+            "#206 compare scan over evidence/: discovered {}, admitted {}, rejected {:?}; git \
+             lists {} in-contract reports (container depth 0: {d0}, container depth 1: {d1})",
+            got.discovered,
+            got.admitted,
+            got.rejected,
+            listed.len()
+        );
+        assert!(
+            got.discovered >= listed.len(),
+            "the Compare scan considered {} of {} git-listed in-contract reports (container \
+             depth 0: {d0}, container depth 1: {d1}) (#206)",
+            got.discovered,
+            listed.len()
+        );
+    }
+
+    /// CS6 — the scan takes `layout::backtest_files`'s name rule: a report
+    /// named `….MD` is no candidate. Two-sided: the same bytes named `….md`
+    /// in another root are discovered and admitted, so only the extension's
+    /// case differs. Before the fix the scan matched `.md` ignoring case.
+    #[test]
+    fn scan_skips_an_uppercase_md_report() {
+        let upper_name = FNAME_206.replace(".md", ".MD");
+        let content = btc_report(GENERATED_206, "0.77");
+        let tmp = tempfile::tempdir().unwrap();
+        let (upper, lower) = (tmp.path().join("upper"), tmp.path().join("lower"));
+        let upper_dir = upper.join(SLUG_206).join("reports");
+        write_report(&upper_dir, &upper_name, &content);
+        write_report(&lower.join(SLUG_206).join("reports"), FNAME_206, &content);
+        assert!(
+            upper_dir.join(&upper_name).is_file(),
+            "the `.MD` fixture must exist"
+        );
+        let (cache, got) = scan_report_roots(&[upper]);
+        assert_eq!(
+            got,
+            ScanTally::default(),
+            "a `.MD` report must not be considered (layout::backtest_files, #206)"
+        );
+        assert!(cache.is_empty(), "a `.MD` report must yield no cell");
+        let (cache, got) = scan_report_roots(&[lower]);
+        assert_eq!(
+            got,
+            tally(1, 1, &[]),
+            "control: the same bytes named `.md` are discovered and admitted"
+        );
+        assert!(cache.contains_key(&btc_key()), "control: the `.md` cell");
     }
 }

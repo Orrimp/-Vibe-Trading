@@ -2,7 +2,7 @@
 slug: bug-log
 status: living
 owner: orchestrator
-updated: 2026-11-16
+updated: 2026-11-22
 ---
 
 # Bug log
@@ -10548,7 +10548,7 @@ in the new file's module doc, by symbol and quoted line.
    - A directory named `reports` is never a container or a slug, so the walk never enters `reports/artifacts/`. The slug is the leaf dir above `reports/`. Symlinks are followed, and a symlink loop stops at the bound.
    - `report_dirs` yields dirs in (container depth, path) order (`out.sort_by(|a, b| (a.container_depth, &a.dir).cmp(&(b.container_depth, &b.dir)));`), and `backtest_files` yields one dir's `backtest-*.md` files in path order.
    - `report_dirs_for_slug` is the Lab's targeted lookup. Through `is_slug_component` it returns nothing for a slug that is not exactly one plain path component (`..`, `a/b`, `sma/`, `reports`).
-   - Compare does not use it yet (`#206`), and neither does the backtest CLI (`#210`).
+   - Compare did not use it until `#206` moved its scan onto it; the backtest CLI still does not (`#210`).
 2. **Reports.** `discover_reports_in(root)` walks the contract and re-sorts by (slug, file stem, path). `discover_reports()` is its wrapper at `evidence/`, and `load_into` is a wrapper over `load_into_from(model, evidence_root)`.
 3. **Lab.** `discover_reports(report_root, slug)` is the union over `layout::report_dirs_for_slug`, in D8 order with no re-sort. So within one root an equal-score tie between container depth 0 and 1 goes to container depth 0, where HEAD looked; a strictly better or source-tagged container-depth-1 report still wins. `get_or_load_roots`, D5's root order and the strict `range_score > *s` are untouched. `ReportDirNotFound` names the slug, the root, the container-depth bound and which kind of empty it is (`#[error("no backtest report to load: {0}")]`).
 4. **Tests.**
@@ -10658,7 +10658,7 @@ in the new file's module doc, by symbol and quoted line.
    - So the error path's second walk (`// Error path only: one more targeted walk says WHICH empty it is.`) runs once per tuple per clear, not once per view.
 2. **A whole-cache clear on every completed run**, in the `Message::LabRunCompleted` arm of `state::update`, after `model.lab_state.run_progress = None;` and before the Ok/Err match: `model.equity_cache.get_mut().clear();`. `update` owns `&mut Cockpit`, so `get_mut` takes no runtime borrow and no bin wrapper is needed. `EquityCache::clear` replaces `invalidate`, whose only caller was a test: per-tuple invalidation is the wrong tool, for the two reasons under Why it matters.
 3. **Two deviations from the proposal above, both accepted by the orchestrator (2026-11-16):**
-   - **Ok and Err, not Ok only.** The engine writes the `.md` before its companion CSV (`maybe_write_report`), so a run that fails on the CSV write (`RunError::ReportIo`) can leave a readable report that a restart would show. A clear that was not needed costs one walk. Compare's index reset (`model.compare_screen_state.last_indexed_at = None;`) still runs on Ok only and has the same gap; it is left to `#206`.
+   - **Ok and Err, not Ok only.** The engine writes the `.md` before its companion CSV (`maybe_write_report`), so a run that fails on the CSV write (`RunError::ReportIo`) can leave a readable report that a restart would show. A clear that was not needed costs one walk. Compare's index reset (`model.compare_screen_state.last_indexed_at = None;`) ran on Ok only and had the same gap; it was left to `#206`, which moved it before the Ok/Err match, beside this clear.
    - **A root seam, `Cockpit::lab_report_roots`.** Both struct literals, `Default` and `ready` (`new()` and `boot()` go through `Default`), set it to `default_report_roots()`, and the Debug impl prints it. `lab::view` reads `let roots = &model.lab_report_roots;`. Without it a cached hit still cost one stat per view (`default_evidence_root`'s `if candidate.is_dir() {`), so the module doc's I/O claim would stay false, and LR-208 could not point the Lab at temp roots.
 4. **Doc truth.** The module doc's I/O paragraph now opens "**I/O on the iced thread: once per tuple per cache generation.**" and states the boundary below. The `EquityCache` doc says the cache is "Emptied whole by [`EquityCache::clear`], which `state::update` calls on every `Message::LabRunCompleted`". The two false comments are gone, and the `get_or_load` and `get_or_load_roots` `# Errors` sections, the `route_equity_overlay` doc and the `runner.rs` doc of the fixture-build run follow. ADR-0055's amendment quoted the removed `return Ok(arc);` in its precedence item 1; it now quotes the root loop as it reads, with a Changelog line and the decisions README `updated:` marker. Cache lifetime is not an ADR-0055 decision, so no ADR is added.
 5. **The boundary.** A report written outside the app while it runs (the backtest CLI, `#210`; a second cockpit; a checkout) is seen at the next completed Lab run or a restart; only a tuple not looked up since the last clear reads it at its first view. Before the fix a miss saw it at the next view and a hit never did, so only the miss case narrows. A clear on entering the Lab screen would add a refresh at one walk per entry; it is not built.
@@ -10696,7 +10696,7 @@ REASONED at filing: the per-view repetition, its rate, and the stale-hit and neg
 - **The committed corpus, once `#205` lands.**
   - `(v0.sma, any coin, Last30d|Last90d|Custom, Synthetic)` ties `backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md` (`generated: 2026-04-20T15:19:44Z`) with `backtest-20260420-202621-btc-2023-1m-sma-cross.md` (`20:26:21Z`). The code picks the older; D5 would pick the newer.
   - The three `v05-composed-strategies` reports tie on every tuple. The code gives the macd tuple the macd report (`152014`, the oldest). A bare most-recent rule would give it the bbands report (`152020`), because nothing filters by strategy (`#212`).
-- **Compare does follow D5.** It keeps the most recent per tuple (`// R3.3: keep only the most-recent report per tuple.`), so the two readers settle a collision by different rules.
+- **Compare does follow D5.** It keeps the most recent per tuple (`cell.generated_at.as_str() <= existing.generated_at.as_str()` skips a report not newer than the kept one), so the two readers settle a collision by different rules. Since `#206`, an equal `generated:` inside one root keeps the first report in D8 order (container depth, then path).
 - **What `#205` does and does not change.** `#205`'s fix orders a root's report DIRS by (container depth, path) (ADR-0055 D8, amended by the `#205` fix), which settles which dir is read first. The within-dir tie and the cross-root rule are unchanged.
 - **The within-dir tie is unpinned on purpose.** `#205`'s tests pin the layout's file order inside one dir (LY4, `backtest_files_lists_only_direct_backtest_md_files`), but no Lab test's outcome depends on which of two equal-score reports in ONE dir wins: E4's second dir holds two, and its first dir decides the result. So nothing goes red when this fix changes that pick, and the fix must bring its own two-sided pin (Fix 3).
 

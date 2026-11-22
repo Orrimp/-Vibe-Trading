@@ -5,7 +5,7 @@ status: accepted
 date: 2026-06-12
 supersedes: none
 superseded-by: none
-updated: 2026-11-16
+updated: 2026-11-22
 ---
 
 # ADR-0055: Lab run persistence topology & anchor-safety
@@ -184,7 +184,7 @@ which moved the tree with its container depths unchanged.
 1. **§ D1, second sentence** ("the `<slug>/reports/backtest-*.md` shape underneath the root is
    **identical** to the `spec/` layout, so both loaders read it with only a ROOT change"): false
    since `1395520629dc`. Corrected under "D1's premise corrected"; D8 replaces it for the readers
-   that walk D8, and for Compare it stays false until bug-log `#206`.
+   that walk D8, Compare among them since bug-log `#206`.
 2. **§ D5, third sentence** ("the existing most-recent-wins tiebreaker (`generated:` frontmatter)
    decides the Lab hot-path pick"): the Lab has never done this. Recorded under "The Lab's
    precedence" and handed off to bug-log `#209` (AD-18), where either the code or § D5 moves.
@@ -214,9 +214,10 @@ D1's "both loaders" are the Lab's `EquityCache::get_or_load` / `discover_reports
 `compare::cache::scan_spec_tree` (walking in `scan_one_root`). The shapes are not identical:
 `lab-runs/` is container depth 0; the committed corpus is container depth 0 (the v5 dirs) plus
 container depth 1 (`evidence/v1/`, `evidence/v3/`). The Lab reads both roots because it walks D8,
-not because the layouts match, and the Reports picker walks D8 too. Compare still walks only
-`<root>/<x>/reports/` (`let reports_dir = strategy_dir.join("reports");`), so for Compare the
-premise stays false until bug-log `#206`.
+not because the layouts match, and the Reports picker walks D8 too. Compare walked only
+`<root>/<x>/reports/` (`let reports_dir = strategy_dir.join("reports");`) until bug-log `#206`
+moved `scan_one_root` onto D8 (`for rd in layout::report_dirs(root) {`), so the corrected
+premise now holds for all three `ui` readers.
 
 **D8: the report-root layout contract, for the `ui` readers that walk it.** One module,
 `crates/ui/src/reports/layout.rs`, holds the rule:
@@ -237,10 +238,12 @@ premise stays false until bug-log `#206`.
 - Symlinks are followed, and a symlink loop stops at the depth bound. An absent or unreadable
   directory contributes nothing and never panics.
 
-**The order rule, and why.** The order matters only to a reader that keeps the FIRST best
-candidate (the Lab), and only on an equal-score tie inside one tier: a report tagged with the
+**The order rule, and why.** The order matters only to a reader that keeps the FIRST of equal
+candidates. For the Lab that is an equal-score tie inside one tier: a report tagged with the
 tuple's data source still beats an untagged one, and a strictly better range score still wins, at
-either container depth. On such a tie container depth 0 wins:
+either container depth. For Compare (since bug-log `#206`) it is an identical filename, or an
+equal `generated:` stamp for one tuple, inside one root; between distinct filenames a strictly
+newer `generated:` still wins at either container depth. On such a tie container depth 0 wins:
 - It is where the one-level walk looked, so on such a tie the pick stays the report that walk
   would have found (for example a backtest-CLI twin at `evidence/<feature>/reports/`).
 - The winner no longer depends on whether a slug's name sorts before its container's name:
@@ -257,9 +260,19 @@ either container depth. On such a tie container depth 0 wins:
   behind `load_equity`, `EquityCache::get_or_load` / `get_or_load_roots` and
   `route_equity_overlay`. It concatenates `backtest_files` over `report_dirs_for_slug` in D8 order
   and never re-sorts, so the order is its tie rule.
+- **Compare's scan, over both roots** (since bug-log `#206`): `compare::cache::scan_one_root`,
+  behind `scan_report_roots` and its one-root wrapper `scan_spec_tree`. It walks `backtest_files`
+  over `report_dirs` in D8 order and never re-sorts, so inside one root a container-depth-0 report
+  claims an identical filename first and keeps its tuple on an equal `generated:` stamp; across
+  roots `lab-runs/` is walked first and still wins an identical filename (§ D5). A cell is keyed by
+  the report's `strategy.id` frontmatter; no directory name is read as a strategy or a slug. Pins,
+  each two-sided (a container that sorts before the slug, and one that sorts after it):
+  `duplicate_filename_inside_a_root_goes_to_container_depth_0` and
+  `equal_generated_inside_a_root_goes_to_container_depth_0`; the lowercase-`.md` rule is pinned by
+  `scan_skips_an_uppercase_md_report`, the cross-root filename rule by
+  `scan_report_roots_identical_filename_lab_runs_wins`.
 
 **The readers outside D8:**
-- **Compare** (`compare::cache::scan_one_root`), until bug-log `#206` moves it onto D8.
 - **The backtest CLI:** `report_dir_for_scenario` writes `evidence/<feature>/reports/` (container
   depth 0), and `find_latest_report` reads only that dir. `backtest` cannot depend on `ui`, so it
   cannot walk this module (bug-log `#210`). Because D8 reads container depth 0 under `evidence/`, a
@@ -320,8 +333,9 @@ byte-identical to the bars-only frame.
 **Unchanged.** D1's home; D2 (`/lab-runs/` is still git-ignored, and anchor safety still rests on
 the git boundary); D3; D4; D5's root order, its identical-filename rule and its millisecond stamps;
 D6 (`h3_in_memory_equals_cached_disk` still reads the engine's container-depth-0 write root through
-`get_or_load`); D7. **Anchor safety:** no byte under `evidence/` changes, because both readers only
-read it; `bash scripts/verify_anchors.sh` prints `ANCHORS PASS  (119 / 119)`, and
+`get_or_load`); D7. **Anchor safety:** no byte under `evidence/` changes, because the D8 readers
+(Compare's scan among them since bug-log `#206`) only read it; `bash scripts/verify_anchors.sh`
+prints `ANCHORS PASS  (119 / 119)`, and
 `git status --porcelain -- evidence` prints nothing after the full test runs.
 
 **Verification (2026-11-15, on the tree this amendment ships with).**
@@ -351,6 +365,20 @@ read it; `bash scripts/verify_anchors.sh` prints `ANCHORS PASS  (119 / 119)`, an
 
 ## Changelog
 
+- 2026-11-22 (orchestrator, bug-log `#206` fix): **Compare's scan walks D8.**
+  `compare::cache::scan_one_root` walked only `<root>/<x>/reports/`, so on `evidence/` it
+  considered 108 of the 197 in-contract reports git lists; it now walks `layout::report_dirs` and
+  `layout::backtest_files`, and the 2026-11-15 amendment's item 1, D1's premise, the order rule
+  and the readers list say so. Compare thereby also takes D8's lowercase-`.md` rule and its
+  `reports`-is-never-a-container rule (no committed file is affected). On `evidence/` the scan
+  discovers 197 reports, not 108 (174 admitted; 2 `MissingScenario`, 21 `UnknownScenario`), with
+  the same 66 cell keys; one winner moves, at `(sma_crossover, BTCUSDT)`, a row no build renders,
+  and neither its old nor its new report has a companion equity CSV; the fixtures build's Compare
+  frame measured byte-identical before and after.
+  After the fix the whole `cargo test -p ui` suite passed (1405 passed, 0 failed; lib
+  702), with no render baseline moved.
+  D8 gains the reader the amendment named; D5's root order and identical-filename rule are
+  unchanged, no decision changes, and no ADR is added. Anchor-neutral, 119/119.
 - 2026-11-16 (orchestrator, bug-log `#208` fix): **the 2026-11-15 amendment's precedence item 1
   quotes the root loop as it now reads.** The Lab's `EquityCache` caches each tuple's outcome, a
   miss as well as a hit, and `get_or_load_roots` leaves its root loop with `break;`, so the quoted

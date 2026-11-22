@@ -112,7 +112,9 @@ pub struct CompareScreenState {
     /// `BTreeMap` chosen over `HashMap` for deterministic iteration
     /// order (snapshot baselines — see §1.6).
     pub cache: BTreeMap<(SmolStr, Symbol, DateRange), CachedCell>,
-    /// R3.5 cold-boot tag — `None` until first scan completes.
+    /// R3.5 cold-boot tag — `None` until the first scan; reset to `None` by
+    /// every `Message::LabRunCompleted`, Ok and Err (bug-log #206), so the
+    /// next Compare visit re-scans.
     pub last_indexed_at: Option<OffsetDateTime>,
     /// lab-compare-equity-overlay T2 (Q1) — the two-run equity-overlay
     /// selection ring. Operator clicks a populated cell's `+` overlay chip to
