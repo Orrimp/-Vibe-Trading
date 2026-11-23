@@ -170,6 +170,12 @@ source) AND Stop-gating state-machine test.
 - **iced `Subscription` reconstruction bugs** (salt-bump regressions)
   — already covered by `lab_progress_recipe_stream.rs`'s
   `lab_progress_recipe_stream_end_to_end`.
+  *(Corrected 2026-11-23, story 2-63.* This bullet was false when
+  written: that file hashed no recipe then and does not now. The ids of
+  the recipes `ui::live::subscription_batch` builds are pinned since Wave
+  C2 (`subscription_batch_inclusion.rs`), and a swapped salt in the live
+  bin's `SubscriptionCtx` literal is still checked by nothing. See
+  § Changelog, the v0.3.0 row.)
 - **Cross-sectional scenario channel-survival** — v0.1.0 covers SMA
   single-symbol; cross-sectional deferred to v0.2.0.
 
@@ -288,3 +294,87 @@ SHA assertion.
   anchor-additivity: zero anchor delta; 84/84 byte-identical (pure test-infra
   addition; production code changes in cancel.rs + runner.rs are scoped to
   non-backtest crates). See ADR-0050 for the full contract.
+- 2026-11-23 (story 2-63 Close, lab-recipe-test-harness v0.3.0,
+  `REQ-LAB-RECIPE-HARNESS-V0-3-001`): D1-D6 carry forward; no new ADR (the
+  v0.2.0 D-V0.2.0-4 carry-forward precedent). Pattern (d) now covers the four
+  Recipes added since v0.2.0 (`ForwardPlanRecipe`, `NarrationOutcomeRecipe`,
+  `BakeoffProgressRecipe`, `SweepProgressRecipe`), and the v0.1/v0.2 surfaces
+  were re-derived from the code (the story's AC1 inventory). Waves 0, A
+  (`03ad88f4`), B (`074e907a`), D (`cbe90861`), E1a (`1a4d876c`), C1
+  (`0ce426cf`), C2+E1b (`73bfde06`), E2 (`b417cf67`), E3 (`8eabf996747b`) and
+  F (`72a42a8c97ef`) shipped; Wave G, the agent narration-producer seam, is
+  deferred (story decision 4).
+  **S1 and S2 each gain a refined form.** S1, executor fidelity: a recipe
+  stream is built on a thread with no tokio context and drained on iced's
+  own default executor, `futures::executor::ThreadPool`, the way iced runs
+  it, not inside `#[tokio::test]`, whose implicit reactor hides a missing
+  guard (`crates/ui/tests/recipe_off_runtime_poll.rs`; the ADR-0050
+  § D3/D4 non-tokio-executor rule, carried to the live bin's recipe
+  streams; `ServerTimeRecipe` and `ToastDismissRecipe` only through their
+  seams). S2, real-batch introspection: inclusion is asserted on the
+  function the live bin builds its batch with, `ui::live::subscription_batch`
+  (from a test ctx), unit by unit through
+  `iced::advanced::subscription::into_recipes` and `Subscription::units()`,
+  not only on the descriptor function the v0.2 tests pinned
+  (`crates/ui/tests/subscription_batch_inclusion.rs`).
+  **Two seams, both under D2's API-additive clause** and shape-identical to
+  the v0.2.0 Wave C/D extractions: Wave C1's `subscription_batch` family in
+  `crates/ui/src/live.rs` (`SubscriptionCtx`, `SubscriptionBatchInputs`,
+  `Held`, `build_subscription_batch_descriptor_from`; the 3-argument
+  `build_subscription_batch_descriptor` keeps its signature and delegates),
+  with `esc_closes_modal` in `crates/ui/src/widgets/journal_transaction_modal.rs`;
+  and Wave F's `ui::lab::runner::run_yahoo_preload_arm`, the Yahoo twin of
+  `run_binance_preload_arm`, which `spawn_lab_run` now calls once for every
+  Yahoo source.
+  **Surface 1 did not drive production until Wave F.**
+  `spawn_lab_run_yahoo_harness.rs`, `lab_runner_ticker_e2e.rs` and
+  `lab_runner_cancel_e2e.rs` called no runner function: they imported
+  `LabRunConfig`, `LabDataSource` and (the harness) the source traits for
+  its mock, and copied the preload loop (the story's inventory, row 16).
+  The 2026-05-29 ride-along row's "Both tests replicate the production
+  select! loop inline" is superseded: all three now call
+  `run_yahoo_preload_arm` on a thread with no tokio context, and two
+  task-driven tests run `spawn_lab_run` itself through
+  `iced_test::runtime::task::into_stream`.
+  Surface 1's (A) bound is 200 ms, not 50 ms (50 ms is fragile on the
+  4-vCPU Windows leg; a delay of one 250 ms tick still fails 200 ms), and
+  (B)'s `elapsed_ms` is non-decreasing, not strictly increasing (tokio's
+  default `MissedTickBehavior::Burst` can fire two ticks with the same
+  millisecond stamp). Surface 2's category C, "pure state unchanged" on
+  `LabRunStopRequested`: `lab_stop_button_gating.rs` has pinned the flag
+  from an armed run since v0.1.0. Since Wave E3,
+  `lab_run_cancel.rs::lab_run_stop_requested_is_noop_on_model` also arms a
+  run through `update` first and pins both `lab_run_inflight` and the
+  stored `run_progress` (it used to start from `false`, so on its own it
+  could not fail).
+  **D4 corrected** (annotated in place): its salt-bump bullet was false when
+  written. `lab_progress_recipe_stream.rs` hashed no recipe, at `a9710089`
+  (this ADR's first commit) or at the story's base `2d2d95be`; the only
+  test in `crates/` that hashed a recipe was `TrainingPoller`'s unit test
+  `stops_when_training_completes`, which compares the hashes of two
+  pollers built with different run ids. Since Wave C2,
+  `recipe_ids_are_frame_stable`, `salted_recipe_ids_change_with_salt` and
+  `recipe_ids_are_pairwise_distinct` (`subscription_batch_inclusion.rs`)
+  pin the recipe ids. A swapped salt in the bin's `SubscriptionCtx` literal
+  (`crates/ui/src/bin/cockpit_live.rs`) is still checked by nothing
+  (C1-RES2, bug-log `#203`).
+  **Non-vacuity (bug-log `#66`):** the AC3 sweep turned every skip-as-pass
+  path it found in the harness files into a failure (the per-file record is
+  in the story). A missing committed corpus or fixture fails, and each such
+  guard Waves E2 and E3 added has a `#[should_panic]` twin that runs its
+  body on an empty root; test files that compiled to zero tests on the
+  default build were un-gated. Probes (Q2; a T-T4 table in each module
+  doc): Waves A to E2 are recorded per wave in the story.
+  Wave E3: 21/21 catalogue probes red at the designed assertion.
+  Wave F: 15/15 F-P probes red at the designed assertion; F-V1 6/6 green.
+  **D6:** zero anchor delta; `scripts/verify_anchors.sh` 119/119
+  before and after.
+  **Known residuals** (recorded in the story): the bin's `AppState` cannot be
+  built in a test (K3 #6), so its `SubscriptionCtx` literal (C1-RES1,
+  C1-RES2), its receiver lifecycle and the bin-side activity producers stay
+  unpinned; a cancelled Yahoo preload ends `Failed("operator cancelled")`,
+  not `Cancelled`, and `lab_runner_cancel_e2e.rs` pins it as it is;
+  `lab_yahoo_empty_range_classification.rs` stays `#[tokio::test]` (its
+  subject is the classification), so F-P3 would leave it green (reasoned,
+  not measured: F-P3's run did not build it);
+  `TrainingPoller` has no production caller (K1, analyst).

@@ -3576,11 +3576,62 @@ id          = "REQ-LAB-RECIPE-HARNESS-V0-3-001"
 title       = "lab-recipe-test-harness v0.3 cross-surface extension (PRD §13 Q2 decided SCHEDULE 2026-07-27): ADR-0048 pattern applied to post-v0.2 recipe surfaces (ForwardPlan/NarrationOutcome/SweepProgress/BakeoffProgress + fresh inventory) + suite-wide non-vacuity hardening per bug-log #66 (no skip-as-pass; positive execution proof). Test-infra only; zero production behavior change beyond API-additive seams."
 feature     = "lab-recipe-test-harness-v0-3-extension"
 product     = "_bmad-output/planning-artifacts/PRD.md"
-arch        = ["_bmad-output/planning-artifacts/architecture/decisions/0048-lab-recipe-test-harness.md"]
+arch        = [
+  "_bmad-output/planning-artifacts/architecture/decisions/0048-lab-recipe-test-harness.md",                         # PARENT ADR — D1-D6 carry forward; § Changelog v0.3.0 row (2026-11-23) + the D4 correction note
+  "_bmad-output/planning-artifacts/architecture/decisions/0050-iced-tokio-runtime-context-and-cancellation.md",     # Wave F amended its § Changelog: D1's failure mode corrected, D3's test-replication rule superseded
+]
 crates      = ["crates/ui", "crates/agent"]
-tests       = []
-anchors     = []
-state       = "in-progress"   # 2026-11-10 dev started (story 2-63; inventory in its Dev Agent Record). Drafted 2026-07-27, operator decision PRD §13 Q2 = SCHEDULE
+tests       = [
+  # Wave A (03ad88f4) — S1 relays for the four post-v0.2 recipes
+  "crates/ui/tests/forward_narration_relay.rs",                         # ForwardPlanRecipe + NarrationOutcomeRecipe seams (extended; KPI values pinned in E2)
+  "crates/ui/tests/bakeoff_progress_relay.rs",                          # BakeoffProgressRecipe (extended)
+  "crates/ui/tests/sweep_progress_relay.rs",                            # SweepProgressRecipe (NEW)
+  # Wave B (074e907a) — S1 executor fidelity: recipe streams polled off-runtime, as iced polls them
+  "crates/ui/tests/recipe_off_runtime_poll.rs",
+  # Wave D (cbe90861) — S2 advisor state machine, driven through ui::state::update
+  "crates/ui/tests/advisor_recipe_state_gating.rs",
+  "crates/ui/tests/promote_swept_config.rs",                            # un-gated: was fixtures-only, 0 tests on the default build
+  # Waves C1 (0ce426cf) + C2 (73bfde06) — S2 on the real batch: ui::live::subscription_batch, into_recipes/units(), recipe ids
+  "crates/ui/tests/subscription_batch_inclusion.rs",
+  # Wave E1a (1a4d876c) + E1b (in 73bfde06) — AC3 sweep of the v0.2 recipe-stream files
+  "crates/ui/tests/activity_recipe_stream.rs",
+  "crates/ui/tests/trail_mirror_recipe_stream.rs",
+  "crates/ui/tests/lab_progress_recipe_stream.rs",
+  "crates/ui/tests/server_time_recipe_stream.rs",
+  "crates/ui/tests/toast_dismiss_recipe_stream.rs",
+  "crates/ui/tests/training_log_recipe_harness.rs",
+  "crates/ui/tests/live_subscription_full_bus.rs",
+  # Wave E2 (b417cf67) — AC3 sweep of the remaining harness files
+  "crates/ui/tests/cockpit_live_lab_run_smoke.rs",                      # bug-log #66 fix: runs on the committed data/yahoo-sample corpus; absent corpus fails
+  "crates/ui/tests/cockpit_audit_aggregator_boot.rs",
+  "crates/ui/tests/training_log_state_gating.rs",                       # cfg(unix) dropped (current_exe stub)
+  "crates/ui/tests/cockpit_training_pressed_wiring.rs",                 # cfg(unix) dropped (current_exe stub)
+  "crates/agent/tests/activity_audit_aggregator_select_arm_survival.rs",
+  # Wave E3 (8eabf996747b) — no skip-as-pass: corpus/fixture guards fail (each with an empty-root #[should_panic] twin); engine errors fail; Stop two-sided; Windows port
+  "crates/ui/tests/lab_binance_divergence.rs",
+  "crates/ui/tests/lab_binance_persist_compare.rs",
+  "crates/ui/tests/lab_binance_render.rs",
+  "crates/ui/tests/lab_yahoo_dispatch.rs",
+  "crates/ui/tests/lab_run_engine.rs::inner::h3_in_memory_equals_cached_disk",           # engine error or missing report now fails (was two skips)
+  "crates/ui/tests/lab_run_cancel.rs::lab_run_stop_requested_is_noop_on_model",           # two-sided: armed through update before Stop
+  "crates/ui/tests/activity_tape_training_run.rs",                      # cfg(unix) dropped (current_exe stub)
+  # Wave E3 — un-gated: each compiled to 0 tests on the default build (cfg feature = "fixtures")
+  "crates/ui/tests/audit_filter_chip_emits_filter_changed.rs",
+  "crates/ui/tests/audit_row_opens_modal.rs",
+  "crates/ui/tests/home_strategies_row_cross_link.rs",
+  "crates/ui/tests/inspect_strategy_from_leaderboard.rs",
+  "crates/ui/tests/open_strategy_in_lab.rs",
+  "crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs",  # no-panic smoke + constant pin; NOT render proof (AD-10)
+  # Wave F (72a42a8c97ef) — Surface 1 calls production: ui::lab::runner::run_yahoo_preload_arm, off-runtime
+  "crates/ui/tests/spawn_lab_run_yahoo_harness.rs",                     # 6 arm tests + 2 task-driven (spawn_lab_run through into_stream; yahoo feature)
+  "crates/ui/tests/lab_runner_ticker_e2e.rs::ticker_fires_at_least_3_times_in_1s_window",
+  "crates/ui/tests/lab_runner_cancel_e2e.rs::stop_during_preload_exits_within_500ms",
+  "crates/ui/tests/lab_runner_cancel_e2e.rs::stop_during_preload_aborts_preload_task",
+  "crates/ui/tests/lab_runner_cancel_e2e.rs::cancel_before_preload_start_is_instant",
+  "crates/ui/tests/lab_yahoo_empty_range_classification.rs",            # drives the real spawn_lab_run; stays #[tokio::test] (subject = classification)
+]
+anchors     = []   # zero anchor delta (test-infra + two API-additive seams): verify_anchors 119/119 before and after Close
+state       = "shipped"   # 2026-11-23 story 2-63 DONE (ADR-0048 § Changelog v0.3.0 row): Waves 0, A 03ad88f4, B 074e907a, D cbe90861, E1a 1a4d876c, C1 0ce426cf, C2+E1b 73bfde06, E2 b417cf67, E3 8eabf996747b, F 72a42a8c97ef; the optional Wave G is deferred (story decision 4). Close gates: full cargo test -p ui 1460 passed, 0 failed, 31 ignored over 122 targets; K4 PASS: after the #218 prune and a reboot, the third same-session A/B against the Wave-0 tree (the first two INCONCLUSIVE under their own rules), ABBA, rules fixed before it ran, r = 0.956-1.023 (limit 1.10), 35.9-53.9 s (B 121 executables, A 119); the 563 s of 2026-11-23 (before the prune) was #218, not the code; anchors 119/119. PRIOR: "in-progress" since 2026-11-10 dev started (story 2-63; inventory in its Dev Agent Record). Drafted 2026-07-27, operator decision PRD §13 Q2 = SCHEDULE
 
 [[req]]
 id          = "REQ-PWSD-FIDELITY-RELOCK-001"

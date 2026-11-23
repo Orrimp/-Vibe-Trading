@@ -10953,3 +10953,90 @@ Whichever is chosen, move the choice out of the bin into a library function, so 
 1. Size the label column from one constant, used by both the row header and the corner cell.
 2. Keep an over-long id inside it: clip the container (`.clip(true)`) and show the full id on hover, or size the column to the widest id.
 3. It changes the Compare render, so it ships with a populated-state pixel proof. The negative control is today's overlap: label-colour pixels inside the first value cell's rectangle.
+
+### `#215` — a Stop during a Yahoo preload is shown as a failure: the Lab's red run error, and a `Failed("operator cancelled")` preload activity instead of `Cancelled`
+
+**Status**: **`open`** 2026-11-23. Found in story 2-63 Wave F, which extracted the arm without changing its behaviour and pins this outcome as current. MEASURED: the activity outcome, by `lab_runner_cancel_e2e.rs`; with the `fail` call removed (probe F-P8) the activity ends `End(Success)` and three tests go red. REASONED: what the operator sees, from the code; no render was taken. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.**
+- `crates/ui/src/lab/runner.rs`, `run_yahoo_preload_arm`, the `cancel.cancelled()` branch of its `select!`: it aborts the preload task, calls `h.fail("operator cancelled")` on the `YahooPreload` activity handle, and returns `Err("operator cancelled during preload")`.
+- That error leaves `spawn_lab_run` through `.await?` as `Message::LabRunCompleted(Err(..))`. In `crates/ui/src/state.rs`, the `LabRunCompleted` arm runs `preload_notice::classify` (`crates/ui/src/lab/runner.rs`), which turns every error except a `NO_DATA_TAG` one into `RunMessageKind::Error`, so `lab_state.last_run_error` is set: the Lab draws it as a red `⚠` line and the Run button goes to Failed (`crates/ui/src/screens/lab.rs`).
+- `ActivityHandle::cancel()` ends an activity `End(Cancelled)` (`crates/agent/src/activity.rs`), and `ActivityOutcome::Cancelled` is documented as "cancelled by the operator or the system" (`crates/core/src/activity.rs`). The arm calls `fail` instead.
+- The status bar's activity tape (`crates/ui/src/lab/activity.rs`, `ActivityTape::apply`) removes a `Success` or `Cancelled` row at once and keeps a `Failed` row, drawn red, until `purge` drops it. `purge` never runs in the shipped cockpit (`#217`), so the row stays red until the tape's 32-slot cap pushes it out.
+
+**Why it matters.** An operator who presses Stop during a preload is told twice that something broke: a red error under Run, and a red Yahoo row in the status bar. A Stop is the operator's own action.
+
+**Fix (proposed; its own change):**
+1. Call `h.cancel()` instead of `h.fail(..)` in that branch.
+2. Route an operator Stop in the Lab to a non-error outcome (a muted notice or a stopped run state, not `last_run_error`); the wording is its own decision.
+3. Move the pins in `lab_runner_cancel_e2e.rs` and `spawn_lab_run_yahoo_harness.rs`, and probe F-P8's declared red, to `End(Cancelled)`, keeping the negative control (with the call removed the activity ends `Success` and the tests go red). Point the two "bug-log candidate" comments (`runner.rs`, `lab_runner_cancel_e2e.rs`) at `#215`.
+4. It changes what the Lab and the status bar draw, so it ships with a populated-state pixel proof.
+
+### `#216` — spec_lint drops a story from `status-drift` and `story-done-trace-drift` when its `- Trace:` line names a requirement in a form `TRACE_REF_RE` cannot parse, and says nothing
+
+**Status**: **`open`** 2026-11-23. Found while drafting story 2-63's Close. MEASURED: the counts below, by loading `scripts/spec_lint.py` and running its own `STORY_FILENAME_RE` and `TRACE_REF_RE` over `_bmad-output/implementation-artifacts/` on `f7455194cfd4`; the line's history by `git log -S`. REASONED: which rules skip, from the code. Anchor-impacting: **no**.
+
+**The code.** `scripts/spec_lint.py`: `parse_story` sets `trace_req_id` only when ``TRACE_REF_RE`` (``^- Trace:\s*`([^`]+)`\s*\(state=`([^`]*)`\)``) matches. `status-drift` and `story-done-trace-drift` skip every story whose `trace_req_id` is `None`; `story-done-changelog-missing` does not (it falls back to the slug). Nothing reports a `- Trace:` line that failed to parse.
+- 160 `.md` files, 156 of them story files; all 156 have a `- Trace:` line, and the pattern matches 139 of them.
+- Of the 17 it does not match, 16 are the declared form `- Trace: none — known trace-coverage gap …`, which name no requirement.
+- One names a real requirement: story 2-63's ``- Trace: `REQ-LAB-RECIPE-HARNESS-V0-3-001` (state=`in-progress` since 2026-11-10)``. The words after the state's closing backtick break the match. That line arrived in `03ad88f4` (2026-11-11); before it the line read ``(state=`scoped`)``, which parses. So neither rule has checked 2-63 since 2026-11-11.
+
+**Why it matters.** It is the `#188` family: a rule that runs but cannot see its subject reads as a pass. A stale trace state on 2-63 would not have been caught. Story 2-63's Close rewrites its line into the parsed form, so 2-63 is checked from then on; the pattern still drops any other malformed line silently.
+
+**Fix (proposed; its own change):** a `- Trace:` line that names a backticked id must match `TRACE_REF_RE`, or the story gets a violation (say `trace-ref-unparsed`); the declared `none —` form stays allowed. Self-test pair: a story with 2-63's old line raises it; the same story with the parsed form does not.
+
+### `#217` — the status bar's activity tape is never purged: `Message::ActivityTapePurgeTick` is handled but nothing sends it, so a `Failed` activity row stays red until the tape's 32-slot cap pushes it out
+
+**Status**: **`open`** 2026-11-23. Found while checking `#215` (story 2-63 Close review). REASONED, from the code; no render was taken. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.**
+- `crates/ui/src/lab/activity.rs`: `ActivityTape::apply` keeps an ended `Failed` row and sets `red_hold_until = started_at + 3 s` (counted from the activity's start, not its end). Apart from the 32-slot capacity cap in `apply`'s `Start` arm (which evicts the oldest in-flight row first, and the oldest held failure only when all 32 rows are held), the only code that drops an ended row is `purge`, documented as "Called at ~1 Hz by the `ActivityTapePurgeTick` message arm".
+- `crates/ui/src/state.rs` declares `Message::ActivityTapePurgeTick` and handles it (`model.activity_tape.purge(..)`), but no subscription or task in `crates/ui/src` constructs that message. It has been unwired since it landed (`ea52057a`, cockpit-activity-status-bar Wave B).
+- `crates/ui/src/widgets/activity_tape.rs` always renders a row with `red_hold_until` set and colours a `Failed` outcome red, whether or not the hold has expired.
+
+**Why it matters.** The status bar is on every screen. After any failed activity (a Yahoo preload that errors, or one stopped by the operator, `#215`), its red row stays. Rows render oldest first, so stale failures take the tape's three visible slots, and once held rows fill the 32-slot capacity a new activity evicts a live in-flight row first.
+
+**Fix (proposed; its own change):**
+1. Send `ActivityTapePurgeTick` at about 1 Hz from the cockpit's subscription batch (`iced::time::every`), and decide whether the hold counts from the failure (`End`) rather than from `started_at`.
+2. Prove it at the rendered-pixel layer: a failed row is red inside the hold and gone after it, with the negative control that, without the tick, it is still drawn.
+
+### `#218` — `split-debuginfo = "unpacked"` leaves every build's debug objects in `target/debug/deps`, and a rustc given that directory on its `-L` path starts slowly: at 1.76 M entries, ~30 s and ~750 MB per rustc
+
+**Status**: **`open`** 2026-11-23. Found by story 2-63's Close, while re-measuring K4 (AC5). MEASURED, on the dev box on 2026-11-23: the counts, both probes, the prune and the K4 A/Bs below. REASONED: that the slow start is rustc listing every `-L dependency=` directory when its session starts. The measured wall time and RSS fit that, but rustc's source was not traced here. Anchor-impacting: **no** (`target/` only; the `release` profile is untouched). Paper/sim only.
+
+**The config.** In `Cargo.toml`, `[profile.dev]` and `[profile.test]` set `debug = "line-tables-only"` and `split-debuginfo = "unpacked"`. They were added on 2026-08-19 (`c1474c0f`) to cap `target/` across 339 test binaries.
+- Under `unpacked`, rustc writes one debug object per codegen unit to `target/debug/deps/<crate>-<hash>.<cgu>.<suffix>.rcgu.o`. A linked binary finds its line tables through N_OSO entries that name those objects.
+- The suffix changes with every build. Cargo tracks none of these files, so no build deletes the previous build's objects.
+
+**Measured.**
+- `target/debug/deps` held 1,761,710 entries, and 1,744,989 were `*.rcgu.o`. In an earlier count that afternoon (1,743,667 objects), 55,808 belonged to one unit (`ui`'s lib test harness, `ui-6853e5cb55de63fc`).
+- The probe compiles a one-line crate (`rustc --crate-type lib --emit metadata -L dependency=<dir>`), alternating directories three times:
+  - an empty directory: 0.04–0.50 s, 62 MB max RSS;
+  - that `deps` directory: 27.4–31.2 s, 751–756 MB.
+- `cargo test -p ui --no-run` starts about 120 rustc processes with that `-L`, 14 at a time:
+  - 85–90% of each test unit's time passed before rustc opened its incremental session (a median of 53–58 s out of 62–66 s);
+  - at the probe's 751–756 MB, 14 parallel jobs would hold about 10 GB before compiling anything (computed from the probe, not measured).
+
+  That day the box had 28 GB of swap in use. The `ui` lib's frontend also took anywhere from 2 s to 2,880 s on identical inputs; what caused that stall is not known.
+- The prune removed every `*.rcgu.o` that no current binary references. The keep-set is the union of the `nm -ap` N_OSO paths over the 1,834 Mach-O binaries under `target/debug`. It deleted 1,625,990 files and kept 118,999, freeing about 22 GiB (`df`: 27 → 49 GiB). Afterwards `deps` held 135,720 entries, and the probe took 0.17–0.23 s at 128 MB.
+- After the prune, K4 itself (`cargo test -p ui --no-run` after touching the ui crate) took 33.8–76.1 s over 37 measured runs on both trees, against 563 s that morning. The third of three same-session A/Bs with pre-registered rules (story 2-63's Close; the first two were INCONCLUSIVE under their own rules) put the tree at `bd48e76d`, which also carries the batch's other fixes, at r = 0.956–1.023 of the Wave-0 tree.
+- The directory refills at about 14,000 entries per such build (135,720 → 303,542 over 12 builds). About 5 such builds take it past Fix 3's 200 k mark, and about 115 would bring it back to the 1.76 M measured here (REASONED: a linear extrapolation). In the post-reboot A/B, the walls drifted upward in both arms over their eight measured builds: A's ran 36.1 s to 53.4 s in order, and B's block means rose from 38.4 s to 50.7 s; that drift was not isolated from other causes.
+
+**Why it matters.** Every dev and test build on a long-lived `target/` gets slower with the number of builds ever made in it.
+- On 2026-11-23 at 11:42, before the prune, story 2-63's AC5 (build-time inflation ≤ 10%) read 563 s: +64.6% against Wave 0's 342 s, over its derived 376 s ceiling.
+- Later that day, the Wave-0 code itself missed that ceiling by 61–108% (607 s and 781 s).
+- Before the prune, a `cargo clippy -p ui --lib` over two test targets took 24 min 22 s. How much of that was this directory, and how much the unexplained lib stall above, was not measured.
+
+CI does not see this. Its runners start from a cache that rust-cache cleans of workspace artifacts before saving (REASONED).
+
+**Fix (proposed; its own change):**
+1. Ship the prune as a dev tool, `scripts/prune_stale_debug_objects.py`. It mops up the effect, which is the reason the operator declined `cargo-sweep` on 2026-08-19 (`c1474c0f`), so it needs their ruling. If it is shipped:
+   - The keep-set is the N_OSO union.
+   - It aborts if cargo is running or if any `nm` fails.
+   - Give it a self-test, and name it in CLAUDE.md's Coding-rules bullet next to the profile setting.
+2. Or change the profile so that rustc keeps no per-unit objects, which addresses the cause. REASONED: rustc's docs say only that `packed` writes a `.dSYM` and that on macOS `off` skips `dsymutil`; neither was measured here. Deleting the two lines is not enough, because cargo's own macOS default for a profile with debug info is `unpacked`.
+   - `split-debuginfo = "packed"` writes one `.dSYM` per binary; measure the `dsymutil` cost per link first.
+   - `"off"` for `[profile.test]`: test backtraces would lose file:line.
+
+   Either is a cross-cutting `Cargo.toml` change, and needs a K4 measurement before and after.
+3. Until then, run `cargo clean`, or the prune above by hand (its one-off script is not in the repo), when `ls -f target/debug/deps | wc -l` passes about 200 k.

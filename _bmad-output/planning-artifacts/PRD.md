@@ -392,7 +392,7 @@ The **MVP loop** — (1) guided input, (2) bake-off of the existing strategies +
 ### 8.2 Not built / deferred by decision
 
 - **DSR/PBO crown-eligibility veto** — a ready-but-unbuilt one-line switch; the scorecard stays report-only by explicit, repeatedly re-confirmed operator decision. [NOTE FOR PM: this is the one standing tension between credibility and simplicity — any future flip is an operator decision + ADR, never a maintenance edit.]
-- **`lab-recipe-test-harness` v0.3.0+** — the one genuinely-open forward build item (backlog), not required for feature-completeness.
+- ~~**`lab-recipe-test-harness` v0.3.0+**~~ — built: story 2-63 done 2026-11-23 (CHANGELOG § Lab; ADR-0048 § Changelog v0.3.0). Its optional Wave G (the agent narration-producer seam) is deferred.
 - **Candidates never built:** cockpit-app-bundle, iced-ecosystem-evaluation, ui-gallery-table-cell.
 - **CI matrix** — long parked by operator decision; activated 2026-07-10 (operator-directed) as three legs with first-run shakeout fixes following, then **narrowed to two legs `{macos-latest, windows-latest}` on 2026-11-09** by operator decision (ADR-0102). The assumption that once stood here is discharged: the activated state was confirmed, and the current state is two legs with macOS canonical.
 - **Out of scope (a hypothetical follow-up project, not this product):** real-money execution, KYC, exchange API keys, withdrawals, multi-venue real-money, tax/lot accounting.

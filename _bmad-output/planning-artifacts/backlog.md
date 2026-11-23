@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-11-11
+updated: 2026-11-23
 ---
 
 # Backlog (forward-looking queue)
@@ -56,11 +56,6 @@ _(open / deferred items)_
   is `done` is stale by default, and that gate — wired into the hook this morning by bug-log
   `#190` — blocked this very commit until the citation said so. This item is forward work with
   NO story of its own; the reference to `6-9` is provenance, not a tracker.)*
-- **`lab-recipe-test-harness v0.3.0+`** — Recipe / subscription harness extension;
-  robustness gate cleared, awaiting an analyst spawn. **Still wanted** — re-confirmed in the
-  v3 close-out (2026-07-09) as the one genuinely-open forward *build* item; it is infra, NOT
-  required for product feature-completeness (see [`../../CHANGELOG.md`](../../CHANGELOG.md)
-  § Deferred). Tracked as story `2-63-lab-recipe-test-harness-v0-3-extension` (`in-progress`: dev started 2026-11-10, the AC1 inventory and wave plan are in its Dev Agent Record).
 
 ### Routed findings (outside the story that found them)
 *Found by story 2-63's inventory (2026-11-10) and verified by the orchestrator 2026-11-11. The story

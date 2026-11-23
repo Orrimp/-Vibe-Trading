@@ -65,8 +65,9 @@
 #   (6-10-bmad-method-migration flipped DONE 2026-07-25 — all 7 phases landed, Phase 5c
 #    docs cutover included: CLAUDE.md/AGENT.md/README.md rewritten, .claude/agents/ retired
 #    to docs/archive/pre-bmad-agents/, CHANGELOG § "BMAD-METHOD migration" added.)
-#   - 2-63-lab-recipe-test-harness-v0-3-extension (backlog): the one genuinely-open forward
-#     build item (robustness gate cleared, awaiting an analyst spawn).
+#   (2-63-lab-recipe-test-harness-v0-3-extension flipped DONE 2026-11-23, trace `shipped`:
+#    the v0.3 recipe-harness extension, Waves 0 to F; the optional Wave G is deferred
+#    (story decision 4). This comment still said "(backlog)" until the flip.)
 #   - 3-18-advisor-reflection-decision-loop (ready-for-dev): C4 architecture done, not built.
 #   - 2-64..: none - candidates/drafts (cockpit-app-bundle, iced-ecosystem-evaluation,
 #     ui-gallery-table-cell, lumen-phase-6 reservation) stay backlog by decision.
@@ -180,7 +181,7 @@ development_status:
   2-60-visual-fail-html-reporter: done
   2-61-iced-ecosystem-evaluation: backlog
   2-62-cockpit-app-bundle: backlog
-  2-63-lab-recipe-test-harness-v0-3-extension: in-progress  # 2026-11-10 dev started; AC1 inventory + wave plan in the story Dev Agent Record (PRD §13 Q2 = SCHEDULE)
+  2-63-lab-recipe-test-harness-v0-3-extension: done  # DONE 2026-11-23 (trace `shipped`; ADR-0048 § Changelog v0.3.0 row). Waves 0, A, B, D, E1a, C1, C2+E1b, E2, E3 (8eabf996747b), F (72a42a8c97ef); the optional Wave G is deferred (story decision 4). Close gates: full cargo test -p ui 1460 passed, 0 failed, 31 ignored over 122 targets; K4 PASS: after the #218 prune and a reboot, the third same-session A/B against the Wave-0 tree (the first two INCONCLUSIVE under their own rules), ABBA, rules fixed before it ran, r = 0.956-1.023 (limit 1.10), 35.9-53.9 s (B 121 executables, A 119); the 563 s of 2026-11-23 (before the prune) was #218, not the code; anchors 119/119. PRIOR: 2026-11-10 dev started; AC1 inventory + wave plan in the story Dev Agent Record (PRD §13 Q2 = SCHEDULE)
   epic-2-retrospective: optional
 
   # -- Epic 3: Advisor MVP (F1-F9 + EUR-FX + dynamic data + PIT discipline)
@@ -313,7 +314,7 @@ action_items:
   - epic: 2
     action: "PRD §13 Q2 - lab-recipe-test-harness v0.3.0+: schedule the analyst spawn or retire the backlog entry (story 2-63)"
     owner: "operator"
-    status: in-progress  # 2026-07-27 DECIDED: SCHEDULE -> analyst scoping pass spawned
+    status: done  # 2026-11-23 story 2-63 DONE (trace shipped); the item was built, so its backlog row is removed. PRIOR: 2026-07-27 DECIDED: SCHEDULE -> analyst scoping pass spawned
   - epic: 4
     action: "PRD §13 Q3 - cross-run family-wise multiple-testing report-annex (online-FDR): build as report-annex or record as stated limit"
     owner: "operator"
