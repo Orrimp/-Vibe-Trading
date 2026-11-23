@@ -21,14 +21,60 @@
 //! ## Gating
 //!
 //! `#[cfg(all(feature = "live", feature = "binance"))]` — needs the engine
-//! (`live`) + the Binance loader (`binance`). The pinned corpus
-//! (`data/binance/`, revision `3a8b96c4…`) must be present on disk AT THE
-//! WORKSPACE ROOT. Skip policy (review patch 1): the tests pin the process
-//! cwd to the workspace root (cargo runs ui test binaries with
-//! cwd=`crates/ui/`) and probe `data/binance/REVISION.toml` — SKIP only when
-//! the probe is genuinely absent (CI without the gitignored corpus); when the
-//! probe exists, any loader error FAILS loudly. The old cwd-relative
-//! any-Err→skip made every real-data body here vacuous on every machine.
+//! (`live`) + the Binance loader (`binance`), both default features.
+//!
+//! The pinned corpus (`data/binance/`, revision `3a8b96c4…`) is COMMITTED IN
+//! FULL: `.gitignore` re-includes `!/data/binance/**` ("TRACKED IN FULL since
+//! 2026-09-27", operator decision), and `git ls-files data/binance` lists the
+//! BTCUSDT 2023 and 2024 months this crate's tests read. An absent corpus is
+//! therefore a broken checkout, and it FAILS (bug-log `#66`): no skip path
+//! remains in this file (story 2-63 Wave E3, AC3). Until Wave E3 every
+//! corpus-reading body returned early behind a `[skip]` print when the months
+//! were missing.
+//!
+//! The loader's corpus root is cwd-relative (`BINANCE_CORPUS_ROOT` in
+//! `crates/ui/src/lab/runner.rs`), and cargo runs ui test binaries with
+//! cwd = `crates/ui/`, so the real tests pin the process cwd to the workspace
+//! root ([`pin_cwd_to_workspace_root`]). The absent-corpus twins never change
+//! the cwd: they pass an empty temp dir as the root and fail at the M1
+//! precondition ([`assert_binance_corpus`]) before any load.
+//!
+//! ## Shape (story 2-63 Wave E2 / E3)
+//!
+//! Every corpus-reading test is a root-parameterized body (`loader_gate_body`,
+//! `divergence_body`) whose first statement loads through
+//! [`load_binance_bars`], which asserts M1 first. The real test calls the body
+//! at the workspace root; a `#[should_panic(expected = "absent means a broken
+//! checkout")]` twin calls the SAME body at an empty temp dir. A twin that
+//! called only the helper would not pin the body (story 2-63 E2 review,
+//! OWN-1 / E2-P14), so there is one twin per body.
+//!
+//! ## T-T4 falsification probe table (story 2-63 AC4)
+//!
+//! Each probe is ONE exact-once replace in THIS file (the OLD text occurs
+//! exactly once; `grep -c`), run with
+//! `cargo test -p ui --test lab_binance_divergence`, then restored from a
+//! `cp -p` snapshot (`cmp` to confirm). The skip prefix NEW inserts is
+//! `if !corpus_data_present(root) { return; }`, the shape Wave E3 removed.
+//!
+//! | # | symbol | quoted line today | mutation | expected RED |
+//! |---|---|---|---|---|
+//! | E3-BD-P1 | `assert_binance_corpus` | `assert!(` followed by `corpus_data_present(root),` | the skip prefix above the assert | both twins. libtest reports "panic did not contain expected string" when the load then fails at the twin's cwd (`crates/ui`), or "test did not panic as expected" when a sibling test has already pinned the cwd to the workspace root and the load succeeds; which one depends on test scheduling, and both are red |
+//! | E3-BD-P2 | `loader_gate_body` | `let (bars, sha) = load_binance_bars(root);` | the skip prefix above it | `loader_gate_absent_corpus_is_a_failure_not_a_skip`: "test did not panic as expected" |
+//! | E3-BD-P3 | `divergence_body` | `let (binance_bars, _sha) = load_binance_bars(root);` | the skip prefix above it | `divergence_absent_corpus_is_a_failure_not_a_skip`: "test did not panic as expected" |
+//!
+//! GREEN in every probe: the three real tests (they run on the committed
+//! corpus, where the skip prefix never fires).
+//!
+//! ## Coverage
+//!
+//! | test | subject | pinned by |
+//! |---|---|---|
+//! | `loader_returns_nonempty_hourly_bars_with_revision_sha` | production `DefaultLabBinanceBarSource` on 2023 H1 | non-empty, pinned SHA, window, symbol, first gap 1 h |
+//! | `binance_run_diverges_from_synthetic_baseline` | engine on Binance bars vs synthetic | final-equity delta ≥ 1 USDT and series not identical |
+//! | `loader_missing_corpus_returns_typed_err_not_synthetic` | loader on a missing symbol | typed Err naming `ZZZUSDT` (the corpus is committed, so only the missing-symbol path is accepted) |
+//! | `loader_gate_absent_corpus_is_a_failure_not_a_skip` | `loader_gate_body` at an empty root | panics at M1 |
+//! | `divergence_absent_corpus_is_a_failure_not_a_skip` | `divergence_body` at an empty root | panics at M1 |
 
 #![cfg(all(feature = "live", feature = "binance"))]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -44,20 +90,22 @@ use ui::lab::runner::{DefaultLabBinanceBarSource, LabBarSource, LabRunConfig};
 /// 2023 H1 as a `Custom` ms range: 2023-01-01 .. 2023-07-01 UTC. The pinned
 /// corpus covers 2023-01..2024-12 at 1h, so this window resolves to on-disk
 /// months for BTCUSDT.
-/// Probe for the DATA this test loads — never for `REVISION.toml`.
+const RANGE_2023_H1: DateRange = DateRange::Custom {
+    start_ms: 1_672_531_200_000, // 2023-01-01T00:00:00Z
+    end_ms: 1_688_169_600_000,   // 2023-07-01T00:00:00Z
+};
+
+/// Probe for the DATA this test loads — never for `REVISION.toml` (a probe on
+/// the manifest alone was true while every month beneath it was absent, which
+/// is what once turned the Linux and Windows UI legs red invisibly).
 ///
-/// `REVISION.toml` is TRACKED: `git ls-files data/binance` returns exactly that
-/// one path. The parquet corpus beneath it is gitignored and machine-local. A
-/// probe on `REVISION.toml` is therefore TRUE on every CI runner while every
-/// byte this test reads is absent — the skip never fires, `preload` errors, and
-/// the "corpus PRESENT ... hard FAIL, not a skip" arm panics. That is what turned
-/// the Linux and Windows UI legs red, invisibly, because those steps were being
-/// cancelled by an earlier failing step.
+/// It backs the M1 assert ([`assert_binance_corpus`]), not a skip: the corpus
+/// is committed (module doc § Gating).
 ///
-/// The months named here are the ones `RANGE_2023_H1` actually loads. They are NOT the same
-/// across these tests — this one reads 2023, its siblings read another year —
-/// so this probe is deliberately per-file rather than a shared helper that would
-/// be right for one caller and wrong for the next.
+/// The months named here are the ones `RANGE_2023_H1` actually loads. They are
+/// NOT the same across these tests — this one reads 2023, its siblings read
+/// another year — so this probe is deliberately per-file rather than a shared
+/// helper that would be right for one caller and wrong for the next.
 fn corpus_data_present(root: &std::path::Path) -> bool {
     (1..=6).all(|m| {
         root.join(format!("data/binance/BTCUSDT/2023/{m:02}.parquet"))
@@ -65,10 +113,15 @@ fn corpus_data_present(root: &std::path::Path) -> bool {
     })
 }
 
-const RANGE_2023_H1: DateRange = DateRange::Custom {
-    start_ms: 1_672_531_200_000, // 2023-01-01T00:00:00Z
-    end_ms: 1_688_169_600_000,   // 2023-07-01T00:00:00Z
-};
+/// M1, the committed-corpus precondition (bug-log `#66`): PANIC when the six
+/// 2023 H1 BTCUSDT parquets are missing under `root`.
+fn assert_binance_corpus(root: &std::path::Path) {
+    assert!(
+        corpus_data_present(root),
+        "the committed Binance corpus (data/binance/BTCUSDT/2023/01..06.parquet) must ship under {} — absent means a broken checkout, not a skip (bug-log #66)",
+        root.display()
+    );
+}
 
 /// Build the Lab run config the loader consumes (BTCUSDT, Binance source).
 fn binance_cfg() -> LabRunConfig {
@@ -122,6 +175,7 @@ fn scenario_cfg(
 /// proven 2026-07-26 with the corpus present). Tests in one binary run
 /// multi-threaded; per-test `set_current_dir` to the SAME directory is the
 /// established benign pattern (`crates/backtest/tests/binance_cache_dispatch.rs`).
+/// The absent-corpus twins never call it.
 fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -132,31 +186,15 @@ fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
     root
 }
 
-/// Corpus-presence probe at the WORKSPACE root. Skipping is legitimate ONLY
-/// when this is genuinely absent; with the probe present, any loader error is
-/// a hard FAIL (the old any-Err→skip made the tests vacuous).
-fn corpus_probe(root: &std::path::Path) -> bool {
-    corpus_data_present(root)
-}
-
 /// Load real Binance bars via the PRODUCTION `DefaultLabBinanceBarSource`
-/// (the trait seam), routed exactly as `spawn_lab_run` routes it. Returns
-/// `None` (test skips) ONLY when the workspace-root probe
-/// `data/binance/REVISION.toml` is genuinely absent; when the probe exists
-/// but the loader errors, this PANICS — that is a real regression, not a
-/// missing corpus (review patch 1).
-fn try_load_binance_bars() -> Option<(Vec<trading_core::Bar>, SmolStr)> {
-    let root = pin_cwd_to_workspace_root();
-    if !corpus_probe(&root) {
-        eprintln!(
-            "[skip] the pinned Binance parquet corpus (data/binance/BTCUSDT/2023/01..06.parquet) is absent at the workspace root \
-             ({}) — the gitignored pinned corpus is absent on this machine; \
-             divergence test skipped. (The no-silent-fallback contract is still \
-             proven by loader_missing_corpus_returns_typed_err_not_synthetic.)",
-            root.display()
-        );
-        return None;
-    }
+/// (the trait seam), routed exactly as `spawn_lab_run` routes it.
+///
+/// M1 first: PANICS when the committed corpus is missing under `root` (a
+/// broken checkout). The load itself reads the cwd the caller pinned; with the
+/// corpus present, a loader error also PANICS — a regression, not a missing
+/// corpus (review patch 1, bug-log `#66`).
+fn load_binance_bars(root: &std::path::Path) -> (Vec<trading_core::Bar>, SmolStr) {
+    assert_binance_corpus(root);
     let cfg = binance_cfg();
     let src = DefaultLabBinanceBarSource;
     // `LabBarSource::preload` is an async fn returning a boxed future; drive it
@@ -168,11 +206,9 @@ fn try_load_binance_bars() -> Option<(Vec<trading_core::Bar>, SmolStr)> {
         .expect("runtime builds");
     let result = rt.block_on(async { src.preload(&cfg, &RANGE_2023_H1).await });
     match result {
-        Ok((bars, sha)) => Some((bars, sha)),
+        Ok((bars, sha)) => (bars, sha),
         Err(e) => panic!(
-            "corpus PRESENT (data/binance/REVISION.toml exists under {}) but the \
-             Binance loader failed: {e} — hard FAIL, not a skip (review patch 1: \
-             any-Err→skip left this guard vacuous on every machine).",
+            "the committed Binance corpus is present under {} but the loader failed: {e} — a regression, not a missing corpus (bug-log #66)",
             root.display()
         ),
     }
@@ -187,17 +223,10 @@ fn final_equity(report: &backtest::RunReport) -> Decimal {
         .map_or(Decimal::ZERO, |(_, money)| money.amount())
 }
 
-/// **AC3 — the loader gate (revision-asserted, non-empty hourly bars).**
-///
-/// The production Binance loader, when the corpus is present, returns
-/// non-empty HOURLY bars for `BTCUSDT × 2023 H1` AND carries the pinned
-/// aggregate revision SHA (which it asserted on load). All `BTCUSDT` bars are
-/// in range and stamped on the Binance venue.
-#[test]
-fn loader_returns_nonempty_hourly_bars_with_revision_sha() {
-    let Some((bars, sha)) = try_load_binance_bars() else {
-        return; // corpus absent — skip (see helper log)
-    };
+/// The loader-gate body, parameterized by the corpus root (M1 runs at
+/// `root`; the load reads the cwd the real test pinned).
+fn loader_gate_body(root: &std::path::Path) {
+    let (bars, sha) = load_binance_bars(root);
 
     assert!(
         !bars.is_empty(),
@@ -223,34 +252,45 @@ fn loader_returns_nonempty_hourly_bars_with_revision_sha() {
         );
         assert_eq!(b.symbol, Symbol::new("BTCUSDT"), "wrong symbol in bars");
     }
-    // Hourly cadence sanity: consecutive open timestamps differ by ~1h
-    // (3_600_000 ms). Check the median-ish gap on the first two bars to avoid
-    // depending on the exact count.
-    if bars.len() >= 2 {
-        let gap_ms = bars[1].open_ts.unix_millis() - bars[0].open_ts.unix_millis();
-        assert_eq!(
-            gap_ms, 3_600_000,
-            "Binance Lab bars must be HOURLY (Q-tf): first gap was {gap_ms} ms"
-        );
-    }
+    // Hourly cadence sanity: the first two open timestamps differ by exactly
+    // 1 h (3_600_000 ms). An exact bar count is NOT pinned: Binance has
+    // maintenance gaps, and the count for this window is unverified here.
+    assert!(
+        bars.len() >= 2,
+        "the 2023 H1 load must hold at least two hourly bars to check the cadence (got {})",
+        bars.len()
+    );
+    let gap_ms = bars[1].open_ts.unix_millis() - bars[0].open_ts.unix_millis();
+    assert_eq!(
+        gap_ms, 3_600_000,
+        "Binance Lab bars must be HOURLY (Q-tf): first gap was {gap_ms} ms"
+    );
 }
 
-/// **AC4 — THE no-op-source divergence guard (the purpose-built gate).**
+/// **AC3 — the loader gate (revision-asserted, non-empty hourly bars).**
 ///
-/// Run `v0.sma × BTCUSDT × 2023 H1` twice with the SAME `(strategy, symbol,
-/// range, seed)`:
-///   - arm A: real Binance bars injected via `bars_override` + `BinanceCache`,
-///   - arm B: synthetic GBM bars (`bars_override = None` + `Synthetic`).
-///
-/// Assert the two equity curves DIVERGE — proving the real parquet bytes
-/// reached the strategy, not a silent synthetic fallback. If the Binance path
-/// ever silently synthesized, the two arms would be byte-identical and this
-/// test would FAIL (exactly the v3-vol-overlay-noop failure signature).
+/// The production Binance loader returns non-empty HOURLY bars for
+/// `BTCUSDT × 2023 H1` AND carries the pinned aggregate revision SHA (which it
+/// asserted on load). All `BTCUSDT` bars are in range and stamped on the
+/// Binance venue.
 #[test]
-fn binance_run_diverges_from_synthetic_baseline() {
-    let Some((binance_bars, _sha)) = try_load_binance_bars() else {
-        return; // corpus absent — skip (see helper log)
-    };
+fn loader_returns_nonempty_hourly_bars_with_revision_sha() {
+    loader_gate_body(&pin_cwd_to_workspace_root());
+}
+
+/// The twin of the loader gate: the SAME body at an empty root must FAIL at
+/// M1, never return early (bug-log `#66`; T-T4 E3-BD-P2).
+#[test]
+#[should_panic(expected = "absent means a broken checkout")]
+fn loader_gate_absent_corpus_is_a_failure_not_a_skip() {
+    let empty = tempfile::tempdir().expect("a temp dir to stand in for a broken checkout");
+    loader_gate_body(empty.path());
+}
+
+/// The divergence body, parameterized by the corpus root (M1 runs at `root`;
+/// the load reads the cwd the real test pinned).
+fn divergence_body(root: &std::path::Path) {
+    let (binance_bars, _sha) = load_binance_bars(root);
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -334,19 +374,44 @@ fn binance_run_diverges_from_synthetic_baseline() {
     );
 }
 
+/// **AC4 — THE no-op-source divergence guard (the purpose-built gate).**
+///
+/// Run `v0.sma × BTCUSDT × 2023 H1` twice with the SAME `(strategy, symbol,
+/// range, seed)`:
+///   - arm A: real Binance bars injected via `bars_override` + `BinanceCache`,
+///   - arm B: synthetic GBM bars (`bars_override = None` + `Synthetic`).
+///
+/// Assert the two equity curves DIVERGE — proving the real parquet bytes
+/// reached the strategy, not a silent synthetic fallback. If the Binance path
+/// ever silently synthesized, the two arms would be byte-identical and this
+/// test would FAIL (exactly the v3-vol-overlay-noop failure signature).
+#[test]
+fn binance_run_diverges_from_synthetic_baseline() {
+    divergence_body(&pin_cwd_to_workspace_root());
+}
+
+/// The twin of the divergence guard: the SAME body at an empty root must FAIL
+/// at M1, never return early (bug-log `#66`; T-T4 E3-BD-P3).
+#[test]
+#[should_panic(expected = "absent means a broken checkout")]
+fn divergence_absent_corpus_is_a_failure_not_a_skip() {
+    let empty = tempfile::tempdir().expect("a temp dir to stand in for a broken checkout");
+    divergence_body(empty.path());
+}
+
 /// **AC4 design-side half — the loader NEVER synthesizes on miss.**
 ///
 /// Point the SAME loader logic at a symbol that does not exist in the corpus
-/// (`ZZZUSDT`) and assert it returns a typed `Err` with a re-fetch hint — NOT
-/// a synthetic-bars `Ok`. This is the no-silent-fallback contract that makes
-/// the divergence guard above trustworthy: a miss is loud, never a random walk.
+/// (`ZZZUSDT`) and assert it returns a typed `Err` naming that symbol — NOT a
+/// synthetic-bars `Ok`. This is the no-silent-fallback contract that makes the
+/// divergence guard above trustworthy: a miss is loud, never a random walk.
 #[test]
 fn loader_missing_corpus_returns_typed_err_not_synthetic() {
     // cwd-pin so the loader resolves the same workspace-root corpus the other
-    // tests use (with the corpus present this exercises the missing-SYMBOL
-    // path; without it, the missing-manifest revision path — both are typed
-    // Errs and both satisfy the assertions below).
-    let _root = pin_cwd_to_workspace_root();
+    // tests use. The corpus is committed (M1 below), so this exercises the
+    // missing-SYMBOL path only; a revision error here would be a regression.
+    let root = pin_cwd_to_workspace_root();
+    assert_binance_corpus(&root);
     // A symbol guaranteed absent from the 10-symbol pinned corpus.
     let cfg = LabRunConfig {
         symbol: SmolStr::new("ZZZUSDT"),
@@ -369,14 +434,12 @@ fn loader_missing_corpus_returns_typed_err_not_synthetic() {
             );
         }
         Err(e) => {
-            // The message must be the operator-friendly cache-miss notice (or
-            // the revision error if the corpus itself is absent), and must
-            // mention the symbol + a re-fetch path — never an internal panic
-            // string. Both acceptable errors point the operator at the fetch tool.
+            // The message must be the operator-friendly cache-miss notice and
+            // must name the symbol — never an internal panic string.
             let msg = e.as_str();
             assert!(
-                msg.contains("ZZZUSDT") || msg.contains("revision"),
-                "cache-miss Err must name the symbol or be a revision error; got: {msg}"
+                msg.contains("ZZZUSDT"),
+                "cache-miss Err must name the missing symbol (the corpus is committed, so a revision error is a regression); got: {msg}"
             );
             assert!(
                 !msg.is_empty(),

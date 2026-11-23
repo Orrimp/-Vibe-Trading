@@ -7,18 +7,71 @@
 //! 3. `state::update(LabRunProgressDone)` clears it.
 //! 4. Dropping a `RunCancelHandle` causes `is_cancelled()` to return `true`.
 //! 5. Engine returns `RunError::Cancelled` when handle is pre-dropped.
+//!
+//! ## Test 1 is two-sided (story 2-63 Wave E3)
+//!
+//! Until Wave E3, `lab_run_stop_requested_is_noop_on_model` dispatched
+//! `LabRunStopRequested` on a `Cockpit::default()`, whose `lab_run_inflight`
+//! is already `false`, and asserted it stayed `false`: an arm that CLEARED the
+//! flag passed too. Since Wave E3 the test first arms a run through the
+//! production `update` (`LabRunRequested` sets `lab_run_inflight = true`,
+//! `LabRunProgress` stores bar 200), asserts both preconditions, and only then
+//! dispatches Stop: the flag must stay `true` and the progress must stay
+//! `Some(200)` (the Stop arm is documented as "pure state is unchanged
+//! (inflight stays true until LabRunCompleted arrives)").
+//!
+//! ## T-T4 falsification probe table (story 2-63 AC4)
+//!
+//! Each probe is ONE exact-once replace in PRODUCTION code (`grep -c` of the
+//! OLD text is 1), located by symbol + quoted line. Run
+//! `cargo test -p ui --test lab_run_cancel`, then restore `crates/ui/src/state.rs`
+//! from a `cp -p` snapshot taken immediately before the probe (NEVER from git:
+//! the working tree differs from `HEAD`), `cmp` it, `touch` it, re-run GREEN.
+//!
+//! | # | symbol (file) | quoted line today | mutation | expected RED |
+//! |---|---|---|---|---|
+//! | E3-RC-P1 | `ui::state::update`, arm `Message::LabRunStopRequested` (`crates/ui/src/state.rs`) | `Message::LabRunStopRequested => {` | append `model.lab_run_inflight = false;` inside the arm | `lab_run_stop_requested_is_noop_on_model` at "LabRunStopRequested must not change lab_run_inflight" |
+//! | E3-RC-P2 (optional) | the same arm | the same line | append `model.lab_state.run_progress = None;` inside the arm | the same test at "LabRunStopRequested must not clear lab_state.run_progress" |
+//!
+//! Vacuity of the pre-E3 test (measured by the E3 base run): it stays GREEN
+//! under E3-RC-P1, because it starts from `false`.
 
-/// T-D3.6 — `LabRunStopRequested` is a pure state no-op.
+/// T-D3.6 — `LabRunStopRequested` is a pure state no-op, observed on an
+/// IN-FLIGHT run (both preconditions are produced by the production `update`).
 #[test]
 fn lab_run_stop_requested_is_noop_on_model() {
+    use backtest::progress::Progress;
     use ui::state::{Cockpit, Message};
 
     let mut model = Cockpit::default();
-    assert!(!model.lab_run_inflight);
+    ui::state::update(&mut model, Message::LabRunRequested);
+    ui::state::update(
+        &mut model,
+        Message::LabRunProgress(Progress {
+            current_bar: 200,
+            total_bars: 720,
+            elapsed_ms: 500,
+        }),
+    );
+    assert!(
+        model.lab_run_inflight,
+        "precondition: LabRunRequested arms lab_run_inflight"
+    );
+    assert_eq!(
+        model.lab_state.run_progress.as_ref().map(|p| p.current_bar),
+        Some(200),
+        "precondition: LabRunProgress stored bar 200"
+    );
+
     ui::state::update(&mut model, Message::LabRunStopRequested);
     assert!(
-        !model.lab_run_inflight,
+        model.lab_run_inflight,
         "LabRunStopRequested must not change lab_run_inflight"
+    );
+    assert_eq!(
+        model.lab_state.run_progress.as_ref().map(|p| p.current_bar),
+        Some(200),
+        "LabRunStopRequested must not clear lab_state.run_progress"
     );
 }
 

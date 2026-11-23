@@ -17,15 +17,40 @@
 //!   (iii) `compare::scan_spec_tree` builds a `CachedCell` for the run with a
 //!         loadable per-bar equity series (KPIs + overlay-ready).
 //!
-//! ## Gating + skip
+//! ## Gating
 //!
-//! `#[cfg(all(feature = "live", feature = "binance"))]`. The pinned corpus
-//! (`data/binance/`) must be present AT THE WORKSPACE ROOT. Skip policy
-//! (review patch 1): the test pins the process cwd to the workspace root
-//! (cargo runs ui test binaries with cwd=`crates/ui/`) and probes
-//! `data/binance/REVISION.toml` — SKIP only when the probe is genuinely
-//! absent; probe present + loader error = hard FAIL (the old cwd-relative
-//! any-Err→skip made the body vacuous on every machine).
+//! `#[cfg(all(feature = "live", feature = "binance"))]`, both default
+//! features.
+//!
+//! The pinned corpus (`data/binance/`) is COMMITTED IN FULL (`.gitignore`
+//! `!/data/binance/**`, "TRACKED IN FULL since 2026-09-27"), so an absent
+//! BTCUSDT 2024 H1 month is a broken checkout and FAILS (bug-log `#66`); no
+//! skip path remains (story 2-63 Wave E3, AC3). The loader's corpus root is
+//! cwd-relative and cargo runs ui test binaries with cwd = `crates/ui/`, so the
+//! real test pins the cwd to the workspace root; the absent-corpus twin never
+//! changes the cwd (it fails at M1, [`assert_binance_corpus`], before any load).
+//!
+//! Shape (story 2-63 Wave E2 / E3): the round trip is the root-parameterized
+//! `persist_body`; the real test calls it at the workspace root, and
+//! `persist_absent_corpus_is_a_failure_not_a_skip` calls the SAME body at an
+//! empty temp dir under `#[should_panic(expected = "absent means a broken
+//! checkout")]`.
+//!
+//! `persist_body` reads back through `ui::compare::cache::scan_spec_tree`.
+//!
+//! ## T-T4 falsification probe table (story 2-63 AC4)
+//!
+//! Each probe is ONE exact-once replace in THIS file (`grep -c` of the OLD
+//! text is 1), run with `cargo test -p ui --test lab_binance_persist_compare`,
+//! then restored from a `cp -p` snapshot (`cmp`). The skip prefix NEW inserts
+//! is `if !corpus_data_present(root) { return; }`, the shape Wave E3 removed.
+//!
+//! | # | symbol | quoted line today | mutation | expected RED |
+//! |---|---|---|---|---|
+//! | E3-BP-P1 | `assert_binance_corpus` | `assert!(` followed by `corpus_data_present(root),` | the skip prefix above the assert | `persist_absent_corpus_is_a_failure_not_a_skip`: "panic did not contain expected string" (the load then fails at the twin's cwd `crates/ui`) or "test did not panic as expected" (the real test already pinned the cwd to the workspace root and the load succeeds); scheduling decides which, both are red |
+//! | E3-BP-P2 | `persist_body` | `let bars = load_binance_bars(root);` | the skip prefix above it | `persist_absent_corpus_is_a_failure_not_a_skip`: "test did not panic as expected" |
+//!
+//! GREEN in both probes: `binance_run_persists_and_round_trips_through_compare`.
 
 #![cfg(all(feature = "live", feature = "binance"))]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -43,17 +68,12 @@ use ui::lab::equity_loader::{EquityCache, LabTuple};
 use ui::lab::runner::{DefaultLabBinanceBarSource, LabBarSource, LabRunConfig};
 use ui::lab::state::{DateRange, LabDataSource, Preset};
 
-/// 2024 H1 — `binance_range_to_ms_pair(H1_2024)` resolves to 2024-01..2024-07
-/// UTC, on-disk for BTCUSDT in the pinned corpus.
-/// Probe for the DATA this test loads — never for `REVISION.toml`.
+/// Probe for the DATA this test loads — never for `REVISION.toml` (a probe on
+/// the manifest alone was true while every month beneath it was absent, which
+/// is what once turned the Linux and Windows UI legs red invisibly).
 ///
-/// `REVISION.toml` is TRACKED: `git ls-files data/binance` returns exactly that
-/// one path. The parquet corpus beneath it is gitignored and machine-local. A
-/// probe on `REVISION.toml` is therefore TRUE on every CI runner while every
-/// byte this test reads is absent — the skip never fires, `preload` errors, and
-/// the "corpus PRESENT ... hard FAIL, not a skip" arm panics. That is what turned
-/// the Linux and Windows UI legs red, invisibly, because those steps were being
-/// cancelled by an earlier failing step.
+/// It backs the M1 assert ([`assert_binance_corpus`]), not a skip: the corpus
+/// is committed (module doc § Gating).
 ///
 /// The months named here are the ones `ENG_RANGE` (H1 **2024**) actually loads. They are NOT the same
 /// across these tests — this one reads 2024, its siblings read another year —
@@ -66,13 +86,26 @@ fn corpus_data_present(root: &std::path::Path) -> bool {
     })
 }
 
+/// M1, the committed-corpus precondition (bug-log `#66`): PANIC when the six
+/// 2024 H1 BTCUSDT parquets are missing under `root`.
+fn assert_binance_corpus(root: &std::path::Path) {
+    assert!(
+        corpus_data_present(root),
+        "the committed Binance corpus (data/binance/BTCUSDT/2024/01..06.parquet) must ship under {} — absent means a broken checkout, not a skip (bug-log #66)",
+        root.display()
+    );
+}
+
+/// 2024 H1 — `binance_range_to_ms_pair(H1_2024)` resolves to 2024-01..2024-07
+/// UTC, on-disk for BTCUSDT in the pinned corpus.
 const ENG_RANGE: EngDateRange = EngDateRange::H1_2024;
 
 /// Resolve the workspace root (`crates/ui` → `crates` → root) and pin the
 /// process cwd there (review patch 1 — the loader's corpus root is
 /// cwd-relative and cargo runs ui test binaries with cwd=`crates/ui/`).
 /// Per-test `set_current_dir` to the SAME dir is the established benign
-/// pattern (`crates/backtest/tests/binance_cache_dispatch.rs`).
+/// pattern (`crates/backtest/tests/binance_cache_dispatch.rs`). The
+/// absent-corpus twin never calls it.
 fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -84,20 +117,12 @@ fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
 }
 
 /// Load real Binance bars for `BTCUSDT × H1_2024` via the production seam.
-/// Returns `None` (skip) ONLY when the workspace-root probe
-/// `data/binance/REVISION.toml` is genuinely absent; probe present + loader
-/// error PANICS (review patch 1 — no more any-Err→skip vacuity).
-fn try_load_binance_bars() -> Option<Vec<trading_core::Bar>> {
-    let root = pin_cwd_to_workspace_root();
-    if !corpus_data_present(&root) {
-        eprintln!(
-            "[skip] the pinned Binance parquet corpus (data/binance/BTCUSDT/2024/01..06.parquet) is absent at the workspace root \
-             ({}) — the gitignored pinned corpus is absent on this machine; \
-             persist/Compare round-trip skipped.",
-            root.display()
-        );
-        return None;
-    }
+///
+/// M1 first: PANICS when the committed corpus is missing under `root` (a
+/// broken checkout). The load reads the cwd the caller pinned; with the corpus
+/// present, a loader error also PANICS (review patch 1, bug-log `#66`).
+fn load_binance_bars(root: &std::path::Path) -> Vec<trading_core::Bar> {
+    assert_binance_corpus(root);
     let cfg = LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
@@ -114,10 +139,9 @@ fn try_load_binance_bars() -> Option<Vec<trading_core::Bar>> {
         .build()
         .expect("runtime builds");
     match rt.block_on(async { DefaultLabBinanceBarSource.preload(&cfg, &ENG_RANGE).await }) {
-        Ok((bars, _sha)) => Some(bars),
+        Ok((bars, _sha)) => bars,
         Err(e) => panic!(
-            "corpus PRESENT (data/binance/REVISION.toml exists under {}) but the \
-             Binance loader failed: {e} — hard FAIL, not a skip (review patch 1).",
+            "the committed Binance corpus is present under {} but the loader failed: {e} — a regression, not a missing corpus (bug-log #66)",
             root.display()
         ),
     }
@@ -126,9 +150,22 @@ fn try_load_binance_bars() -> Option<Vec<trading_core::Bar>> {
 /// **AC5 — the full lab-run-save-compare chain round-trips a Binance run.**
 #[test]
 fn binance_run_persists_and_round_trips_through_compare() {
-    let Some(bars) = try_load_binance_bars() else {
-        return; // corpus absent — skip
-    };
+    persist_body(&pin_cwd_to_workspace_root());
+}
+
+/// The twin: the SAME round-trip body at an empty root must FAIL at M1, never
+/// return early (bug-log `#66`; T-T4 E3-BP-P2).
+#[test]
+#[should_panic(expected = "absent means a broken checkout")]
+fn persist_absent_corpus_is_a_failure_not_a_skip() {
+    let empty = tempfile::tempdir().expect("a temp dir to stand in for a broken checkout");
+    persist_body(empty.path());
+}
+
+/// The persist + Compare round trip, parameterized by the corpus root (M1
+/// runs at `root`; the load reads the cwd the real test pinned).
+fn persist_body(root: &std::path::Path) {
+    let bars = load_binance_bars(root);
 
     // Write-root == read-root: a tempdir `lab-runs/`-shaped tree (ADR-0055 § D6).
     let tmp = tempfile::tempdir().expect("tempdir");

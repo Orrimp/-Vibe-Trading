@@ -7,10 +7,24 @@
 //!   2. At least one `ActivityPhase::Tick` event.
 //!   3. One `ActivityPhase::End(ActivityOutcome::Success)` event.
 //!
+//! ## What this pins, honestly (story 2-63 Wave E3)
+//!
+//! It pins agent's `ActivityHandle` lifecycle (Start → Tick → End) under a
+//! `LabRun` kind with a label THIS TEST writes. It never runs the bin's
+//! producer — the `.start(agent::activity::ActivityKind::LabRun, lab_activity_label)`
+//! call on `lab_activity_sender` in `crates/ui/src/bin/cockpit_live.rs` —
+//! which stays unpinned: it lives in
+//! `AppState`, which a test cannot build (the story 2-63 K3 #6 residual). A
+//! regression in that producer's kind, label or end outcome leaves this file
+//! green.
+//!
+//! No T-T4 probe (story 2-63 E3, AC4): the subject is agent's API, not ui code.
+//!
 //! ## Architecture (approach A)
 //!
-//! `ActivityHandle` is `!Send`. The handle lives entirely on the iced side
-//! (in `AppState::lab_activity_handle`). This test exercises the full
+//! `ActivityHandle` is `Send` but not `Sync` (it holds `Cell`s of `Send`
+//! types). The handle lives entirely on the iced side (in
+//! `AppState::lab_activity_handle`). This test exercises the full
 //! lifecycle directly:
 //!   1. `bus.activity().start(LabRun, label)` → emits Start (simulates what
 //!      `AppState::update(LabRunRequested)` does).
@@ -155,7 +169,7 @@ fn lab_run_activity_emits_end_failed_on_error() {
                 "expected error in End reason, got: {reason:?}"
             );
         }
-        other => panic!("expected End(Failed), got {:?}", other),
+        other => panic!("expected End(Failed), got {other:?}"),
     }
 }
 

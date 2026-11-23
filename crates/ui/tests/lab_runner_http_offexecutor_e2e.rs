@@ -1,7 +1,19 @@
-//! E2E test — HTTP/reqwest-style `spawn_blocking` path does NOT panic outside
-//! a tokio runtime context (ADR-0050 § D4 / T-BUG64-RS4).
+//! PREMISE test — HTTP/reqwest-style `spawn_blocking` panics outside a tokio
+//! runtime context, does NOT panic when the future is `rt.spawn`ed, and
+//! `JoinHandle::abort` stops a spawned task (ADR-0050 § D4 / T-BUG64-RS4).
 //!
 //! Bug #64 recurrence #3 — durable gate.
+//!
+//! ## What this file is, honestly (story 2-63 Wave E3)
+//!
+//! It imports nothing from `ui::`: every test builds its own runtime, its own
+//! `spawn_blocking` future and its own `JoinHandle`, so it pins TOKIO's
+//! semantics (the premise ADR-0050 § D4 rests on), not ui code. A regression in
+//! the ui preload path leaves it green. The ui-path pins are
+//! `lab_runner_preload_callthrough_e2e.rs` (the preload really goes through
+//! `spawn_preload_on_rt`) and `recipe_off_runtime_poll.rs` (recipes polled with
+//! no tokio context). `trace.toml` cites this file's three tests by name, so
+//! they are kept. No T-T4 probe (story 2-63 E3, AC4): the subject is tokio.
 //!
 //! ## What this test proves
 //!

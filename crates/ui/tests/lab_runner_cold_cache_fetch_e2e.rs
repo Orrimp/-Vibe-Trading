@@ -1,14 +1,30 @@
-//! E2E test — cold-cache fetch path does NOT panic outside a tokio runtime.
+//! PREMISE test — the tokio behaviour ADR-0050 § D1 relies on: a tokio timer
+//! constructed outside a tokio runtime context panics, and one constructed
+//! under an `rt.enter()` guard does not.
 //!
 //! Bug #64 D.1.1 attempt-3 HOTFIX / ADR-0050 § D1 amendment (2026-05-29).
 //!
-//! ## What this test proves
+//! ## What this file is, honestly (story 2-63 Wave E3)
 //!
-//! T-BUG64-D14: The `fetch_with_backoff` path (via `preload_yahoo_bars`)
-//! uses `rt.enter()` guards around ALL `tokio::time::timeout` and
-//! `tokio::time::sleep` calls. When called from a non-tokio executor
-//! (iced's `futures::ThreadPool`), the guard pattern prevents the panic:
-//! "there is no reactor running".
+//! It imports nothing from `ui::`: every test builds its own runtime and its
+//! own timer, so it pins TOKIO's semantics (the premise), not ui code. A
+//! regression in the ui preload path leaves it green. It is kept because the
+//! premise is what ADR-0050 § D1 and the production guard in the Yahoo
+//! preload arm rest on, and because `trace.toml` cites its three tests by
+//! name. No T-T4 probe (story 2-63 E3, AC4): the subject is tokio.
+//!
+//! ## What the production path looks like today
+//!
+//! T-BUG64-D14 originally described `fetch_with_backoff` (via
+//! `preload_yahoo_bars`) as wrapping each `tokio::time::timeout` /
+//! `tokio::time::sleep` constructor in an `rt.enter()` guard. Since the
+//! ADR-0050 § D4 `rt.spawn` fix that is no longer the design: the whole
+//! preload future runs on a tokio worker via `spawn_preload_on_rt`, and
+//! `fetch_with_backoff` carries NO guard (its comment in
+//! `crates/ui/src/lab/runner.rs` reads "No rt.enter() guard needed — this
+//! function runs on a tokio worker"). The one guard left on the Lab path is
+//! the one around the progress `tokio::time::interval` in `spawn_lab_run`'s
+//! Yahoo preload arm, which runs on iced's executor.
 //!
 //! ## Why this test uses plain `#[test]`
 //!

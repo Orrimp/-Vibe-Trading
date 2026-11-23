@@ -11,6 +11,8 @@
 - `docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md` — feature brief (shipped v0.1.0 2026-05-24)
 - `docs/dev-notes/bug-log.md` #61 — partial-fix row for this work
 
+> **Superseded (story 2-63 Wave E3, 2026-11-23):** `crates/ui/tests/lab_yahoo_anchor.rs` was deleted. The figure it scaffolded is pinned by `crates/backtest/tests/reproducibility_sample_figure.rs` (committed `data/yahoo-sample`, anchor `btc-yahoo-2024-1d-sma-cross`). The steps below that edit or run that file are history.
+
 ---
 
 ## Overview

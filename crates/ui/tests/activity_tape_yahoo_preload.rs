@@ -4,13 +4,23 @@
 //!   1. One `ActivityPhase::Start` event with `ActivityKind::YahooPreload`.
 //!   2. One `ActivityPhase::End(ActivityOutcome::Success)` event.
 //!
+//! ## What this pins, honestly (story 2-63 Wave E3)
+//!
+//! It pins agent's `ActivityHandle` API under a `YahooPreload` kind with a
+//! label THIS TEST builds; it never calls production. The real producer is the
+//! Yahoo preload arm of `spawn_lab_run` (unpinned until story 2-63 Wave F). A
+//! regression in that producer's kind, label or end outcome leaves this file
+//! green.
+//!
+//! No T-T4 probe (story 2-63 E3, AC4): the subject is agent's API, not ui code.
+//!
 //! ## Architecture
 //!
 //! The `preload_yahoo_bars` function is private, so this test exercises the
-//! `ActivityHandle` API directly on the `EventBus` activity channel — the
-//! same codepath that runs inside `spawn_lab_run`'s async closure (T-D-N7
-//! approach A: inline handle, `!Send` constraint is safe because the handle
-//! lives entirely within the `iced::Task::perform` closure on a single task).
+//! `ActivityHandle` API directly on the `EventBus` activity channel (T-D-N7
+//! approach A: an inline handle; `ActivityHandle` is `Send` but not `Sync`,
+//! and it lives entirely within the `iced::Task::perform` closure on a single
+//! task).
 //!
 //! The test constructs the handle lifecycle manually:
 //!   1. Create EventBus + subscribe.
@@ -66,7 +76,7 @@ fn yahoo_preload_activity_emits_start_and_end_success() {
     // 1. Build the label (mirrors the format string in runner.rs).
     let symbol = "BTCUSDT";
     let range_label = "H1_2024";
-    let yahoo_label = format!("Yahoo {} · {}", symbol, range_label);
+    let yahoo_label = format!("Yahoo {symbol} · {range_label}");
 
     // 2. Start the YahooPreload activity handle.
     let handle = activity_sender.start(ActivityKind::YahooPreload, yahoo_label.clone());
@@ -128,6 +138,6 @@ fn yahoo_preload_activity_emits_end_failed_on_error() {
                 "expected error message in reason, got: {reason:?}"
             );
         }
-        other => panic!("expected End(Failed), got {:?}", other),
+        other => panic!("expected End(Failed), got {other:?}"),
     }
 }

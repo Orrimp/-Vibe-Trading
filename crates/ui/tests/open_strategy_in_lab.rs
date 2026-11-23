@@ -22,8 +22,19 @@
 //! These tests drive `ui::state::update` directly and assert the post-update
 //! model — RED before the fix (the message/handler did not exist), GREEN after.
 //! Reverting the nav/preselect handler breaks them.
+//!
+//! ## T-T4 (story 2-63 Wave E3)
+//!
+//! Until Wave E3 this file carried a file-level `fixtures` cfg gate, so
+//! CI's macOS leg (`cargo test -p ui`, default features) compiled 0 of its
+//! 4 tests; only the Windows leg (`--features fixtures`) ran them. The gate
+//! guarded nothing: `ui::fixtures` is always compiled (`pub mod fixtures;`
+//! in `crates/ui/src/lib.rs`).
+//!
+//! | probe | edit | expected |
+//! |---|---|---|
+//! | E3-FX5 | re-insert the gate line above the first `#![allow(` attribute | `cargo test -p ui --test open_strategy_in_lab` reports `running 0 tests` (the base tree's state, MEASURED there by the E3 base run); after E3 it reports `running 4 tests` |
 
-#![cfg(feature = "fixtures")]
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

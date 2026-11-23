@@ -7,8 +7,19 @@
 //! `update`-arm contract: feed a series of synthesized filter changes
 //! and assert each lands in `cockpit.audit_screen_state.filter` with
 //! the expected field values + a `page` reset to 0 + `rows = Loading`.
+//!
+//! ## T-T4 (story 2-63 Wave E3)
+//!
+//! Until Wave E3 this file carried a file-level `fixtures` cfg gate, so
+//! CI's macOS leg (`cargo test -p ui`, default features) compiled 0 of its
+//! 3 tests; only the Windows leg (`--features fixtures`) ran them. The gate
+//! guarded nothing: `ui::fixtures` is always compiled (`pub mod fixtures;`
+//! in `crates/ui/src/lib.rs`).
+//!
+//! | probe | edit | expected |
+//! |---|---|---|
+//! | E3-FX1 | re-insert the gate line above the `Cockpit::default()` helper comment that follows this doc | `cargo test -p ui --test audit_filter_chip_emits_filter_changed` reports `running 0 tests` (the base tree's state, MEASURED there by the E3 base run); after E3 it reports `running 3 tests` |
 
-#![cfg(feature = "fixtures")]
 // Test helpers construct a `Cockpit::default()` and override individual
 // fields for clarity over a giant `Cockpit { ..Default::default() }`
 // initializer; the lint is over-eager for this test shape.

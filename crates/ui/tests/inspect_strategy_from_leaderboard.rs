@@ -24,8 +24,19 @@
 //! the pair/range override, or drop the message). Reverting the handler body to
 //! the bare `OpenStrategyInLab` (cold-start-only pair seed, no range load) FAILS
 //! `inspect_overrides_existing_pair_with_chosen_coin` and `inspect_loads_lookback_range`.
+//!
+//! ## T-T4 (story 2-63 Wave E3)
+//!
+//! Until Wave E3 this file carried a file-level `fixtures` cfg gate, so
+//! CI's macOS leg (`cargo test -p ui`, default features) compiled 0 of its
+//! 6 tests; only the Windows leg (`--features fixtures`) ran them. The gate
+//! guarded nothing: `ui::fixtures` is always compiled (`pub mod fixtures;`
+//! in `crates/ui/src/lib.rs`).
+//!
+//! | probe | edit | expected |
+//! |---|---|---|
+//! | E3-FX4 | re-insert the gate line above the first `#![allow(` attribute | `cargo test -p ui --test inspect_strategy_from_leaderboard` reports `running 0 tests` (the base tree's state, MEASURED there by the E3 base run); after E3 it reports `running 6 tests` |
 
-#![cfg(feature = "fixtures")]
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

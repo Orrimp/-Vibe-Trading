@@ -15,16 +15,18 @@
 //! 2. **`lab_config_to_scenario` ScenarioConfig shape** — verifies that
 //!    `LabRunConfig { data_source: YahooCache, symbol: "BTCUSDT", range_label: "H1_2024" }`
 //!    maps to the expected `ScenarioConfig` (strategy, pair, range, seed, write_report).
-//!    The `data_source` + `bars_override` fields are set by `spawn_lab_run` post-call
-//!    (see `runner.rs:329-333` comment); this test validates the pre-fill config shape.
+//!    The `data_source` + `bars_override` fields are set by the Yahoo preload arm
+//!    after the preload (the `ScenarioDataSource::YahooCache` assignment in
+//!    `crates/ui/src/lab/runner.rs`); this test validates the pre-fill config shape.
 //!
 //! 3. **`YahooBarSource::load_cached` with H1_2024 fixture** — exercises the
 //!    parquet read + revision-verify + coverage-check path that `preload_yahoo_bars`
 //!    calls.  Reads from `crates/data/tests/fixtures/yahoo/` directly.
-//!    Uses `DateRange::H1_2024` which spans 2024-01-01..2024-07-01 (181 days → `Days1`
-//!    cadence); the fixture has January 2024 only (31 bars).  The test asserts
-//!    `bars.len() > 0`; coverage threshold is relaxed here because only 01.parquet is
-//!    available (see #[ignore] note below for the full 30-day path).
+//!    Uses `DateRange::H1_2024` which spans 2024-01-01..2024-07-01 (182 days → `Days1`
+//!    cadence); the fixture has January 2024 only.  The test asserts
+//!    `bars.len() > 0` (a floor: the exact count of the checked-in parquet is not
+//!    pinned here); coverage threshold is relaxed because only 01.parquet is
+//!    available.
 //!
 //! ## Cache-root gap note (T-C3.7 scope caveat)
 //!
@@ -36,6 +38,37 @@
 //! the exact file-system resolution used by the running cockpit.  A follow-up task
 //! (`lab-yahoo-realdata` v0.1.1) should add a fixture at `data/yahoo/` or make the
 //! cache root configurable via the runner.
+//!
+//! ## The fixture is committed (no skip)
+//!
+//! `crates/data/tests/fixtures/yahoo/{REVISION.toml,BTC-USD/1d/2024/01.parquet}`
+//! is tracked in git, and [`fixture_root`] derives its path from
+//! `CARGO_MANIFEST_DIR` (no cwd dependence). A missing fixture is therefore a
+//! broken checkout and FAILS (bug-log `#66`). Until story 2-63 Wave E3 both
+//! fixture tests printed "fixture not found" and returned early instead.
+//!
+//! Shape (story 2-63 Wave E2 / E3): each fixture-reading test is a
+//! fixture-parameterized body whose first statement is
+//! `assert_yahoo_fixture(&fixture);`. The real test calls the body at
+//! [`fixture_root`]; a `#[should_panic(expected = "absent means a broken
+//! checkout")]` twin calls the SAME body at an empty temp dir. One twin per
+//! body (a twin calling only the helper would not pin the body).
+//!
+//! ## T-T4 falsification probe table (story 2-63 AC4)
+//!
+//! Each probe is ONE exact-once replace in THIS file (`grep -c` of the OLD
+//! text is 1), run with `cargo test -p ui --test lab_yahoo_dispatch`, then
+//! restored from a `cp -p` snapshot (`cmp`). The skip prefix NEW inserts is
+//! `if !fixture.join("REVISION.toml").is_file() { return; }`, the shape
+//! Wave E3 removed.
+//!
+//! | # | symbol | quoted line today | mutation | expected RED |
+//! |---|---|---|---|---|
+//! | E3-YD-P1 | `assert_yahoo_fixture` | `assert!(` followed by `fixture.join("REVISION.toml").is_file(),` | the skip prefix above the assert | both twins: "panic did not contain expected string" (each body then panics at its `load_cached` expect, "load_cached with Jan-2024 fixture must succeed" / "first load must succeed") |
+//! | E3-YD-P2 | `jan_2024_fixture_load_body` | `assert_yahoo_fixture(&fixture);` followed by `let src = YahooBarSource::new(fixture);` | the skip prefix above the pair | `jan_2024_fixture_absent_is_a_failure_not_a_skip`: "test did not panic as expected" |
+//! | E3-YD-P3 | `revision_sha_determinism_body` | `assert_yahoo_fixture(&fixture);` followed by `let start_ms: i64 = 1_704_067_200_000; // 2024-01-01` | the skip prefix above the pair | `revision_fixture_absent_is_a_failure_not_a_skip`: "test did not panic as expected" |
+//!
+//! GREEN in every probe: the seven real tests.
 
 #![cfg(feature = "yahoo")]
 
@@ -178,6 +211,8 @@ fn lab_config_to_scenario_yahoo_last30d_is_ok() {
 
 // ── Test 3: YahooBarSource::load_cached with fixture ─────────────────────────
 
+use data::yahoo::{Interval, YahooBarSource};
+
 /// Absolute path to the shipped test fixture for Yahoo parquet data.
 ///
 /// Layout: `crates/data/tests/fixtures/yahoo/BTC-USD/1d/2024/01.parquet`
@@ -194,11 +229,21 @@ fn fixture_root() -> PathBuf {
         .join("yahoo")
 }
 
+/// M1, the committed-fixture precondition (bug-log `#66`): PANIC when the
+/// fixture's `REVISION.toml` is missing under `fixture`.
+fn assert_yahoo_fixture(fixture: &std::path::Path) {
+    assert!(
+        fixture.join("REVISION.toml").is_file(),
+        "the committed Yahoo fixture must ship at {} — absent means a broken checkout, not a skip (bug-log #66)",
+        fixture.display()
+    );
+}
+
 /// T-C3.7 — `YahooBarSource::load_cached` with the January 2024 fixture
 /// returns `bars.len() > 0` for the H1_2024 range.
 ///
-/// The H1_2024 range spans 2024-01-01..2024-07-01 (181 days → `Days1` cadence).
-/// Only January 2024 (01.parquet, 31 bars) is present in the fixture; the
+/// The H1_2024 range spans 2024-01-01..2024-07-01 (182 days → `Days1` cadence).
+/// Only January 2024 (01.parquet) is present in the fixture; the
 /// remaining months produce a `CacheMiss`.  This test uses a narrower
 /// `Custom` range that exactly covers January so it passes with the
 /// available fixture without triggering a CacheMiss.
@@ -209,18 +254,21 @@ fn fixture_root() -> PathBuf {
 /// manually (H3 hypothesis gate) and is out of scope for offline fixture tests.
 #[test]
 fn yahoo_bar_source_jan_2024_fixture_loads_bars() {
-    use data::yahoo::{Interval, YahooBarSource};
+    jan_2024_fixture_load_body(fixture_root());
+}
 
-    let fixture = fixture_root();
-    // Verify the fixture exists before attempting the load.
-    if !fixture.join("REVISION.toml").exists() {
-        eprintln!(
-            "T-C3.7: fixture not found at {:?} — skip (fixture missing from checkout)",
-            fixture
-        );
-        return;
-    }
+/// The twin: the SAME load body at an empty dir must FAIL at M1, never return
+/// early (bug-log `#66`; T-T4 E3-YD-P2).
+#[test]
+#[should_panic(expected = "absent means a broken checkout")]
+fn jan_2024_fixture_absent_is_a_failure_not_a_skip() {
+    let empty = tempfile::tempdir().expect("a temp dir to stand in for a broken checkout");
+    jan_2024_fixture_load_body(empty.path().to_path_buf());
+}
 
+/// The Jan-2024 load body, parameterized by the fixture root.
+fn jan_2024_fixture_load_body(fixture: PathBuf) {
+    assert_yahoo_fixture(&fixture);
     let src = YahooBarSource::new(fixture);
 
     // Use a Custom range that exactly covers the fixture: 2024-01-01..2024-01-31.
@@ -264,14 +312,21 @@ fn yahoo_bar_source_jan_2024_fixture_loads_bars() {
 /// on the same fixture (H4 hypothesis — parquet SHA deterministic).
 #[test]
 fn yahoo_bar_source_revision_sha_is_deterministic() {
-    use data::yahoo::{Interval, YahooBarSource};
+    revision_sha_determinism_body(fixture_root());
+}
 
-    let fixture = fixture_root();
-    if !fixture.join("REVISION.toml").exists() {
-        eprintln!("T-C3.7: fixture not found — skipping determinism test");
-        return;
-    }
+/// The twin: the SAME determinism body at an empty dir must FAIL at M1, never
+/// return early (bug-log `#66`; T-T4 E3-YD-P3).
+#[test]
+#[should_panic(expected = "absent means a broken checkout")]
+fn revision_fixture_absent_is_a_failure_not_a_skip() {
+    let empty = tempfile::tempdir().expect("a temp dir to stand in for a broken checkout");
+    revision_sha_determinism_body(empty.path().to_path_buf());
+}
 
+/// The revision-SHA determinism body, parameterized by the fixture root.
+fn revision_sha_determinism_body(fixture: PathBuf) {
+    assert_yahoo_fixture(&fixture);
     let start_ms: i64 = 1_704_067_200_000; // 2024-01-01
     let end_ms: i64 = 1_706_745_600_000; // 2024-02-01
 
