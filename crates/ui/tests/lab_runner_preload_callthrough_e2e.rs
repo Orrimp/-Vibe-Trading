@@ -53,11 +53,14 @@
 //! ## Scope note (updated T-BUG64-UN1)
 //!
 //! After T-BUG64-UN1, `spawn_preload_on_rt` is the SINGLE `rt.spawn()` enforcement
-//! point. Both the mock injection path (`yahoo_source_override = Some(...)`) and the
-//! production Yahoo path (`DefaultLabYahooBarSource` via `#[cfg(feature = "yahoo")]`)
-//! now route through this function. A type-signature change to `spawn_preload_on_rt`
-//! will produce a compile error at BOTH call sites, making this test a compile-error
-//! regression gate for the unified enforcement point.
+//! point. Since story 2-63 Wave F there is ONE Yahoo call of it,
+//! `spawn_preload_on_rt(rt, source, ..)` inside `run_yahoo_preload_arm`, for
+//! every Yahoo source: the mock injection (`yahoo_source_override = Some(...)`)
+//! and the production default (`DefaultLabYahooBarSource`) differ only in the
+//! boxed source passed to that one call. A type-signature change to
+//! `spawn_preload_on_rt` is therefore a compile error at that call (and at the
+//! Binance arm's), making this test a compile-error regression gate for the
+//! unified enforcement point.
 //!
 //! ## T-BUG64-UN3 decision (third test)
 //!
@@ -68,14 +71,19 @@
 //! No hermetic stub exists for this path. Decision: minimum-bar taken (compile-error
 //! catch via unified enforcement point, per tester § 9 Option B).
 //!
-//! The unification in T-BUG64-UN1 provides the structural guarantee: the production
-//! Yahoo call site (inside `#[cfg(feature = "yahoo")]`) now calls
-//! `spawn_preload_on_rt(&rt, Box::new(DefaultLabYahooBarSource), ...)`. Any revert
-//! that changes `spawn_preload_on_rt`'s return type produces a compile error at both
-//! the mock path (which this test exercises) and the production Yahoo path.
+//! The unification in T-BUG64-UN1 provides the structural guarantee, and story
+//! 2-63 Wave F tightened it: `spawn_lab_run` passes
+//! `Box::new(DefaultLabYahooBarSource)` (or the override) to
+//! `run_yahoo_preload_arm`, whose one `spawn_preload_on_rt(rt, source, ..)`
+//! call is the path every Yahoo source takes. Any revert that changes
+//! `spawn_preload_on_rt`'s return type is a compile error at that call.
 //!
 //! See tester report `test-20260529-201208-callthrough.md § 9` for the full rationale.
 //! See ADR-0050 § D4.
+//!
+//! No T-T4 probe (story 2-63 Wave F, AC4): Wave F edits only this module doc
+//! (the one Yahoo call site of `spawn_preload_on_rt`); the guard is pinned by
+//! this file's existing tests, unchanged.
 
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]

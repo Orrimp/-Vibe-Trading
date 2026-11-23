@@ -38,16 +38,55 @@
 //! This proves the test discriminates the two surfaces and would catch any
 //! regression that re-collapses no-data into the red error path.
 //!
-//! ## `#[cfg(feature = "live")]` gate
+//! Correction (story 2-63 Wave F): the empty-preload path does NOT call
+//! `no_data_message` — `classify_preload_result` formats `NO_DATA_TAG` + the
+//! notice body itself — so P-ER-1 as written does not reach Case A (and the
+//! pre-Wave-F drive, which built the tag in the test, could not see either
+//! edit). The probe for this path is T-T4 F-P7 below.
 //!
-//! `LabYahooBarSource` and `spawn_preload_on_rt` require `--features live`.
+//! ## The drive is the real `spawn_lab_run` (story 2-63 Wave F, Q3)
+//!
+//! Until Wave F, `drive_lab_run_with_mock` re-implemented
+//! `classify_preload_result` inline (it built the tagged no-data message
+//! itself) and fed its own result to `state::update`, so a regression in the
+//! production classifier left Case A green. It now calls the REAL
+//! `ui::lab::runner::spawn_lab_run` with the mock as `yahoo_source_override`
+//! and drains the returned `iced::Task` through
+//! `iced_test::runtime::task::into_stream`: the `LabRunCompleted` it feeds to
+//! `state::update` is the one production builds, through
+//! `run_yahoo_preload_arm`.
+//!
+//! The tests stay `#[tokio::test(flavor = "multi_thread")]`: their subject is
+//! the classification plus `state::update`, not executor fidelity (that is the
+//! job of `spawn_lab_run_yahoo_harness.rs`, which polls off-runtime). The
+//! ambient runtime context also means T-T4 F-P3 (the deleted `rt.enter()`
+//! guard) leaves these three tests GREEN — expected and recorded.
+//!
+//! ## T-T4 falsification probe table (story 2-63 AC4)
+//!
+//! One exact-once replace in `crates/ui/src/lab/runner.rs`. The OLD is a
+//! 3-line block, unique only as a block (count it as a substring; its first
+//! line alone also occurs in `run_binance_preload_arm`, so `grep -c` of that
+//! line is 2). Run `cargo test -p ui --test lab_yahoo_empty_range_classification`,
+//! restore from a `cp -p` snapshot, `cmp`, `touch`, re-run GREEN.
+//!
+//! | # | symbol | quoted line today | mutation | expected RED |
+//! |---|---|---|---|---|
+//! | F-P7 | `run_yahoo_preload_arm` (NOT the Binance arm) | the 3-line block `match classify_preload_result(preload_result, cfg) {` / `Ok((bars, _sha)) => {` / `scenario_cfg.data_source = backtest::engine::ScenarioDataSource::YahooCache;` | first line → `match preload_result {` | `case_a_empty_source_routes_to_notice` at its first assert ("last_run_notice must be Some"), and `k2_empty_vs_error_surfaces_are_distinct`; `case_b_transport_error_routes_to_error` stays GREEN (an `Err` passes through either way — expected, recorded) |
+//!
+//! ## Gate
+//!
+//! `#![cfg(all(feature = "live", feature = "yahoo"))]` (both default):
+//! `LabYahooBarSource` needs `live`, and without `yahoo` `spawn_lab_run`
+//! returns early for a YahooCache config, before the override is used.
 
-#![cfg(feature = "live")]
+#![cfg(all(feature = "live", feature = "yahoo"))]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::time::Duration;
 
-use backtest::engine::DateRange;
+use futures::StreamExt as _;
+use iced_test::runtime::Action;
 use smol_str::SmolStr;
 use ui::lab::runner::{LabBarSource, LabRunConfig, LabYahooBarSource, PreloadFuture};
 use ui::lab::state::LabDataSource;
@@ -116,15 +155,13 @@ fn yahoo_cache_cfg() -> LabRunConfig {
     }
 }
 
-/// Drive the preload → classify path with the given mock source and return
-/// the final `Cockpit` state after `state::update` processes the completion.
+/// Drive the REAL `spawn_lab_run` Task with the given mock source as
+/// `yahoo_source_override` and return the final `Cockpit` state after
+/// `state::update` processes the `LabRunCompleted` the Task produced.
 ///
-/// Replicates the inner logic of `spawn_lab_run`'s async closure (the same
-/// pattern used by `spawn_lab_run_yahoo_harness.rs`). iced::Task is opaque
-/// and requires a full iced application to drive; inline replication is the
-/// established precedent in this test suite.
-///
-/// Uses a real multi-thread tokio runtime (required for `rt.spawn()`).
+/// The cancel handle and the progress receiver stay bound until the Task has
+/// completed: dropping the handle early would cancel the run and fail the
+/// test for the wrong reason.
 async fn drive_lab_run_with_mock(source: Box<dyn LabYahooBarSource>) -> Cockpit {
     let rt = tokio::runtime::Handle::current();
     let cfg = yahoo_cache_cfg();
@@ -133,51 +170,25 @@ async fn drive_lab_run_with_mock(source: Box<dyn LabYahooBarSource>) -> Cockpit 
     let mut cockpit = Cockpit::new();
     update(&mut cockpit, Message::LabRunRequested);
 
-    // 2. Run the preload via spawn_preload_on_rt (same as production path).
-    // ADR-0050 § D4: must use rt.spawn() to guarantee reactor context for
-    // any spawn_blocking calls inside the source implementation.
-    let range = DateRange::Last30d;
-    let preload_result =
-        match ui::lab::runner::spawn_preload_on_rt(&rt, source, cfg.clone(), range).await {
-            Ok(inner) => inner,
-            Err(e) => Err(SmolStr::new(format!("join error: {e}"))),
-        };
-
-    // 3. Classify: delegate to classify_preload_result logic.
-    //    Empty bars → tagged no-data notice (same path as production runner).
-    let outcome: ui::lab::runner::LabRunResult = match preload_result {
-        Ok((bars, _sha)) if bars.is_empty() => {
-            // Replicate classify_preload_result: build a tagged no-data message.
-            let window = cfg.range_label.as_str();
-            let body = ui::strings::LAB_YAHOO_NO_DATA_NOTICE
-                .replace("{ticker}", cfg.symbol.as_str())
-                .replace("{window}", window);
-            Err(SmolStr::new(format!(
-                "{}{}",
-                ui::lab::runner::preload_notice::NO_DATA_TAG,
-                body
-            )))
+    // 2. The production Task, with the mock injected at the one Yahoo call
+    //    site (`run_yahoo_preload_arm` inside `spawn_lab_run`).
+    let (cancel_handle, cancel_rx) = ui::lab::runner::cancellation_pair();
+    let (progress_tx, _progress_rx) = backtest::progress::progress_pair();
+    let task =
+        ui::lab::runner::spawn_lab_run(Some(&rt), cfg, cancel_rx, progress_tx, None, Some(source));
+    let mut stream = iced_test::runtime::task::into_stream(task)
+        .expect("HARNESS: spawn_lab_run must return a Task with a stream");
+    let outcome = match stream.next().await {
+        Some(Action::Output(Message::LabRunCompleted(r))) => r,
+        Some(Action::Output(other)) => {
+            panic!("HARNESS: the Task must output LabRunCompleted; got {other:?}")
         }
-        Ok((bars, _sha)) => {
-            // Non-empty bars — not expected in this test, handle gracefully.
-            Ok(ui::lab::runner::RunSummary {
-                strategy_id: cfg.strategy_id.clone(),
-                symbol: cfg.symbol.clone(),
-                report_path: None,
-                equity_series: bars
-                    .iter()
-                    .map(|_| (0i64, rust_decimal::Decimal::ZERO))
-                    .collect(),
-                fills: Vec::new(),
-                kpis: backtest::BacktestKpis::default(),
-                bars: std::sync::Arc::new(bars),
-                position_curve: Vec::new(),
-            })
-        }
-        Err(e) => Err(e),
+        Some(other) => panic!("HARNESS: the Task must output a message; got {other:?}"),
+        None => panic!("HARNESS: the Task's stream ended without an output"),
     };
+    drop(cancel_handle);
 
-    // 4. Dispatch LabRunCompleted → state::update (the classification gate).
+    // 3. Dispatch LabRunCompleted → state::update (the classification gate).
     update(&mut cockpit, Message::LabRunCompleted(outcome));
 
     cockpit
@@ -198,7 +209,7 @@ async fn case_a_empty_source_routes_to_notice() {
         cockpit.lab_state.last_run_notice.is_some(),
         "Case A (empty source): last_run_notice must be Some — \
          no-data outcome must show a muted notice, not disappear silently.\n\
-         P-ER-1 falsifier: drop NO_DATA_TAG from no_data_message → this assertion fails.\n\
+         T-T4 F-P7 falsifier: bypass classify_preload_result in run_yahoo_preload_arm → this assertion fails.\n\
          Actual notice: {:?}\nActual error: {:?}",
         cockpit.lab_state.last_run_notice,
         cockpit.lab_state.last_run_error,

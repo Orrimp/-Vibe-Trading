@@ -13,10 +13,16 @@
 //! parameter on `spawn_lab_run` (the pre-review docs claimed one); injection
 //! happens by calling this seam with any `LabBinanceBarSource`.
 //!
-//! Mirrors `spawn_lab_run_yahoo_harness.rs`'s real pattern: a mock
-//! implementing `LabBarSource` + the marker trait, driven directly (the
-//! `iced::Task` returned by `spawn_lab_run` cannot be polled without an iced
-//! runtime).
+//! Mirrors `spawn_lab_run_yahoo_harness.rs`'s arm pattern: a mock
+//! implementing `LabBarSource` + the marker trait, with the production arm
+//! driven directly. (The `iced::Task` that `spawn_lab_run` returns CAN be
+//! polled without an iced runtime, through
+//! `iced_test::runtime::task::into_stream`; the yahoo harness's `task_driven`
+//! tests do that since story 2-63 Wave F. This file drives the arm only:
+//! there is no Binance override parameter to inject a mock into the Task.)
+//!
+//! No T-T4 probe (story 2-63 Wave F, AC4): Wave F edits only this module doc;
+//! the subject `run_binance_preload_arm` and these tests are unchanged.
 //!
 //! ## `#[cfg(feature = "live")]` gate
 //!

@@ -40,13 +40,12 @@ use rust_decimal::Decimal;
 use smol_str::SmolStr;
 use trading_core::{Bar, Symbol, Venue};
 
-// cockpit-activity-status-bar v0.1.0 T-D-N7 — import ActivitySender/Kind
-// only when the `live` feature (and therefore the `agent` crate) is enabled.
 // cockpit-activity-status-bar v0.1.0 T-D-N7 — import ActivityKind for the
-// Yahoo preload producer wiring inside `spawn_lab_run`. `ActivitySender` is
-// used via the `agent::ActivitySender` path in the parameter type.
-#[cfg(feature = "live")]
-#[cfg(feature = "yahoo")] // sole consumer is the yahoo preload activity
+// Yahoo preload producer wiring. Its sole consumer is `run_yahoo_preload_arm`
+// (story 2-63 Wave F), which is gated on `live` only, so the import is too;
+// a `binance`-without-`yahoo` build (`binance` implies `live`) needs it.
+// `ActivitySender` is used via the `agent::activity::ActivitySender` path.
+#[cfg(feature = "live")] // sole consumer: run_yahoo_preload_arm (live-only)
 use agent::activity::ActivityKind;
 
 use crate::lab::equity_loader::LabTuple;
@@ -217,11 +216,12 @@ pub type PreloadFuture<'a> = std::pin::Pin<
 /// `LabYahooBarSource` and `LabBinanceBarSource` are kept as distinct
 /// **marker super-traits** of this base so the two injection seams stay
 /// type-distinct and self-documenting, while the spawn helper is generic over
-/// the shared `LabBarSource`. The seams are NOT symmetric (review patch 5):
-/// Yahoo injects via the real `yahoo_source_override` PARAMETER on
-/// `spawn_lab_run`; Binance has no such parameter — its seam is the pub
-/// [`run_binance_preload_arm`] function (the production arm itself), which
-/// tests call directly with a mock.
+/// the shared `LabBarSource`. Both seams are pub arm functions — the
+/// production arms themselves — that tests call directly with a mock:
+/// [`run_yahoo_preload_arm`] and [`run_binance_preload_arm`] (review patch 5;
+/// story 2-63 Wave F). Yahoo also keeps the `yahoo_source_override`
+/// PARAMETER on `spawn_lab_run`, which routes into the same single Yahoo
+/// call site; Binance has no such parameter.
 ///
 /// Object-safe via `BoxFuture` return (no async-trait crate needed).
 /// Bounded by `Send + Sync + 'static` so the impl can be moved into
@@ -252,11 +252,11 @@ pub trait LabBarSource: Send + Sync + 'static {
 /// `LabYahooBarSource` only TAGS a type as the Yahoo seam (so the
 /// `yahoo_source_override` injection parameter is type-distinct from the
 /// Binance seam, [`run_binance_preload_arm`]). Because
-/// `dyn LabYahooBarSource: LabBarSource`, the existing
-/// `spawn_preload_on_rt(&rt, Box::new(DefaultLabYahooBarSource), ..)` call
-/// site — and the `lab_runner_preload_callthrough_e2e` regression guard —
-/// keep coercing `Box<dyn LabYahooBarSource>` into the generalized spawn
-/// helper's `Box<S: LabBarSource + ?Sized>` unchanged.
+/// `dyn LabYahooBarSource: LabBarSource`, the one Yahoo call
+/// `spawn_preload_on_rt(rt, source, ..)` inside [`run_yahoo_preload_arm`] —
+/// and the `lab_runner_preload_callthrough_e2e` regression guard — coerce
+/// `Box<dyn LabYahooBarSource>` into the generalized spawn helper's
+/// `Box<S: LabBarSource + ?Sized>` for every Yahoo source.
 ///
 /// Feature gate: only compiled under `live` so tests with `--features live`
 /// can construct mocks without requiring the `yahoo` feature flag.
@@ -324,8 +324,8 @@ impl LabBinanceBarSource for DefaultLabBinanceBarSource {}
 /// # ADR-0050 § D4 (rt.spawn fix — recurrence #3)
 ///
 /// The `rt` field has been removed. The production path now spawns the entire
-/// `preload_yahoo_bars` call onto the tokio runtime via `rt.spawn(async move
-/// { preload_yahoo_bars(cfg, range).await })` in `spawn_lab_run`. Running the
+/// `preload_yahoo_bars` call onto the tokio runtime via [`spawn_preload_on_rt`]
+/// in [`run_yahoo_preload_arm`] (story 2-63 Wave F). Running the
 /// future on a tokio worker thread (not iced's `futures::ThreadPool`) guarantees
 /// reactor context is present for reqwest's DNS `spawn_blocking` and all
 /// `tokio::time::*` calls. See `bug-64-arch-revalidation-rt-spawn-2026-05-29.md`.
@@ -358,9 +358,9 @@ impl LabYahooBarSource for DefaultLabYahooBarSource {}
 ///
 /// This function IS the single `rt.spawn()` enforcement point. ALL preload
 /// paths route their preload call through here:
-/// - the mock Yahoo injection path (`yahoo_source_override = Some(...)`),
-/// - the production Yahoo path (`DefaultLabYahooBarSource` via `#[cfg(feature
-///   = "yahoo")]`),
+/// - the Yahoo path, [`run_yahoo_preload_arm`], for every Yahoo source (an
+///   override, or `DefaultLabYahooBarSource` under `#[cfg(feature =
+///   "yahoo")]`; story 2-63 Wave F),
 /// - and (simple-strategies-realdata T-B3) the Binance path — production AND
 ///   mock alike via [`run_binance_preload_arm`] (`DefaultLabBinanceBarSource`
 ///   under `#[cfg(feature = "binance")]`; there is no
@@ -1155,10 +1155,10 @@ fn classify_preload_result(
 /// (`crates/ui/tests/spawn_lab_run_binance_harness.rs`) calls it with a mock
 /// `LabBinanceBarSource`. There is NO `binance_source_override` parameter on
 /// `spawn_lab_run` — Binance injection happens by exercising this seam
-/// directly (the Yahoo seam differs: it has a real `yahoo_source_override`
-/// parameter, and `spawn_lab_run_yahoo_harness.rs` additionally replicates
-/// the preload block inline because `iced::Task` cannot be driven without an
-/// iced runtime).
+/// directly. The Yahoo seam is [`run_yahoo_preload_arm`] (story 2-63 Wave F);
+/// Yahoo additionally keeps a `yahoo_source_override` parameter, through which
+/// tests drive `spawn_lab_run`'s Task with
+/// `iced_test::runtime::task::into_stream`.
 ///
 /// Behaviour (mirrors the Yahoo arm):
 /// 1. Emit the `Progress { 0, 1, 0 }` sentinel BEFORE the preload await so
@@ -1219,6 +1219,177 @@ pub async fn run_binance_preload_arm(
     }
 }
 
+/// Run the Yahoo preload arm of `spawn_lab_run` against an injectable
+/// [`LabYahooBarSource`] — THE Yahoo test seam (story 2-63 Wave F; mirrors
+/// [`run_binance_preload_arm`]).
+///
+/// This IS the production glue, not a copy: `spawn_lab_run` calls this exact
+/// function once, with `yahoo_source_override` or, when that is `None`,
+/// `Box::new(DefaultLabYahooBarSource)`. The harnesses
+/// (`spawn_lab_run_yahoo_harness.rs`, `lab_runner_ticker_e2e.rs`,
+/// `lab_runner_cancel_e2e.rs`) call it with a mock source from a thread with
+/// no tokio context, which is how iced's `futures::ThreadPool` polls it.
+///
+/// Behaviour:
+/// 1. Emit the `Progress { 0, 1, 0 }` sentinel before any await.
+/// 2. Build a 250 ms ticker under `rt.enter()`. Without the guard,
+///    `tokio::time::interval` panics on the polling thread (ADR-0050 § D1).
+/// 3. Start the `YahooPreload` activity when an `ActivitySender` is wired.
+/// 4. Spawn the preload via [`spawn_preload_on_rt`] (ADR-0050 § D4).
+/// 5. Race fetch, cancel and ticker in that `biased` order. Cancel calls
+///    `abort()` on the preload task; dropping the `JoinHandle` only detaches it.
+/// 6. Classify via `classify_preload_result` (private); on success set
+///    `scenario_cfg.data_source` to `YahooCache` and `scenario_cfg.bars_override`.
+///
+/// # Errors
+///
+/// Returns the classified preload error (tagged no-data notice or hard error),
+/// a `"preload task join error: …"`, or `"operator cancelled during preload"`.
+/// `scenario_cfg` is left untouched in every error case.
+#[cfg(feature = "live")]
+pub async fn run_yahoo_preload_arm(
+    rt: &tokio::runtime::Handle,
+    source: Box<dyn LabYahooBarSource>,
+    cfg: &LabRunConfig,
+    scenario_cfg: &mut backtest::ScenarioConfig,
+    progress_tx: &backtest::progress::ProgressSender,
+    cancel: &RunCancelReceiver,
+    activity: Option<&agent::activity::ActivitySender>,
+) -> Result<(), SmolStr> {
+    // Bug #64 D.1.1 — the preload sentinel. It is emitted FIRST, before any
+    // await, so the progress label moves at once rather than sitting static
+    // (`yahoo_arm_emits_sentinel_before_preload_resolves` pins it). Spawn the
+    // preload ONCE and race its JoinHandle below; consume the interval's
+    // immediate first tick after the sentinel, so the first ticker event is
+    // ~250 ms after it. Once the fetch wins, the loop exits and the ticker is
+    // dropped, so no ticker event follows the arm's return
+    // (`yahoo_arm_ticker_stops_after_preload_resolves`).
+    //
+    // `total_bars = 1` is the sentinel placeholder; the real value arrives
+    // from the engine's bar-loop first emit.
+    progress_tx.try_send(backtest::progress::Progress {
+        current_bar: 0,
+        total_bars: 1,
+        elapsed_ms: 0,
+    });
+
+    let preload_start = std::time::Instant::now();
+    // D-R1.1 (Bug #64 attempt-3 / ADR-0050 § D1): this future is polled on
+    // iced's futures::ThreadPool, which has NO tokio reactor context.
+    // `tokio::time::interval` needs one at construction time: built without
+    // the guard it PANICS here, "there is no reactor running" (tokio 1.52
+    // `Sleep::new_timeout`; ADR-0050 § Changelog, story 2-63 Wave F). The gate
+    // is `lab_runner_ticker_e2e.rs::ticker_fires_at_least_3_times_in_1s_window`.
+    // Same pattern as `ui::live::server_time_stream_impl`.
+    //
+    // Tick every 250 ms — visible animation on cold cache.
+    let mut ticker = {
+        let _guard = rt.enter(); // enter tokio reactor context
+        tokio::time::interval(std::time::Duration::from_millis(250))
+        // _guard dropped here; the constructed Sleep futures carry their
+        // reactor binding and continue to fire.
+    };
+    // Consume the immediate (t=0) tick so the first sleep is ~250 ms from
+    // here — well after the sentinel has fired.
+    ticker.tick().await;
+
+    // T-D-N7 — cockpit-activity-status-bar Yahoo preload producer wiring
+    // (approach A: inline handle). Label: "Yahoo <SYMBOL> · <RANGE>". The
+    // `ActivityHandle` is Send but not Sync; it is held across this
+    // function's awaits inside `spawn_lab_run`'s Send-required
+    // `iced::Task::perform` future and never leaves this arm.
+    let yahoo_label = format!("Yahoo {} · {}", cfg.symbol, cfg.range_label);
+    let yahoo_activity_handle = activity.map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
+
+    // ADR-0050 § D4 (rt.spawn fix — recurrence #3): route through
+    // spawn_preload_on_rt, the single guarded enforcement point
+    // (T-BUG64-UN1). Every Yahoo source, the default and an override, takes
+    // this one path (lab_runner_preload_callthrough_e2e.rs).
+    let cfg_for_spawn = cfg.clone();
+    let range_for_spawn = scenario_cfg.range.clone();
+    let mut fetch_join = spawn_preload_on_rt(rt, source, cfg_for_spawn, range_for_spawn);
+
+    // Race the JoinHandle (not the raw future) against cancel and the ticker,
+    // `biased` in that order: fetch > cancel > ticker (Bug #64 attempt-3 /
+    // ADR-0050).
+    let preload_result = loop {
+        // D-R1.4 (ADR-0050 § D1 defense-in-depth): yield to the executor
+        // before each select! iteration, a canonical wake point for iced's
+        // subscription reconciliation. Cost: ~0 µs.
+        tokio::task::yield_now().await;
+
+        tokio::select! {
+            biased;
+            joined = &mut fetch_join => {
+                // JoinError means the spawned task panicked or was aborted —
+                // map it to Err(SmolStr) so the UI shows a failure banner
+                // rather than hanging.
+                match joined {
+                    Ok(inner) => break inner,
+                    Err(e) => break Err(SmolStr::new(format!(
+                        "preload task join error: {e}"
+                    ))),
+                }
+            }
+            // D-R2.2 (Bug #64 / ADR-0050 § D2): operator Stop during the
+            // preload. The token resolves when the RunCancelHandle is dropped.
+            // ADR-0050 § D4 + T-BUG64-RS3: the arm MUST abort the JoinHandle —
+            // dropping it only DETACHES the task and the HTTP request keeps
+            // running. The activity then ends Failed("operator cancelled"),
+            // not Cancelled (pinned as current behaviour by
+            // `lab_runner_cancel_e2e.rs`; bug-log candidate, story 2-63 Wave F).
+            () = cancel.cancelled() => {
+                fetch_join.abort();
+                if let Some(h) = yahoo_activity_handle {
+                    h.fail("operator cancelled");
+                }
+                return Err(smol_str::SmolStr::new(
+                    "operator cancelled during preload",
+                ));
+            }
+            _ = ticker.tick() => {
+                // Clamp to u64::MAX on overflow (impossible in practice —
+                // preload is bounded to ~5 min by the per-attempt timeout in
+                // fetch_with_backoff).
+                let elapsed_ms = u64::try_from(
+                    preload_start.elapsed().as_millis()
+                ).unwrap_or(u64::MAX);
+                // Non-blocking and lossy by design: a full receiver (buffer
+                // = 8) skips this tick rather than blocking the preload loop.
+                progress_tx.try_send(
+                    backtest::progress::Progress {
+                        current_bar: 0,
+                        total_bars: 1,
+                        elapsed_ms,
+                    },
+                );
+            }
+        }
+    };
+    // The ticker goes here: no ticker event after this point.
+    drop(ticker);
+
+    // lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 / M-DEV.5: classify every
+    // Yahoo preload result (zero bars → tagged no-data notice).
+    match classify_preload_result(preload_result, cfg) {
+        Ok((bars, _sha)) => {
+            scenario_cfg.data_source = backtest::engine::ScenarioDataSource::YahooCache;
+            scenario_cfg.bars_override = Some(bars);
+            // Dropping the handle emits End { Success } (R1.3).
+            drop(yahoo_activity_handle);
+            Ok(())
+        }
+        Err(e) => {
+            // End { Failed } before returning the error (R1.3 / F3), with the
+            // NO_DATA_TAG sentinel stripped for log cleanliness (Caution #4).
+            if let Some(handle) = yahoo_activity_handle {
+                handle.fail(preload_notice::classify(e.as_str()).msg().as_str());
+            }
+            Err(e)
+        }
+    }
+}
+
 /// Build an `iced::Task` that spawns a Lab run and posts the result back to
 /// the iced update loop as `Message::LabRunCompleted`.
 ///
@@ -1260,7 +1431,9 @@ pub fn spawn_lab_run(
     #[cfg(not(feature = "live"))] _activity_sender: Option<()>,
     // lab-recipe-test-harness T-D1 / ADR-0048: injectable Yahoo bar source.
     // None => production path (DefaultLabYahooBarSource via preload_yahoo_bars).
-    // Some(source) => test injection (e.g. MockLabYahooBarSource).
+    // Some(source) => test injection; its first callers are the story 2-63
+    // Wave F Task-driven tests (spawn_lab_run_yahoo_harness.rs). Both go
+    // through the one `run_yahoo_preload_arm` call below.
     // Only compiled under `live`; non-live builds receive a dummy Option<()>.
     #[cfg(feature = "live")] yahoo_source_override: Option<Box<dyn LabYahooBarSource>>,
     #[cfg(not(feature = "live"))] _yahoo_source_override: Option<()>,
@@ -1362,10 +1535,8 @@ pub fn spawn_lab_run(
         // cockpit-activity-status-bar T-D-N7: clone ActivitySender into the
         // async closure. ActivitySender wraps broadcast::Sender which is
         // Clone + Send — safe to move across the iced::Task::perform boundary.
-        // Consumed only by the yahoo preload activity below; a live build
-        // without `yahoo` (e.g. `--features binance`, which implies `live`)
-        // intentionally leaves it unused.
-        #[cfg_attr(not(feature = "yahoo"), allow(unused_variables))]
+        // Consumed by the single `run_yahoo_preload_arm` call below, which is
+        // compiled under `live` (story 2-63 Wave F).
         let activity_sender_for_closure = activity_sender;
         iced::Task::perform(
             async move {
@@ -1383,268 +1554,32 @@ pub fn spawn_lab_run(
                 // `fetch_and_cache` then retries the load. First Run on a
                 // ticker takes 30-60 s for the network round-trip; subsequent
                 // Runs hit the cache.
-                // lab-recipe-test-harness T-D1 / ADR-0048: choose the Yahoo source.
-                // When `yahoo_source_override` is `Some`, use it (test injection).
-                // When `None`, fall through to the production `#[cfg(feature = "yahoo")]`
-                // block which uses `DefaultLabYahooBarSource` (same as before).
-                //
-                // The `Option<Box<dyn LabYahooBarSource>>` is moved into the async
-                // closure above so it is available here regardless of yahoo feature.
-                let yahoo_source_moved: Option<Box<dyn LabYahooBarSource>> = yahoo_source_override;
-
-                // When a test source override is provided, use it for any
-                // data_source == YahooCache run (even when `yahoo` feature is off).
-                //
-                // ADR-0050 § D4 (T-BUG64-CT1): the mock injection path routes
-                // through `spawn_preload_on_rt` — the SAME rt.spawn() invariant
-                // as the production Yahoo path below. This ensures that a mock
-                // source calling `tokio::task::spawn_blocking` (e.g. the
-                // `SpawnBlockingFakeSource` in `lab_runner_preload_callthrough_e2e`)
-                // also finds a reactor, AND makes the regression test meaningful:
-                // reverting `spawn_preload_on_rt` to direct-await causes the
-                // callthrough test to panic with "no reactor running".
-                if let Some(source) = yahoo_source_moved {
-                    if cfg_for_preload.data_source == crate::lab::state::LabDataSource::YahooCache {
-                        // lab-recipe-test-harness T-D1: sentinel emission BEFORE preload.
-                        // This is the contract tested by `sentinel_fires_before_preload_await`.
-                        progress_tx.try_send(backtest::progress::Progress {
-                            current_bar: 0,
-                            total_bars: 1,
-                            elapsed_ms: 0,
-                        });
-
-                        // ADR-0050 § D4: spawn the mock preload on the tokio runtime
-                        // via spawn_preload_on_rt. This is identical to the production
-                        // Yahoo path at #[cfg(feature = "yahoo")] below — both use
-                        // rt.spawn() to guarantee reactor context for spawn_blocking.
-                        let cfg_for_mock_spawn = cfg_for_preload.clone();
-                        let range_for_mock_spawn = scenario_cfg.range.clone();
-                        let preload_result = match spawn_preload_on_rt(
+                // lab-recipe-test-harness T-D1 / ADR-0048, story 2-63 Wave F:
+                // ONE Yahoo call site. The override (tests) and the default
+                // (production) differ only in the boxed source, so a test that
+                // drives this Task with an override runs the exact call the
+                // shipped path takes (spawn_lab_run_yahoo_harness.rs). The `let`s
+                // between the two `if`s are deliberate (clippy collapsible_if).
+                if cfg_for_preload.data_source == crate::lab::state::LabDataSource::YahooCache {
+                    #[cfg(feature = "yahoo")]
+                    let yahoo_source: Option<Box<dyn LabYahooBarSource>> = Some(
+                        yahoo_source_override.unwrap_or_else(|| Box::new(DefaultLabYahooBarSource)),
+                    );
+                    // Unreachable without `yahoo` (YahooCache returns early
+                    // above); keeps the override consumed in a live-only build.
+                    #[cfg(not(feature = "yahoo"))]
+                    let yahoo_source: Option<Box<dyn LabYahooBarSource>> = yahoo_source_override;
+                    if let Some(source) = yahoo_source {
+                        run_yahoo_preload_arm(
                             &rt,
                             source,
-                            cfg_for_mock_spawn,
-                            range_for_mock_spawn,
+                            &cfg_for_preload,
+                            &mut scenario_cfg,
+                            &progress_tx,
+                            &cancel,
+                            activity_sender_for_closure.as_ref(),
                         )
-                        .await
-                        {
-                            Ok(inner) => inner,
-                            Err(join_err) => {
-                                Err(SmolStr::new(format!("mock preload join error: {join_err}")))
-                            }
-                        };
-                        // lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 / M-DEV.5:
-                        // apply classify_preload_result to BOTH arms (Caution #2).
-                        match classify_preload_result(preload_result, &cfg_for_preload) {
-                            Ok((bars, _sha)) => {
-                                scenario_cfg.data_source =
-                                    backtest::engine::ScenarioDataSource::YahooCache;
-                                scenario_cfg.bars_override = Some(bars);
-                            }
-                            Err(e) => {
-                                return Err(e);
-                            }
-                        }
-                    }
-                } else {
-                    #[cfg(feature = "yahoo")]
-                    {
-                        if cfg_for_preload.data_source
-                            == crate::lab::state::LabDataSource::YahooCache
-                        {
-                            // Bug #64 D.1.1 — animate the preload sentinel.
-                            //
-                            // During cold-cache Yahoo fetches (30-60 s on first run
-                            // for a ticker, ≤5 s on cache hits) the label now ticks
-                            // visibly instead of sitting static at "0 / 1 bars · 0.0s".
-                            //
-                            // Implementation (attempt 2 — harness-gated):
-                            //   1. Emit sentinel FIRST (elapsed_ms == 0) — this is
-                            //      the contract that Surface 1 Test 1 guards. It must
-                            //      fire BEFORE the first ticker tick.
-                            //   2. Pin the preload future once — attempt 1 bug: the
-                            //      loop called `preload_yahoo_bars(...)` fresh each
-                            //      iteration creating a new future, so preload never
-                            //      completed. Pinning ensures the same future is
-                            //      polled to completion.
-                            //   3. Consume the ticker's immediate tick AFTER the
-                            //      sentinel emit so the first interval is ~250 ms
-                            //      from the sentinel (not before it).
-                            //   4. Race: `select! { biased; result = &mut pinned => break,
-                            //                        _ = ticker.tick() => emit elapsed }`.
-                            //      When preload wins, the loop exits; the ticker is
-                            //      dropped and no more events leak (Surface 1 Test 3 guard).
-                            //
-                            // `total_bars = 1` is the sentinel placeholder; real value
-                            // arrives from the engine's bar-loop first emit.
-                            progress_tx.try_send(backtest::progress::Progress {
-                                current_bar: 0,
-                                total_bars: 1,
-                                elapsed_ms: 0,
-                            });
-
-                            let preload_start = std::time::Instant::now();
-                            // D-R1.1 (Bug #64 attempt-3 / ADR-0050 § D1):
-                            // iced::Task::perform closures run on iced's
-                            // futures::ThreadPool executor which has NO tokio
-                            // reactor context. `tokio::time::interval` requires a
-                            // reactor at construction time; without `rt.enter()` the
-                            // returned Sleep futures are permanently Poll::Pending
-                            // (no panic, just silent hang — exact operator symptom
-                            // "endless spinning 0/1 bars · 0.0s").
-                            //
-                            // Pattern from ServerTimeRecipe (live.rs:780-797) and
-                            // documented in cockpit_live.rs:110-125 doc comment.
-                            //
-                            // Tick every 250 ms — visible animation on cold cache.
-                            let mut ticker = {
-                                let _guard = rt.enter(); // enter tokio reactor context
-                                tokio::time::interval(std::time::Duration::from_millis(250))
-                                // _guard dropped here; the constructed Sleep futures
-                                // carry their reactor binding and continue to fire.
-                            };
-                            // Consume the immediate (t=0) tick so the first sleep is
-                            // ~250 ms from here — well after the sentinel has fired.
-                            ticker.tick().await;
-
-                            // T-D-N7 — cockpit-activity-status-bar Yahoo preload
-                            // producer wiring (approach A: inline handle, no Send
-                            // needed — preload runs in the iced::Task::perform
-                            // closure, NOT inside rt.spawn).
-                            //
-                            // Build label: "Yahoo <SYMBOL> · <RANGE>" (≤ 64 chars).
-                            // ActivitySender is Clone + Send; ActivityHandle is !Send
-                            // but lives entirely within this async closure (single task).
-                            let yahoo_label = format!(
-                                "Yahoo {} · {}",
-                                cfg_for_preload.symbol, cfg_for_preload.range_label
-                            );
-                            let yahoo_activity_handle = activity_sender_for_closure
-                                .as_ref()
-                                .map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
-
-                            // ADR-0050 § D4 (rt.spawn fix — recurrence #3):
-                            // Route through spawn_preload_on_rt — the single
-                            // guarded enforcement point (T-BUG64-UN1). This
-                            // ensures DefaultLabYahooBarSource follows the same
-                            // rt.spawn() path as the mock injection branch above,
-                            // so the callthrough regression test
-                            // (lab_runner_preload_callthrough_e2e.rs) catches any
-                            // revert of either site via compile error or runtime
-                            // panic. See bug-64-d11-attempt-3 tester report
-                            // § 9 Option B for rationale.
-                            let cfg_for_spawn = cfg_for_preload.clone();
-                            let range_for_spawn = scenario_cfg.range.clone();
-                            let mut fetch_join = spawn_preload_on_rt(
-                                &rt,
-                                Box::new(DefaultLabYahooBarSource),
-                                cfg_for_spawn,
-                                range_for_spawn,
-                            );
-
-                            // Race the JoinHandle (not the raw future) against
-                            // ticker and cancel.
-                            //
-                            // Three select! arms (Bug #64 attempt-3 / ADR-0050):
-                            //   1. fetch_join — winning case, breaks the loop.
-                            //   2. cancel     — D-R2.2: operator Stop during preload.
-                            //   3. ticker     — 250 ms progress animation.
-                            // biased order: fetch > cancel > ticker.
-                            let preload_result = loop {
-                                // D-R1.4 (ADR-0050 § D1 defense-in-depth):
-                                // Yield to the executor before each select! iteration.
-                                // This gives iced's subscription reconciliation a
-                                // canonical wake point, making the sentinel-vs-recipe-
-                                // register ordering deterministic rather than scheduler-
-                                // dependent. Cost: ~0 µs.
-                                tokio::task::yield_now().await;
-
-                                tokio::select! {
-                                    biased;
-                                    joined = &mut fetch_join => {
-                                        // Surface both JoinError and the inner Result.
-                                        // JoinError means the spawned task panicked or
-                                        // was aborted — map to Err(SmolStr) so the UI
-                                        // shows a failure banner rather than hanging.
-                                        match joined {
-                                            Ok(inner) => break inner,
-                                            Err(e) => break Err(SmolStr::new(format!(
-                                                "preload task join error: {e}"
-                                            ))),
-                                        }
-                                    }
-                                    // D-R2.2 (Bug #64 / ADR-0050 § D2):
-                                    // Third arm — operator Stop during cold-cache preload.
-                                    // Previously zero cancel checks existed in this loop
-                                    // (structural omission — R2 root cause).
-                                    // Now: cancel.cancelled() is a future that resolves
-                                    // when RunCancelHandle is dropped (Stop button).
-                                    //
-                                    // ADR-0050 § D4 + T-BUG64-RS3: MUST call abort()
-                                    // on the JoinHandle. Dropping a JoinHandle only
-                                    // DETACHES the task — the HTTP request keeps
-                                    // running. abort() stops it at the next yield
-                                    // point (reqwest yields frequently; well within
-                                    // ≤500 ms Stop SLA).
-                                    () = cancel.cancelled() => {
-                                        fetch_join.abort();
-                                        // Emit End{Cancelled} activity (if wired).
-                                        if let Some(h) = yahoo_activity_handle {
-                                            h.fail("operator cancelled");
-                                        }
-                                        return Err(smol_str::SmolStr::new(
-                                            "operator cancelled during preload",
-                                        ));
-                                    }
-                                    _ = ticker.tick() => {
-                                        // Clamp to u64::MAX on overflow (impossible in
-                                        // practice — preload is bounded to ~5 min by
-                                        // the per-attempt timeout in fetch_with_backoff).
-                                        let elapsed_ms = u64::try_from(
-                                            preload_start.elapsed().as_millis()
-                                        ).unwrap_or(u64::MAX);
-                                        // Non-blocking try_send: if the iced receiver
-                                        // is temporarily full (buffer = 8), skip this
-                                        // tick rather than blocking the preload loop.
-                                        // ProgressSender::try_send returns () — no
-                                        // error value to discard (lossy by design).
-                                        progress_tx.try_send(
-                                            backtest::progress::Progress {
-                                                current_bar: 0,
-                                                total_bars: 1,
-                                                elapsed_ms,
-                                            },
-                                        );
-                                    }
-                                }
-                            };
-                            // Ticker dropped here — no more ticker events after this
-                            // point (ensures Surface 1 Test 3 contract).
-                            drop(ticker);
-
-                            // lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 / M-DEV.5:
-                            // apply classify_preload_result to BOTH arms (Caution #2).
-                            match classify_preload_result(preload_result, &cfg_for_preload) {
-                                Ok((bars, _sha)) => {
-                                    scenario_cfg.data_source =
-                                        backtest::engine::ScenarioDataSource::YahooCache;
-                                    scenario_cfg.bars_override = Some(bars);
-                                    // yahoo_activity_handle dropped here →
-                                    // emits End { Success } automatically (R1.3).
-                                    drop(yahoo_activity_handle);
-                                }
-                                Err(e) => {
-                                    // Emit End { Failed } before returning the error (R1.3 / F3).
-                                    // Use classify().msg() for log cleanliness (Caution #4):
-                                    // strip the NO_DATA_TAG sentinel from the activity log.
-                                    if let Some(handle) = yahoo_activity_handle {
-                                        handle.fail(
-                                            preload_notice::classify(e.as_str()).msg().as_str(),
-                                        );
-                                    }
-                                    return Err(e);
-                                }
-                            }
-                        }
+                        .await?;
                     }
                 }
 

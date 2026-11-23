@@ -8,9 +8,10 @@
 //!
 //! It pins agent's `ActivityHandle` API under a `YahooPreload` kind with a
 //! label THIS TEST builds; it never calls production. The real producer is the
-//! Yahoo preload arm of `spawn_lab_run` (unpinned until story 2-63 Wave F). A
-//! regression in that producer's kind, label or end outcome leaves this file
-//! green.
+//! Yahoo preload arm of `spawn_lab_run`, pinned since Wave F by
+//! `spawn_lab_run_yahoo_harness.rs::yahoo_arm_reports_preload_activity_start_then_success_end`
+//! through `ui::lab::runner::run_yahoo_preload_arm`. A regression in that
+//! producer's kind, label or end outcome leaves THIS file green.
 //!
 //! No T-T4 probe (story 2-63 E3, AC4): the subject is agent's API, not ui code.
 //!

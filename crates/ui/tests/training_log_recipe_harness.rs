@@ -353,8 +353,9 @@ impl MockTrainingLogChannel {
 /// then live with nothing more buffered ([`assert_pending`]); once the mock
 /// (the only sender) drops, a bounded drain finds the END and nothing more.
 ///
-/// Analogue of v0.1.0 Test 1 (`sentinel_fires_before_preload_await`) applied
-/// to `TrainingLogRecipe`.
+/// Analogue of the v0.1.0 Yahoo sentinel test (since story 2-63 Wave F
+/// `spawn_lab_run_yahoo_harness.rs::yahoo_arm_emits_sentinel_before_preload_resolves`)
+/// applied to `TrainingLogRecipe`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sentinel_log_line_emitted_before_subprocess_spawn() {
     let mock = MockTrainingLogChannel::new();

@@ -34,11 +34,14 @@
 //!       → `fetch_with_backoff`
 //!         → `tokio::time::timeout(...)` ← PANICS without rt.enter()
 //!
-//! All existing e2e tests (`lab_runner_ticker_e2e`, `lab_runner_cancel_e2e`)
-//! use `#[tokio::test]` which DOES provide a tokio reactor context, so they
-//! CANNOT catch this panic. This test uses plain `#[test]` + manually
-//! created `tokio::Runtime` + `futures::executor::block_on` to simulate
-//! iced's non-tokio executor context.
+//! Until story 2-63 Wave F the e2e tests `lab_runner_ticker_e2e` and
+//! `lab_runner_cancel_e2e` used `#[tokio::test]`, whose ambient reactor
+//! context hid this panic. Since Wave F both call the production
+//! `run_yahoo_preload_arm` through `futures::executor::block_on` on a thread
+//! with no tokio context, so they DO catch it (T-T4 F-P3 in
+//! `lab_runner_ticker_e2e.rs`). This test uses plain `#[test]` + a manually
+//! created `tokio::Runtime` + `futures::executor::block_on` to pin the
+//! premise itself.
 //!
 //! ## Regression gate
 //!

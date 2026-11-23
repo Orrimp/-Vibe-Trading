@@ -5,7 +5,7 @@ status: accepted
 date: 2026-05-29
 supersedes: none
 superseded-by: none
-updated: 2026-05-29
+updated: 2026-11-23
 ---
 
 # ADR-0050: iced ↔ tokio runtime-context contract and cooperative cancellation primitives
@@ -322,3 +322,25 @@ invariant.
   The per-line `rt.enter()` guards in `fetch_with_backoff` are removed
   (redundant and misleading once the task runs on-runtime).
   Reference: `bug-64-arch-revalidation-rt-spawn-2026-05-29.md`.
+
+- 2026-11-23 (story 2-63 Wave F — verified in the tokio 1.52.3 source,
+  not re-decided; measured by T-T4 probe F-P3): D1's
+  "permanently `Poll::Pending` — no panic, just silent hang" (§ D1), § D3's
+  "the timer is permanently pending" and § Consequences "No panic" are
+  wrong for the pinned tokio 1.52.3.
+  `tokio::time::interval` → `Sleep::new_timeout` calls
+  `scheduler::Handle::current()` (tokio `src/time/sleep.rs:255`), which
+  panics "there is no reactor running, must be called from the context of a
+  Tokio 1.x runtime" (`src/runtime/scheduler/mod.rs:95`) when built
+  off-runtime — the same panic the 2026-05-29 hotfix row recorded for
+  `tokio::time::timeout`. The D1 invariant is unchanged; only its failure
+  mode is corrected. D3: the reference tests
+  `lab_runner_ticker_e2e.rs::ticker_fires_at_least_3_times_in_1s_window` and
+  `lab_runner_cancel_e2e.rs::stop_during_preload_exits_within_500ms` keep
+  their names, but now call the production
+  `ui::lab::runner::run_yahoo_preload_arm` (extracted from `spawn_lab_run`,
+  which calls it once for every Yahoo source) on a thread with no tokio
+  context. "The test MUST replicate the production `rt.enter()` guard" (§ D3)
+  is superseded by "the test MUST call the production arm off-runtime".
+  Measured before the change (F-V1, one build): the old copies stayed green
+  with the guard and `abort()` deleted and the cancel arm made never-ready.

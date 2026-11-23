@@ -264,8 +264,11 @@ fn spawn_blocking_with_rt_spawn_does_not_panic() {
 /// Verifies that aborting a JoinHandle stops the spawned task, NOT just
 /// detaches it. This is the T-BUG64-RS3 cancel correctness gate.
 ///
-/// The cancel arm in spawn_lab_run calls `fetch_join.abort()` when the
-/// CancellationToken fires. Dropping the JoinHandle alone would DETACH the
+/// The cancel arm of `run_yahoo_preload_arm` (the Yahoo preload arm
+/// `spawn_lab_run` calls) runs `fetch_join.abort()` when the
+/// CancellationToken fires; its ui-path pin is
+/// `lab_runner_cancel_e2e.rs::stop_during_preload_aborts_preload_task` (T-T4
+/// F-P5). Dropping the JoinHandle alone would DETACH the
 /// task (HTTP keeps running). abort() is the correct call.
 ///
 /// **Pass condition**: after `fetch_join.abort()`, awaiting the JoinHandle

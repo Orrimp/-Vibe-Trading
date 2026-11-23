@@ -1,258 +1,225 @@
-//! E2E test — Stop during cold-cache preload exits within ≤ 500 ms.
+//! E2E test — Stop during the Yahoo preload exits within ≤ 500 ms and aborts
+//! the preload task, with the PRODUCTION arm polled off-runtime.
 //!
-//! Bug #64 D.1.1 attempt-3 / ADR-0050 § D2 + D3.
+//! Bug #64 D.1.1 attempt-3 / ADR-0050 § D2 + D3; rewritten by story 2-63
+//! (v0.3) Wave F.
 //!
 //! ## What this test proves
 //!
-//! D-R2.3: After the D-R2.1 + D-R2.2 fix (`CancellationToken` + third
-//! `select!` arm in the preload loop), dispatching Stop within 100 ms
-//! of run-start MUST cause the run to exit within 500 ms total wall-clock
-//! with an error containing "cancelled".
+//! D-R2.3: with the `CancellationToken` and the cancel arm of the preload
+//! `select!`, Stop (dropping the `RunCancelHandle`) during a 5 s mock preload
+//! makes the arm return `Err("operator cancelled during preload")` within
+//! 500 ms. T-BUG64-RS3: the cancel arm must `abort()` the preload task —
+//! dropping its `JoinHandle` would only DETACH it, and the HTTP request would
+//! keep running.
 //!
-//! **Regression guard**: if the `_ = cancel.cancelled() =>` arm is absent
-//! from the preload `select!`, Stop drops the `RunCancelHandle` (which
-//! previously used std `mpsc::sync_channel(0)` disconnect idiom) but
-//! `is_cancelled()` is never polled during the preload window — so the
-//! preload runs to completion before cancel is observed (30-60 s on
-//! cold cache). This test catches that structural omission.
+//! The subject is `ui::lab::runner::run_yahoo_preload_arm`, the function
+//! `spawn_lab_run` calls for every Yahoo source, driven by
+//! `tests/yahoo_arm_support/mod.rs` with `futures::executor::block_on` on a
+//! bare thread with NO tokio context (how iced polls the Lab Task). The mock
+//! source records when it is DROPPED: the spawned preload task owns it, so
+//! `dropped && !completed` right after the return is the observable of
+//! `abort()`.
 //!
-//! ## Implementation approach
+//! Until Wave F this file copied the arm's `select!` loop inline under
+//! `#[tokio::test]` and asserted on the copy; deleting the cancel arm or the
+//! `abort()` from `crates/ui/src/lab/runner.rs` left it green.
 //!
-//! The test inlines the production preload select! loop (same pattern
-//! as `spawn_lab_run_yahoo_harness.rs`), using a 5 s mock preload that
-//! sleeps for 5 s before returning. Cancel is dispatched after 100 ms.
-//! We assert the loop exits within 500 ms total (well before the 5 s
-//! mock would complete).
+//! The cancelled preload ends its `YahooPreload` activity
+//! `Failed("operator cancelled")`, not `Cancelled`: pinned here AS CURRENT
+//! BEHAVIOUR (a bug-log candidate recorded by story 2-63 Wave F, not a design
+//! claim).
+//!
+//! ## T-T4 falsification probe table (story 2-63 AC4)
+//!
+//! Each probe is ONE exact-once replace in `crates/ui/src/lab/runner.rs`,
+//! located by symbol + quoted text (a one-line OLD has `grep -c` = 1; F-P1's
+//! OLD is a 101-line block, unique as a block, verbatim in `PROBES.md`). Run
+//! `cargo test -p ui --test lab_runner_cancel_e2e`, restore from a `cp -p`
+//! snapshot, `cmp` it, `touch` it, re-run GREEN.
+//!
+//! | # | symbol | quoted line today | mutation | expected RED |
+//! |---|---|---|---|---|
+//! | F-P4 (AC4, designated here) | `run_yahoo_preload_arm` | `() = cancel.cancelled() => {` | `() = std::future::pending::<()>() => {` | `stop_during_preload_exits_within_500ms` at "arm must return within 500 ms of Stop"; the other two tests also red |
+//! | F-P5 (AC4, designated here) | `run_yahoo_preload_arm` | `fetch_join.abort();` | delete it | `stop_during_preload_aborts_preload_task` at "preload task must be aborted (source dropped) within 200 ms of the arm returning"; `cancel_before_preload_start_is_instant` also red |
+//! | F-P8 | `run_yahoo_preload_arm` | `h.fail("operator cancelled");` | `let _ = &h;` | `stop_during_preload_exits_within_500ms` at "cancel must end the YahooPreload activity Failed(\"operator cancelled\")" |
+//! | F-P1 (AC4) | `run_yahoo_preload_arm` | ONE block: from the sentinel `try_send` directly above `let preload_start = std::time::Instant::now();` through `drop(ticker);` | the same block with the sentinel moved after `drop(ticker);` | `cancel_before_preload_start_is_instant` at "the items before the marker must be exactly [sentinel]"; `stop_during_preload_exits_within_500ms` also red at "precondition: the sentinel must arrive first" (reasoned) |
+//!
+//! Expected under F-P4 (reasoned): rustc warns that `cancel` is unused, and a
+//! detached "runtime shutting down" line may print when the test's runtime
+//! drops under the still-running arm.
 
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::time::{Duration, Instant};
+#[path = "yahoo_arm_support/mod.rs"]
+mod support;
 
-use backtest::cancel::cancellation_pair;
-use backtest::progress::{Progress, progress_pair};
+use std::time::Duration;
+
+use agent::activity::{ActivityEvent, ActivityKind, ActivityOutcome, ActivityPhase};
+use backtest::engine::ScenarioDataSource;
 use smol_str::SmolStr;
-use ui::lab::runner::LabRunConfig;
-use ui::lab::state::LabDataSource;
+use support::{
+    Behavior, Next, STALE_BARS, Spec, becomes_true, is_sentinel, sleep_until, start_arm,
+};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+/// The production cancel text `run_yahoo_preload_arm` returns.
+const CANCELLED: &str = "operator cancelled during preload";
 
-fn yahoo_cache_cfg() -> LabRunConfig {
-    LabRunConfig {
-        strategy_id: SmolStr::new("v0.sma"),
-        symbol: SmolStr::new("BTCUSDT"),
-        venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("Last30d"),
-        seed: ui::lab::defaults::LAB_DEFAULT_SEED,
-        write_report: false,
-        data_source: LabDataSource::YahooCache,
-        sma_fast_len: None,
-        sma_slow_len: None,
-    }
+/// Assert `events` is exactly `[Start{YahooPreload}, End(Failed("operator
+/// cancelled"))]` (one id).
+fn assert_cancel_activity(events: &[ActivityEvent]) {
+    assert_eq!(
+        events.len(),
+        2,
+        "cancel must end the YahooPreload activity Failed(\"operator cancelled\"): \
+         exactly Start + End expected; got {events:?}"
+    );
+    assert_eq!(events[0].id, events[1].id, "one activity id: {events:?}");
+    assert!(
+        events[0].kind == ActivityKind::YahooPreload
+            && matches!(events[0].phase, ActivityPhase::Start { .. }),
+        "the first event must be the YahooPreload Start; got {events:?}"
+    );
+    assert!(
+        matches!(&events[1].phase, ActivityPhase::End(ActivityOutcome::Failed(r)) if r == "operator cancelled"),
+        "cancel must end the YahooPreload activity Failed(\"operator cancelled\"); got {:?}",
+        events[1].phase
+    );
 }
 
-// ── Test — Cancel during preload exits ≤ 500 ms ──────────────────────────────
+// ── Test 1 — Stop during the preload exits ≤ 500 ms ──────────────────────────
 
 /// T-BUG64-D7 / D-R2.3 / ADR-0050 § D2.
 ///
-/// **Pass condition**: the preload loop exits with `Err("cancelled")` within
-/// 500 ms total wall-clock from stop-dispatch, even though the mock preload
-/// sleeps for 5 s.
-///
-/// **Falsification** (what this catches if the D-R2.2 fix is missing):
-/// - Without the `_ = cancel.cancelled() =>` arm, the preload loop only
-///   checks cancel AFTER the preload future completes (5 s mock sleep).
-///   The loop runs for the full 5 s before returning — far beyond the
-///   500 ms budget — and this test fails.
-/// - With the fix: the cancel arm fires within one `yield_now()` + one
-///   `select!` poll cycle after `RunCancelHandle::drop()` flips the token.
-///   In practice this is sub-millisecond. The test uses 500 ms as a
-///   generous wall-clock budget.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn stop_during_preload_exits_within_500ms() {
-    let rt = tokio::runtime::Handle::current();
-    let _cfg = yahoo_cache_cfg(); // confirm cfg builds without error
-
-    let (progress_tx, _progress_rx) = progress_pair();
-    let (cancel_handle, cancel_rx) = cancellation_pair();
-
-    // Track overall wall-clock from test start.
-    let test_start = Instant::now();
-
-    // ── Spawn the preload loop (mirrors runner.rs:735-850) ────────────────────
-    //
-    // Preload mock: 5 s sleep (simulates cold-cache Yahoo fetch).
-    // Stop will be dispatched at ~100 ms via `drop(cancel_handle)`.
-    let loop_task: tokio::task::JoinHandle<Result<(), SmolStr>> = tokio::spawn(async move {
-        let preload_start = Instant::now();
-
-        // Sentinel.
-        progress_tx.try_send(Progress {
-            current_bar: 0,
-            total_bars: 1,
-            elapsed_ms: 0,
-        });
-
-        // D-R1.1: enter rt context before tokio::time::interval.
-        let mut ticker = {
-            let _guard = rt.enter();
-            tokio::time::interval(Duration::from_millis(250))
-        };
-        // Consume t=0 tick.
-        ticker.tick().await;
-
-        // 5 s mock preload (simulates cold-cache fetch that should be cancelled).
-        let mut preload_future = std::pin::pin!(tokio::time::sleep(Duration::from_secs(5)));
-
-        loop {
-            // D-R1.4 defense-in-depth yield.
-            tokio::task::yield_now().await;
-
-            tokio::select! {
-                biased;
-                _ = &mut preload_future => {
-                    // Preload completed without cancel — should not happen in this test.
-                    break Ok(());
-                }
-                // D-R2.2: cancel arm — exits the loop when Stop is dispatched.
-                _ = cancel_rx.cancelled() => {
-                    drop(ticker);
-                    break Err(SmolStr::new("operator cancelled during preload"));
-                }
-                _ = ticker.tick() => {
-                    let elapsed_ms = u64::try_from(
-                        preload_start.elapsed().as_millis()
-                    ).unwrap_or(u64::MAX);
-                    progress_tx.try_send(Progress {
-                        current_bar: 0,
-                        total_bars: 1,
-                        elapsed_ms,
-                    });
-                }
-            }
-        }
+/// **Pass condition**: with a 5 s mock preload still running at t0+100 ms,
+/// Stop makes the arm return the production cancel text within 500 ms, with
+/// `scenario_cfg` untouched and the activity ended.
+#[test]
+fn stop_during_preload_exits_within_500ms() {
+    let mut run = start_arm(Spec {
+        with_activity: true,
+        ..Spec::new(5_000, Behavior::Bars(120))
     });
-
-    // ── Dispatch Stop after 100 ms (simulate operator clicking Stop) ──────────
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    let stop_dispatched_at = test_start.elapsed();
-    drop(cancel_handle); // drops RunCancelHandle → CancellationToken::cancel()
-
-    // ── Wait for the loop task to complete ───────────────────────────────────
-    let result = tokio::time::timeout(Duration::from_millis(500), loop_task)
-        .await
-        .expect(
-            "preload loop must exit within 500 ms of Stop dispatch — \
-                  D-R2.2 regression detected: cancel arm may be missing from \
-                  the preload select! loop in runner.rs",
-        )
-        .expect("preload loop task must not panic");
-
-    let total_elapsed = test_start.elapsed();
-
-    // ── Assertions ───────────────────────────────────────────────────────────
-
-    // The loop must have returned Err (cancelled), not Ok (completed normally).
+    match run.next_item(Duration::from_millis(200)) {
+        Next::Item(p, _) if is_sentinel(&p) => {}
+        other => panic!("precondition: the sentinel must arrive first; got {other:?}"),
+    }
+    sleep_until(run.t0, Duration::from_millis(100));
     assert!(
-        result.is_err(),
-        "preload loop must exit with Err when cancelled; got Ok(()). \
-         D-R2.2 regression: cancel arm not firing."
+        !run.has_returned(),
+        "precondition: the arm must still be in its 5 s preload at t0+100 ms"
+    );
+    assert!(
+        !run.probe.completed(),
+        "precondition: the 5 s mock preload must not have completed"
     );
 
-    let err_msg = result.unwrap_err();
+    let at = run.cancel_now();
+    let done = run
+        .wait_done(Duration::from_millis(500))
+        .expect("arm must return within 500 ms of Stop");
     assert!(
-        err_msg.as_str().contains("cancelled"),
-        "cancel error must contain 'cancelled'; got: {err_msg:?}"
+        done.returned_at.duration_since(at) < Duration::from_millis(500),
+        "arm must return within 500 ms of Stop"
+    );
+    assert_eq!(
+        done.result,
+        Err(SmolStr::new(CANCELLED)),
+        "Stop during the preload must return the production cancel text"
+    );
+    assert_eq!(
+        done.scenario_cfg.data_source,
+        ScenarioDataSource::Synthetic,
+        "a cancelled preload must leave data_source untouched"
+    );
+    assert_eq!(
+        done.scenario_cfg.bars_override.as_ref().map(Vec::len),
+        Some(STALE_BARS),
+        "a cancelled preload must leave bars_override untouched (the stale seed)"
+    );
+    assert_cancel_activity(&run.activity());
+}
+
+// ── Test 2 — Stop aborts the preload task, not just detaches it ──────────────
+
+/// T-BUG64-RS3: after Stop, the spawned preload task is ABORTED — its source
+/// is dropped within 200 ms of the arm's return, without completing. Without
+/// `abort()`, dropping the `JoinHandle` detaches the task and the source lives
+/// until its 5 s sleep ends.
+#[test]
+fn stop_during_preload_aborts_preload_task() {
+    let mut run = start_arm(Spec::new(5_000, Behavior::Bars(120)));
+    run.spin_until(
+        Duration::from_millis(500),
+        || run.probe.calls() == 1,
+        "preload task polled",
+    );
+    assert!(
+        !run.probe.dropped(),
+        "precondition: the source must be alive before Stop"
     );
 
-    // Total wall-clock from test start must be < 500 ms from stop dispatch.
-    // We allow 500 ms slack after stop_dispatched_at.
-    let elapsed_since_stop = total_elapsed.saturating_sub(stop_dispatched_at);
+    let _at = run.cancel_now();
+    let done = run
+        .wait_done(Duration::from_millis(500))
+        .expect("arm must return within 500 ms of Stop");
+    assert_eq!(
+        done.result,
+        Err(SmolStr::new(CANCELLED)),
+        "Stop must return the production cancel text"
+    );
+    let dropped_in_time = becomes_true(Duration::from_millis(200), || run.probe.dropped());
     assert!(
-        elapsed_since_stop < Duration::from_millis(500),
-        "loop must exit within 500 ms of Stop dispatch; \
-         elapsed since stop: {}ms (total: {}ms). \
-         D-R2.2 regression: cancel arm too slow or missing.",
-        elapsed_since_stop.as_millis(),
-        total_elapsed.as_millis()
+        dropped_in_time,
+        "preload task must be aborted (source dropped) within 200 ms of the arm returning"
+    );
+    assert!(
+        !run.probe.completed(),
+        "an aborted preload must not complete"
     );
 }
 
-// ── Test — Cancel-before-start is instant ────────────────────────────────────
+// ── Test 3 — a cancel before the preload starts is instant ───────────────────
 
-/// Additional edge-case: cancel dispatched BEFORE the preload loop begins.
-///
-/// The `CancellationToken::is_cancelled()` is already `true` when the loop
-/// starts — the first `cancel_rx.cancelled()` arm should fire immediately.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn cancel_before_preload_start_is_instant() {
-    let rt = tokio::runtime::Handle::current();
-
-    let (progress_tx, _progress_rx) = progress_pair();
-    let (cancel_handle, cancel_rx) = cancellation_pair();
-
-    // Cancel BEFORE the loop starts.
-    drop(cancel_handle);
-
-    let start = Instant::now();
-
-    let loop_task: tokio::task::JoinHandle<Result<(), SmolStr>> = tokio::spawn(async move {
-        let preload_start = Instant::now();
-
-        progress_tx.try_send(Progress {
-            current_bar: 0,
-            total_bars: 1,
-            elapsed_ms: 0,
-        });
-
-        let mut ticker = {
-            let _guard = rt.enter();
-            tokio::time::interval(Duration::from_millis(250))
-        };
-        ticker.tick().await;
-
-        let mut preload_future = std::pin::pin!(tokio::time::sleep(Duration::from_secs(5)));
-
-        loop {
-            tokio::task::yield_now().await;
-
-            tokio::select! {
-                biased;
-                _ = &mut preload_future => {
-                    break Ok(());
-                }
-                _ = cancel_rx.cancelled() => {
-                    drop(ticker);
-                    break Err(SmolStr::new("operator cancelled during preload"));
-                }
-                _ = ticker.tick() => {
-                    let elapsed_ms = u64::try_from(
-                        preload_start.elapsed().as_millis()
-                    ).unwrap_or(u64::MAX);
-                    progress_tx.try_send(Progress {
-                        current_bar: 0,
-                        total_bars: 1,
-                        elapsed_ms,
-                    });
-                }
-            }
-        }
+/// A run whose cancel handle is dropped BEFORE the arm starts returns the
+/// cancel text within 200 ms of t0: the cancel arm wins the first `select!`
+/// iteration, long before the first 250 ms tick, so the only progress item is
+/// the sentinel.
+#[test]
+fn cancel_before_preload_start_is_instant() {
+    let mut run = start_arm(Spec {
+        pre_cancelled: true,
+        with_activity: true,
+        ..Spec::new(5_000, Behavior::Bars(120))
     });
-
-    let result = tokio::time::timeout(Duration::from_millis(100), loop_task)
-        .await
-        .expect("pre-cancelled loop must exit within 100 ms")
-        .expect("task must not panic");
-
-    let elapsed = start.elapsed();
-
+    let done = run
+        .wait_done(Duration::from_millis(200))
+        .expect("a pre-cancelled arm must return within 200 ms");
     assert!(
-        result.is_err(),
-        "pre-cancelled loop must return Err; got Ok(())"
+        done.returned_at.duration_since(run.t0) < Duration::from_millis(200),
+        "a pre-cancelled arm must return within 200 ms of t0"
+    );
+    assert_eq!(
+        done.result,
+        Err(SmolStr::new(CANCELLED)),
+        "a pre-cancelled run must return the production cancel text"
+    );
+
+    let items = run.items_until_marker(Duration::from_millis(500));
+    assert!(
+        items.len() == 1 && is_sentinel(&items[0].0),
+        "the items before the marker must be exactly [sentinel]; got {items:?}"
     );
     assert!(
-        elapsed < Duration::from_millis(100),
-        "pre-cancelled loop must exit near-instantly; elapsed: {}ms",
-        elapsed.as_millis()
+        run.probe.calls() <= 1,
+        "the source is preloaded at most once; got {}",
+        run.probe.calls()
     );
+    assert!(
+        becomes_true(Duration::from_millis(200), || run.probe.dropped()),
+        "the preload task must be aborted (source dropped) within 200 ms"
+    );
+    assert_cancel_activity(&run.activity());
 }

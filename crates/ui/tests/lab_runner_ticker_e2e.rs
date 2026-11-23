@@ -1,198 +1,98 @@
-//! E2E test — ticker fires ≥ 3 times during a 1 s bounded preload window.
+//! E2E test — the Yahoo preload ticker fires ≥ 3 times during a 1 s preload,
+//! with the PRODUCTION arm polled off-runtime.
 //!
-//! Bug #64 D.1.1 attempt-3 / ADR-0050 § D3.
+//! Bug #64 D.1.1 attempt-3 / ADR-0050 § D3; rewritten by story 2-63 (v0.3)
+//! Wave F.
 //!
 //! ## What this test proves
 //!
-//! D-R1.3: After the D-R1.1 fix (`let _guard = rt.enter()` before
-//! `tokio::time::interval(250ms)`), the ticker MUST fire ≥ 3 times
-//! during a 1 s mock preload window with monotonically increasing
-//! `elapsed_ms` values.
+//! D-R1.3: with the D-R1.1 guard (`let _guard = rt.enter()` before
+//! `tokio::time::interval(250ms)`), the ticker fires ≥ 3 times during a 1 s
+//! mock preload, with non-decreasing `elapsed_ms`.
 //!
-//! **Regression guard**: if `rt_handle.enter()` is accidentally removed,
-//! `tokio::time::interval` is created without a tokio reactor context on
-//! iced's `futures::ThreadPool`. The resulting `Sleep` futures are
-//! permanently `Poll::Pending` — ticker never fires — and this test
-//! catches it with: `ticker_events < 3`.
+//! The subject is `ui::lab::runner::run_yahoo_preload_arm`, the function
+//! `spawn_lab_run` calls for every Yahoo source. The test calls it through
+//! `tests/yahoo_arm_support/mod.rs`, which polls it with
+//! `futures::executor::block_on` on a bare thread with NO tokio context (an
+//! in-future `HARNESS:` assert checks that) — how iced's `futures::ThreadPool`
+//! polls the Lab Task. The runtime the arm gets a `Handle` to is never
+//! entered.
 //!
-//! ## Why inline rather than drive `iced::Task::perform`?
+//! Until Wave F this file copied the arm's ticker loop inline and ran the copy
+//! under a multi-thread `#[tokio::test]`, whose ambient runtime context made
+//! the guard unobservable: deleting it from `crates/ui/src/lab/runner.rs` left
+//! the copy green. The premise (a tokio timer built off-runtime panics) is
+//! pinned separately by
+//! `lab_runner_cold_cache_fetch_e2e.rs::tokio_time_timeout_without_rt_enter_panics`.
 //!
-//! Same reason as `spawn_lab_run_yahoo_harness.rs` — driving
-//! `iced::Task::perform` without a running iced application is non-trivial.
-//! We inline the production preload ticker logic and run it inside a
-//! multi-thread tokio runtime, simulating exactly what the D-R1.1 fix does
-//! in production.
+//! **What a missing guard looks like** (verified in the pinned tokio 1.52.3
+//! source, ADR-0050 § Changelog, story 2-63 Wave F; measured by T-T4 F-P3
+//! below): not a silent hang but a PANIC on the polling thread, "there is no
+//! reactor running, must be called from the context of a Tokio 1.x runtime".
+//! `support::Run::wait_done`
+//! surfaces it as `arm thread panicked: <payload>`.
 //!
-//! The inlined ticker section matches `runner.rs:735-821` (attempt-3 HEAD):
-//!   1. `rt.enter()` guard before `tokio::time::interval(250ms)`.
-//!   2. Consume t=0 tick.
-//!   3. `yield_now()` at top of each loop iteration (D-R1.4).
-//!   4. `tokio::select! { biased; preload, cancel, ticker }`.
+//! ## T-T4 falsification probe table (story 2-63 AC4)
+//!
+//! Each probe is ONE exact-once replace in `crates/ui/src/lab/runner.rs`
+//! (`grep -c` of the OLD text is 1), located by symbol + quoted line. Run
+//! `cargo test -p ui --test lab_runner_ticker_e2e`, restore from a `cp -p`
+//! snapshot, `cmp` it, `touch` it, re-run GREEN.
+//!
+//! | # | symbol | quoted line today | mutation | expected RED |
+//! |---|---|---|---|---|
+//! | F-P3 (AC4, designated here) | `run_yahoo_preload_arm` | `let _guard = rt.enter(); // enter tokio reactor context` | replace with `// F-P3: guard deleted` | `ticker_fires_at_least_3_times_in_1s_window` at its `wait_done`: "arm thread panicked: there is no reactor running, must be called from the context of a Tokio 1.x runtime" |
+//! | F-P2 (AC4) | `run_yahoo_preload_arm` | `_ = ticker.tick() => {` | `_ = std::future::pending::<()>() => {` | the same test at "the ticker must fire ≥ 3 times during a 1000 ms preload; got 0" |
+//! | F-P12 | `run_yahoo_preload_arm` | `tokio::time::interval(std::time::Duration::from_millis(250))` | `250` → `500` | the same assert (1-2 ticks: the 1000 ms tick can fall due just before the preload's 1000 ms sleep ends) |
 
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::time::{Duration, Instant};
+#[path = "yahoo_arm_support/mod.rs"]
+mod support;
 
-use backtest::cancel::cancellation_pair;
-use backtest::progress::{Progress, progress_pair};
-use smol_str::SmolStr;
-use tokio::time::timeout;
-use ui::lab::runner::LabRunConfig;
-use ui::lab::state::LabDataSource;
+use std::time::Duration;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+use support::{Behavior, Spec, start_arm};
 
-/// Build a standard `LabRunConfig` pointing at YahooCache source.
-#[allow(dead_code)] // helper available for future tests
-fn yahoo_cache_cfg() -> LabRunConfig {
-    LabRunConfig {
-        strategy_id: SmolStr::new("v0.sma"),
-        symbol: SmolStr::new("BTCUSDT"),
-        venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("Last30d"),
-        seed: ui::lab::defaults::LAB_DEFAULT_SEED,
-        write_report: false,
-        data_source: LabDataSource::YahooCache,
-        sma_fast_len: None,
-        sma_slow_len: None,
-    }
-}
-
-// ── Test — Ticker fires ≥ 3 times in a 1 s preload window ────────────────────
+// ── Test — the ticker fires ≥ 3 times in a 1 s preload window ────────────────
 
 /// T-BUG64-D3 / D-R1.3 / ADR-0050 § D3.
 ///
-/// **Pass condition**: ≥ 3 `Progress` events with `elapsed_ms > 0` are
-/// received on `progress_rx` during a 1 s bounded preload window. The
-/// events must have monotonically non-decreasing `elapsed_ms`.
-///
-/// **Falsification** (what the test catches if the D-R1.1 fix is missing):
-/// - Without `rt.enter()` before `tokio::time::interval(250ms)`, the
-///   `ticker.tick().await` future is permanently `Poll::Pending` on iced's
-///   `futures::ThreadPool` (no time driver reachable). Zero ticker events
-///   fire; `ticker_count < 3` → test fails.
-/// - With the fix: ticker fires every ~250 ms → in a 1 s window we expect
-///   ~3-4 events. The test asserts ≥ 3 as a robust floor (allows for up to
-///   one CI scheduling delay).
-///
-/// **Note on the sentinel**: the sentinel `Progress { 0, 1, 0 }` is counted
-/// separately. The test asserts ≥ 3 events with `elapsed_ms > 0` (ticker
-/// events only, not the sentinel).
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn ticker_fires_at_least_3_times_in_1s_window() {
-    // Build a tokio runtime handle — in production this is the side-thread
-    // agent runtime. In the test, the `#[tokio::test]` macro provides the
-    // runtime; we obtain its handle here to mirror the D-R1.1 fix.
-    let rt = tokio::runtime::Handle::current();
+/// **Pass condition**: the production arm, polled with no tokio context,
+/// returns `Ok(())` and emits ≥ 3 `(0, 1, elapsed > 0)` ticker events with
+/// non-decreasing `elapsed_ms` during a 1000 ms mock preload. The sentinel
+/// `(0, 1, 0)` is not counted.
+#[test]
+fn ticker_fires_at_least_3_times_in_1s_window() {
+    let mut run = start_arm(Spec::new(1_000, Behavior::Bars(10)));
 
-    let (progress_tx, mut progress_rx) = progress_pair();
-    // cancel pair — we don't cancel in this test (preload runs to completion).
-    let (_cancel_handle, cancel_rx) = cancellation_pair();
+    // `wait_done` reports a panic on the arm thread as
+    // "arm thread panicked: <payload>" (the F-P3 red).
+    let done = run
+        .wait_done(Duration::from_secs(3))
+        .expect("the arm must return within 3 s of a 1000 ms preload");
+    assert_eq!(done.result, Ok(()), "a 10-bar preload must succeed");
 
-    // 1 s preload window simulated via a `tokio::time::sleep(1s)`.
-    let preload_task = tokio::spawn(async move {
-        let preload_start = Instant::now();
-
-        // ── Sentinel (mirrors runner.rs:735-739) ─────────────────────────
-        progress_tx.try_send(Progress {
-            current_bar: 0,
-            total_bars: 1,
-            elapsed_ms: 0,
-        });
-
-        // ── D-R1.1 fix: enter rt context before tokio::time::interval ────
-        // This is the line that was missing in attempt-2 (Bug #64 R1).
-        let mut ticker = {
-            let _guard = rt.enter();
-            tokio::time::interval(Duration::from_millis(250))
-        };
-        // Consume the immediate (t=0) tick.
-        ticker.tick().await;
-
-        // ── 1 s preload future (simulates cold-cache Yahoo fetch) ─────────
-        let mut preload_future = std::pin::pin!(tokio::time::sleep(Duration::from_millis(1000)));
-
-        // ── Preload select! loop (mirrors runner.rs:800-850) ──────────────
-        loop {
-            // D-R1.4 yield_now (defense-in-depth).
-            tokio::task::yield_now().await;
-
-            tokio::select! {
-                biased;
-                _ = &mut preload_future => {
-                    break;
-                }
-                _ = cancel_rx.cancelled() => {
-                    break;
-                }
-                _ = ticker.tick() => {
-                    let elapsed_ms = u64::try_from(
-                        preload_start.elapsed().as_millis()
-                    ).unwrap_or(u64::MAX);
-                    progress_tx.try_send(Progress {
-                        current_bar: 0,
-                        total_bars: 1,
-                        elapsed_ms,
-                    });
-                }
-            }
-        }
-        drop(ticker);
-    });
-
-    // Collect all events with a generous 2 s window (well above the 1 s
-    // preload duration).
-    let mut events: Vec<Progress> = Vec::new();
-    while let Ok(Some(p)) = timeout(Duration::from_millis(200), progress_rx.recv()).await {
-        events.push(p);
-    }
-
-    preload_task.await.expect("preload task must not panic");
-
-    // Drain any remaining events (preload may have sent more after our
-    // collect loop timed out).
-    while let Ok(Some(p)) = timeout(Duration::from_millis(50), progress_rx.recv()).await {
-        events.push(p);
-    }
-
-    // ── Assertions ───────────────────────────────────────────────────────────
-
-    // All events with elapsed_ms > 0 are ticker events (the sentinel has 0).
-    let ticker_events: Vec<&Progress> = events.iter().filter(|p| p.elapsed_ms > 0).collect();
-
-    assert!(
-        ticker_events.len() >= 3,
-        "ticker must fire ≥ 3 times in a 1 s preload window; \
-         got {} ticker event(s). \
-         D-R1.1 regression detected: `rt_handle.enter()` guard may be missing \
-         before `tokio::time::interval(250ms)` in runner.rs. \
-         All events received: {events:?}",
-        ticker_events.len()
-    );
-
-    // Verify monotonically non-decreasing elapsed_ms.
-    let mut prev_ms = 0u64;
-    for evt in &ticker_events {
+    let items = run.items_until_marker(Duration::from_secs(1));
+    for (p, _) in &items {
         assert!(
-            evt.elapsed_ms >= prev_ms,
-            "ticker elapsed_ms must be monotonically non-decreasing; \
-             got {prev_ms}ms then {}ms. events: {ticker_events:?}",
-            evt.elapsed_ms
-        );
-        prev_ms = evt.elapsed_ms;
-    }
-
-    // All ticker events must have current_bar == 0 and total_bars == 1
-    // (preload placeholder values).
-    for evt in &ticker_events {
-        assert_eq!(
-            evt.current_bar, 0,
-            "ticker events must have current_bar == 0 (preload phase); got {evt:?}"
-        );
-        assert_eq!(
-            evt.total_bars, 1,
-            "ticker events must have total_bars == 1 (preload placeholder); got {evt:?}"
+            p.current_bar == 0 && p.total_bars == 1,
+            "every preload progress item must be (0, 1, ·); got {p:?}"
         );
     }
+    let ticks: Vec<u64> = items
+        .iter()
+        .map(|(p, _)| p.elapsed_ms)
+        .filter(|&ms| ms > 0)
+        .collect();
+    assert!(
+        ticks.len() >= 3,
+        "the ticker must fire ≥ 3 times during a 1000 ms preload; got {} ({ticks:?})",
+        ticks.len()
+    );
+    assert!(
+        ticks.windows(2).all(|w| w[1] >= w[0]),
+        "ticker elapsed_ms must be non-decreasing; got {ticks:?}"
+    );
 }
