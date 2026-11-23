@@ -32,9 +32,11 @@
 //! ## Bug-log `#202`: an answer paints only on its own request (frame proofs)
 //!
 //! Four tests drive a cockpit through `ui::state::update` from
-//! `fake_cockpit_leaderboard(PanelState::Empty)` (the expected frame's own
-//! constructor, so a difference outside the subject cannot pass or fail them,
-//! bug-log `#189`) and compare its frame to a fixture frame PIXEL FOR PIXEL
+//! `fake_cockpit_leaderboard(PanelState::Empty)` (the same `Cockpit::new()`,
+//! Leaderboard screen and default state that
+//! `fake_cockpit_leaderboard_with_narration` builds for the expected frames,
+//! so a difference outside the subject cannot pass or fail them, bug-log
+//! `#189`) and compare its frame to a fixture frame PIXEL FOR PIXEL
 //! (0 px), each with a control frame that must differ (> 0 px):
 //!
 //! | test | subject equals | control differs | PNGs (`/tmp/forward_f9_narration_<name>_render.png`) |
@@ -445,8 +447,9 @@ fn fixture_frame(mirror: BakeoffReportMirror, narration: NarrationState) -> (u32
     ))
 }
 
-/// The cockpit each `#202` subject starts from: the expected frames' own
-/// constructor, with nothing on screen.
+/// The cockpit each `#202` subject starts from: the base state the expected
+/// frames' `fake_cockpit_leaderboard_with_narration` also builds, with nothing
+/// on screen.
 fn empty_leaderboard() -> Cockpit {
     ui::fixtures::fake_cockpit_leaderboard(PanelState::Empty)
 }

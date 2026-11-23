@@ -1431,8 +1431,9 @@ pub fn spawn_lab_run(
     #[cfg(not(feature = "live"))] _activity_sender: Option<()>,
     // lab-recipe-test-harness T-D1 / ADR-0048: injectable Yahoo bar source.
     // None => production path (DefaultLabYahooBarSource via preload_yahoo_bars).
-    // Some(source) => test injection; its first callers are the story 2-63
-    // Wave F Task-driven tests (spawn_lab_run_yahoo_harness.rs). Both go
+    // Some(source) => test injection; its first callers are story 2-63 Wave
+    // F's Task-driven tests (spawn_lab_run_yahoo_harness.rs's `task_driven`
+    // module and lab_yahoo_empty_range_classification.rs). Both paths go
     // through the one `run_yahoo_preload_arm` call below.
     // Only compiled under `live`; non-live builds receive a dummy Option<()>.
     #[cfg(feature = "live")] yahoo_source_override: Option<Box<dyn LabYahooBarSource>>,

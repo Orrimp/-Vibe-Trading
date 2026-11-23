@@ -60,7 +60,8 @@
 //! the classification plus `state::update`, not executor fidelity (that is the
 //! job of `spawn_lab_run_yahoo_harness.rs`, which polls off-runtime). The
 //! ambient runtime context also means T-T4 F-P3 (the deleted `rt.enter()`
-//! guard) leaves these three tests GREEN — expected and recorded.
+//! guard) leaves these three tests GREEN: reasoned, not measured (the F-P3
+//! run builds `lab_runner_ticker_e2e` only).
 //!
 //! ## T-T4 falsification probe table (story 2-63 AC4)
 //!
