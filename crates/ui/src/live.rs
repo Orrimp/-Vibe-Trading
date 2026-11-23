@@ -1674,6 +1674,80 @@ impl Recipe for ToastDismissRecipe {
     }
 }
 
+// ── F9 "Explain" dispatch (bug-log #202) ───────────────────────────────────
+
+/// Why an "Explain" request could not be queued for the narration task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExplainRefusal {
+    /// The request channel is full (its four slots hold queued requests).
+    Full,
+    /// The narration task has ended (e.g. a kill-switch halt): nothing receives.
+    Closed,
+    /// No request channel is wired (`narration_request_tx` is `None`).
+    Unwired,
+}
+
+/// What [`update_and_dispatch_explain`] did with the message it applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExplainDispatch {
+    /// The message started no new request: nothing was sent.
+    Idle,
+    /// The new request was queued for the narration task.
+    Sent,
+    /// The new request was refused (logged only, the binary's behaviour).
+    Refused(ExplainRefusal),
+}
+
+/// Send the "Explain" request `msg` starts, if any, then apply `msg` with
+/// [`crate::state::update`]. The live binary calls this in place of `update`;
+/// it is the binary's former inline enqueue, lifted unchanged (bug-log #202,
+/// commit 1 of 2): the same guard on the PRE-mutation state, the same
+/// `try_send`, the same log lines, and a refusal is only logged.
+#[allow(clippy::result_large_err)] // tokio's TrySendError hands the unsent request back
+pub fn update_and_dispatch_explain(
+    cockpit: &mut crate::state::Cockpit,
+    msg: Message,
+    tx: Option<&tokio::sync::mpsc::Sender<agent::narration::NarrationRequest>>,
+) -> ExplainDispatch {
+    use tokio::sync::mpsc::error::TrySendError;
+
+    let mut dispatch = ExplainDispatch::Idle;
+    // Read the PRE-mutation mirror: the request arm leaves `result` untouched.
+    if matches!(msg, Message::BakeoffNarrationRequested)
+        && let crate::state::PanelState::Ready(mirror) = &cockpit.leaderboard_screen_state.result
+        && !cockpit.leaderboard_screen_state.narration.is_requested()
+    {
+        dispatch = match tx.map(|tx| tx.try_send(narration_request_from_mirror(mirror))) {
+            Some(Ok(())) => {
+                tracing::info!(
+                    winner = %mirror.recommendation.winner,
+                    "F9-NARRATION: NarrationRequest sent to agent task"
+                );
+                ExplainDispatch::Sent
+            }
+            Some(Err(e)) => {
+                warn!(
+                    error = %e,
+                    "F9-NARRATION: narration_request channel full — Explain deferred"
+                );
+                ExplainDispatch::Refused(match e {
+                    TrySendError::Full(_) => ExplainRefusal::Full,
+                    TrySendError::Closed(_) => ExplainRefusal::Closed,
+                })
+            }
+            None => {
+                warn!(
+                    "F9-NARRATION: narration_request_tx is None — narration not wired \
+                     (non-fatal; the templated fallback stays the floor)"
+                );
+                ExplainDispatch::Refused(ExplainRefusal::Unwired)
+            }
+        };
+    }
+    crate::state::update(cockpit, msg);
+    dispatch
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

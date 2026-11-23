@@ -1234,11 +1234,11 @@ struct AppState {
 
     /// F9-NARRATION — sender side of the narration-REQUEST channel (ADR-0064 § D3).
     ///
-    /// Held on the iced side. When the operator clicks "Explain"
-    /// (`Message::BakeoffNarrationRequested`) and a `Ready` bake-off is on
-    /// screen, the `update` arm builds a `NarrationRequest` from the
-    /// on-screen `BakeoffReportMirror` and `try_send`s it here — the F5
-    /// `forward_tx` iced→agent dispatch precedent.
+    /// Held on the iced side. `ui::live::update_and_dispatch_explain`, which this
+    /// binary's `update` calls in place of `ui::state::update`, builds a
+    /// `NarrationRequest` from the on-screen `BakeoffReportMirror` when "Explain"
+    /// (`Message::BakeoffNarrationRequested`) is accepted and `try_send`s it here
+    /// (the F5 `forward_tx` iced→agent dispatch precedent).
     #[cfg(feature = "live")]
     narration_request_tx: Option<tokio::sync::mpsc::Sender<agent::narration::NarrationRequest>>,
 
@@ -1687,47 +1687,6 @@ impl AppState {
             _ => None,
         };
 
-        // F9-NARRATION (ADR-0064 § D3) — "Explain" iced→agent dispatch (the F5
-        // `forward_tx` inline-send precedent). On `BakeoffNarrationRequested`,
-        // when a `Ready` bake-off is on screen and a narration is not already in
-        // flight / resolved (the SAME guard `ui::state::update` uses to flip the
-        // block to `InFlight`), build a `NarrationRequest` from the on-screen
-        // mirror and `try_send` it over `narration_request_tx`. The agent
-        // narration task receives it, runs `generate_narration`, and returns the
-        // outcome over `narration_outcome_tx` → `NarrationOutcomeRecipe` →
-        // `BakeoffNarrationCompleted`. Read the PRE-mutation mirror here (the
-        // request arm leaves `result` untouched). Without this send the screen
-        // would flip to `InFlight` and never resolve.
-        #[cfg(feature = "live")]
-        if matches!(msg, Message::BakeoffNarrationRequested)
-            && let ui::state::PanelState::Ready(mirror) =
-                &self.cockpit.leaderboard_screen_state.result
-            && !self
-                .cockpit
-                .leaderboard_screen_state
-                .narration
-                .is_requested()
-        {
-            if let Some(ref tx) = self.narration_request_tx {
-                let request = ui::live::narration_request_from_mirror(mirror);
-                match tx.try_send(request) {
-                    Ok(()) => info!(
-                        winner = %mirror.recommendation.winner,
-                        "F9-NARRATION: NarrationRequest sent to agent task"
-                    ),
-                    Err(e) => warn!(
-                        error = %e,
-                        "F9-NARRATION: narration_request channel full — Explain deferred"
-                    ),
-                }
-            } else {
-                warn!(
-                    "F9-NARRATION: narration_request_tx is None — narration not wired \
-                     (non-fatal; the templated fallback stays the floor)"
-                );
-            }
-        }
-
         // T-D3.4 — detect LabRunStopRequested to drop the cancel handle.
         let lab_run_stop_requested = matches!(&msg, Message::LabRunStopRequested);
 
@@ -1856,7 +1815,11 @@ impl AppState {
             self.cockpit.lab_state.training_cancel = None;
         }
 
-        ui::state::update(&mut self.cockpit, msg);
+        ui::live::update_and_dispatch_explain(
+            &mut self.cockpit,
+            msg,
+            self.narration_request_tx.as_ref(),
+        );
 
         // T-D3.4 — Stop button: drop the cancel handle so the receiver sees
         // Disconnected at its next poll boundary (≤ 128 bars ≈ a few hundred ms).

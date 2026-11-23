@@ -137,9 +137,10 @@
 //! | D-P14 | `ui::tune::TuneScreenState::finish_run` | `self.running = false;` (its first line) | delete the line | `sweep_lifecycle_running_and_progress_transitions`, at its `D-P14` check; also `sweep_rerun_clears_late_stale_progress`, at its `precondition:` that the sweep completed, and `sweep_double_run_request_mid_run_keeps_progress`, at its `seed: the prior sweep is over` |
 //!
 //! Not pinned here: the binary's half of each arm (the `spawn_bakeoff` /
-//! `spawn_sweep` dispatch, the Explain `try_send`, the promotion's
-//! `ForwardCommand::Launch`). They live in `cockpit_live.rs`, a bin target an
-//! integration test cannot link (the K3 #6 `AppState` residual).
+//! `spawn_sweep` dispatch, the promotion's `ForwardCommand::Launch`). They live
+//! in `cockpit_live.rs`, a bin target an integration test cannot link
+//! (the K3 #6 `AppState` residual). The Explain `try_send` moved into the
+//! library in bug-log `#202`: `ui::live::update_and_dispatch_explain`.
 //!
 //! Gated on `live` (the build where the relay seams and the `agent` types
 //! exist), NOT on `fixtures` (`ui::fixtures` is always compiled) and NOT on

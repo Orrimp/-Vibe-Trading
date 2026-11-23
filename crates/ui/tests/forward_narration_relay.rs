@@ -17,10 +17,10 @@
 //! precedent) and assert the full channel→`Message`→`update`→populated-state
 //! path end to end. They also pin the iced→agent "Explain" request BUILD
 //! (`narration_request_from_mirror`) over two fixtures that differ in every
-//! fact it carries. The ENQUEUE (the `try_send` in the binary's
-//! `BakeoffNarrationRequested` dispatch, `crates/ui/src/bin/cockpit_live.rs`)
-//! lives in a bin target an integration test cannot link, so it is NOT
-//! exercised here — a residual, not a claim.
+//! fact it carries. The ENQUEUE (the `try_send` on `BakeoffNarrationRequested`)
+//! is `ui::live::update_and_dispatch_explain`, which the binary calls in place
+//! of `update` (bug-log #202). No test drives it yet, here or elsewhere — a
+//! residual, not a claim.
 //!
 //! Story 2-63 (lab-recipe-test-harness v0.3, Wave A S1) adds the full
 //! `Recipe::stream` path for both recipes (`ForwardPlanRecipe`,
@@ -969,7 +969,7 @@ fn assert_request_mirrors(mirror: &BakeoffReportMirror, label: &str) {
 /// negative total return and `BenchmarkWins` holds none. The single-fixture
 /// version this replaces also routed the request through an mpsc channel the
 /// test built and drained itself — a self-loop that tested tokio, not the
-/// cockpit (the enqueue is binary-side, see the module doc).
+/// cockpit (the enqueue is `update_and_dispatch_explain`, see the module doc).
 #[test]
 fn narration_request_from_mirror_carries_the_on_screen_facts() {
     let active = ui::fixtures::fake_bakeoff_report_mirror();
