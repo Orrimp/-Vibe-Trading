@@ -75,10 +75,27 @@ required-features = ["chart-build-probe"]
 
 [dependencies]
 trading_core = { path = "../core" }
-# lab-yahoo-realdata T-C3.6 / T-AR1 — `data` crate for Yahoo parquet reader.
-# Optional dep gated behind the `yahoo` feature so default builds (fixtures,
-# live) do not pull the polars / parquet dep tree (R-NR.7 / H6).
-# `yahoo-online` is NOT pulled here — fetching is CLI-only (Q8 / T-AR7).
+# `data` — the market-data crate. Added by lab-yahoo-realdata (T-C3.6 / T-AR1)
+# for the Yahoo parquet reader; three features now turn it on (`dep:data`):
+#   - `yahoo`   — `data::yahoo`, and `data/yahoo-online` with it: on a cache
+#                 miss the Lab's Yahoo preload FETCHES (`fetch_and_cache`, via
+#                 `lab::runner::fetch_with_backoff`), so fetching is not CLI-only;
+#   - `binance` — `data::ReplayFeed` + `data::revision` (un-gated in `data`);
+#   - `live-fx` — `data::fx_rate` (un-gated in `data`).
+# All three are in `default` below, so a default build names `data` directly.
+# `optional = true` keeps NO build free of polars: `reports` and `backtest`
+# below depend on `data` non-optionally, and `polars` is non-optional in
+# `data` (crates/data/Cargo.toml). What the flag decides is only whether
+# ui's own code may name `data` (it may when one of the three features is
+# on); `data/yahoo` and `data/yahoo-online` come from `yahoo`'s own list.
+# Test targets always name `data` through `[dev-dependencies]` below.
+# Rewritten 2026-11-23 (story 2-63 Close). It used to say two false things.
+# (1) Default builds "do not pull the polars / parquet dep tree" (R-NR.7 /
+# H6): never true, since ui already depended on `reports` and `backtest`
+# when the line was written (`a87bbc43`, 2026-05-24). (2) "`yahoo-online` is
+# NOT pulled here — fetching is CLI-only" (Q8 / T-AR7): false since
+# `05a59cec` (2026-05-25) added `data/yahoo-online` to `yahoo`, the day
+# `78d8fd28` made `yahoo` a default feature.
 data = { path = "../data", optional = true }
 # Phase 4 (T1803/T1808/T1810) — viewer bin reads `reports::parse` +
 # `reports::csv_artifacts::read_equity_csv` over committed report

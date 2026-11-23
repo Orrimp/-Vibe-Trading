@@ -498,7 +498,8 @@ jobs:
       # across 17 crates — one measured cycle took 52 MINUTES and grew
       # `target/debug` to 155 GB, filling a 460 GB disk. A gate that cannot
       # finish is not a gate. Test-target lints stay a local, per-crate concern
-      # (`cargo clippy -p <crate> --tests`).
+      # (`cargo clippy -p <crate> --tests`), with ONE exception since story
+      # 2-63's Close: ui's test targets, linted by the step after this one.
       #
       # One leg only: clippy findings are not OS-specific, and a second copy would
       # double the cost for no extra signal.
@@ -517,6 +518,34 @@ jobs:
       - name: Clippy (libs + bins, canonical leg only)
         if: always() && matrix.os == 'macos-latest'
         run: cargo clippy --workspace -- -D warnings
+
+      # ── Clippy over ui's TEST targets — canonical leg (story 2-63 Close) ────
+      #
+      # The step above lints libs and bins only, and that hid a real red:
+      # `cargo clippy -p ui --tests -- -D warnings` failed from `dcce75e2`
+      # (2026-11-11) until `f5c89e19` (2026-11-14), on an `.expect` in a lib test
+      # module under the crate's `#![deny(clippy::expect_used)]`, and no gate
+      # saw it. Only ui is added: its test targets are the ones story 2-63 kept
+      # linting by hand, and the workspace-wide form stays out for the reason
+      # given above.
+      #
+      # Measured green before it was wired, on the dev box: this exact command
+      # in 365 s, 366 s and 452 s (story 2-63 Waves C1, C2+E1b and E2), and the
+      # wider `--lib --bins --tests` form with exit 0 on 2026-11-21 (555 s, only
+      # `Checking ui` in the log) and on 2026-11-22.
+      # E3+F tree, --lib --bins --tests form: exit 0 in 675 s (2026-11-22).
+      # The one blocker an earlier review named, nine `uninlined_format_args`
+      # sites in ui's tests, did not reproduce: those runs are green.
+      # rust-toolchain.toml pins 1.94.1, so this leg runs the same clippy.
+      #
+      # Cost on CI: NOT measured. `--tests` turns on ui's dev-dependencies
+      # (tokio `test-util`, data `fixtures`), so part of the dependency graph is
+      # checked with a feature set the step above never resolves (REASONED from
+      # cargo's feature resolution, not timed). Read the figure off the first run:
+      #   gh run view <id> --json jobs --jq '.jobs[].steps[] | "\(.name) \(.startedAt) \(.completedAt)"'
+      - name: Clippy (ui test targets, canonical leg only)
+        if: always() && matrix.os == 'macos-latest'
+        run: cargo clippy -p ui --tests -- -D warnings
 
       # ── All legs: build the ui crate (fixtures binary) ────────────────────
       - name: Build ui (fixtures)
@@ -789,3 +818,65 @@ jobs:
         if: always() && matrix.os == 'windows-latest'
         shell: bash
         run: scripts/ci_run_annotated.sh "ui-windows" cargo test -p ui --features fixtures --no-fail-fast
+
+      # ── Both legs: how many tests the story-2-63 targets hold (Close) ───────
+      #
+      # A test that a cfg compiles out passes in silence: libtest prints
+      # `running 0 tests`, exits 0, and the ui test step stays green. A green
+      # step writes no annotation and the run log is 403 here, so from outside a
+      # target with 0 tests and one with 7 look the same. Story 2-63 removed
+      # gates of that shape (`cfg(unix)` in three training/activity test files,
+      # `fixtures` cfgs that kept six files' tests out of the macOS build) and
+      # recorded the Windows half of each `cfg(unix)` port as UNMEASURED.
+      # These steps make the counts a measurement (bug-log #190, wiring form).
+      #
+      # `scripts/ci_test_target_counts.py` declares, per leg, how many tests 15
+      # targets hold, and fails unless each one LISTS exactly that many. The
+      # listing is `-- --list` over the ui test step's own package and features,
+      # so cargo should build nothing new (REASONED: `--tests` only narrows
+      # which built targets run; a `Compiling ui` line, or a step time close to
+      # the test step's, would refute it). `--tests` leaves the doc-tests out:
+      # no row declares one, and listing them may make rustdoc compile them
+      # again (the merged doc-test compile took 104.56 s in the dev box's full
+      # suite run of 2026-11-21).
+      #
+      # The check reads the file `ci_run_annotated.sh` tees to,
+      # `$RUNNER_TEMP/ci-annotated-<label>.log`, so each step's label and path
+      # must match. Each step also runs the gate's `--self-test` (0.04 s on the
+      # dev box) and combines the three exit codes, so no red hides another.
+      #
+      # Measured before it was wired: read with `--format run` against the dev
+      # box's full macOS suite log of 2026-11-21 (the tree before Waves E3 and
+      # F), the 6 rows whose count those waves do not change matched, and the 9
+      # whose count they change were red at their old counts.
+      # On the E3+F suite log of 2026-11-22 it printed PASS (15/15).
+      - name: "ui test-target counts, macOS (story 2-63)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          rc=0
+          scripts/ci_run_annotated.sh "ui-list-macos" cargo test -p ui --tests --no-fail-fast -- --list || rc=1
+          python3 scripts/ci_test_target_counts.py --os macos "$RUNNER_TEMP/ci-annotated-ui-list-macos.log" || rc=1
+          python3 scripts/ci_test_target_counts.py --self-test || rc=1
+          exit "$rc"
+
+      # Windows runs no other Python step (every governance gate is on macOS),
+      # so the interpreter is declared here rather than inherited from the
+      # runner image. The script needs 3.9+ (its self-test passes on 3.9.6). It
+      # is called as `python`, the name setup-python puts on PATH on Windows;
+      # `python3` is not guaranteed there.
+      - name: "Pin Python for the ui test-target counts (Windows)"
+        if: always() && matrix.os == 'windows-latest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: "ui test-target counts, Windows (story 2-63)"
+        if: always() && matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          rc=0
+          scripts/ci_run_annotated.sh "ui-list-windows" cargo test -p ui --tests --features fixtures --no-fail-fast -- --list || rc=1
+          python scripts/ci_test_target_counts.py --os windows "$RUNNER_TEMP/ci-annotated-ui-list-windows.log" || rc=1
+          python scripts/ci_test_target_counts.py --self-test || rc=1
+          exit "$rc"

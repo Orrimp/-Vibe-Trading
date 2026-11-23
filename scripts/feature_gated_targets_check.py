@@ -282,8 +282,9 @@ DECLARED: dict[str, dict[str, object]] = {
     },
     "ui/bin/ui-gallery": {
         "feats": ["fixtures"], "ci": "built",
-        "why": "Built by the one UNNARROWED `--features fixtures` invocation left in "
-               "ci.yml: the windows leg's `cargo test -p ui --features fixtures`, which "
+        "why": "Built by the windows leg's UNNARROWED `--features fixtures` invocations "
+               "in ci.yml (`cargo test -p ui --features fixtures`, and since story 2-63's "
+               "Close the same build again as `--tests ... -- --list`), each of which "
                "builds a package's bins as well as its tests. `Build ui (fixtures)` cannot "
                "cover it — that step narrows to `--bin cockpit` — and the macOS canonical "
                "step passes no `--features fixtures` at all. So since the 2026-11-09 matrix "
