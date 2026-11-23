@@ -46,7 +46,7 @@ pub const fn label_for(screen: Screen) -> &'static str {
         // "Calibrate" stage. `Screen::Tune` is now a sidebar-visible Work-group
         // entry (between Leaderboard and ForwardPlan) displayed as "Calibrate";
         // the enum variant name stays `Tune` for source-compat. The existing
-        // `OpenTuneEditor` drill-down (a preseeded entry from a Leaderboard row)
+        // `OpenTuneEditor` drill-down (a preseeded entry from the Lab's "Tune…")
         // still routes here; the sidebar entry is an ADDITIONAL unseeded entry
         // point that opens the Tune form in its default/last state.
         Screen::Tune => CALIBRATE_SIDEBAR_LABEL,

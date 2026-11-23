@@ -5,6 +5,7 @@ status: accepted
 date: 2026-06-24
 supersedes: none
 superseded-by: none
+updated: 2026-11-23
 ---
 
 # ADR-0069: Gate-tied hyperparameter sweep seam (paper/sim)
@@ -127,7 +128,9 @@ screen.** A new `Screen::Tune` variant exists for routing but is **navigable, no
 sidebar-default-routed** — entered via `Message::OpenTuneEditor{family,coin,lookback}`
 from (a) a per-row "Tune…" button on the Leaderboard (mirroring the existing
 `InspectStrategyFromLeaderboard` drill-down, `state.rs:1841`) and (b) a Lab entry
-point. Adding a 13th sidebar screen for a power-user tool is rejected (proliferation).
+point. *(Note 2026-11-23, bug-log `#200`: entry (a) never shipped; the Lab's
+`tune_entry_button` is the one sender of `OpenTuneEditor`. No decision changes.)* Adding a
+13th sidebar screen for a power-user tool is rejected (proliferation).
 A modal overlay (à la `leaderboard_inspect_overlay`) is an acceptable ui-designer
 substitute — the state/runner/mirror design is identical either way. Result crosses
 the seam as `backtest::SweepReport` mirrored into a pure-`ui` `SweepReportMirror` at a
@@ -210,5 +213,8 @@ unchanged.
   119/119 by construction.
 
 ## Changelog
+- 2026-11-23 (developer, bug-log `#200`): § D6 notes that entry (a), a Leaderboard row's
+  "Tune…", is not in the code; the Lab's `tune_entry_button` is the only sender. No
+  decision changes.
 - 2026-06-24 (architect): accepted. Initial record for feature
   `advisor-param-tuning`.

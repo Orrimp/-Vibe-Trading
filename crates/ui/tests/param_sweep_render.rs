@@ -40,11 +40,17 @@
 //!    (T7b) — selecting MACD renders the MACD axis form with a THIRD axis (Signal
 //!    period) in a band where the SMA form (2 axes) paints ~nothing. Together
 //!    they prove the picker swaps in the composed family's OWN axes (NOT the SMA
-//!    axes, NOT the retired pending note). One screenshot per test (macOS font-
-//!    mutex hazard). Writes both PNGs.
+//!    axes, NOT the retired pending note). Writes both PNGs.
 //! 7. [`sweep_macd_populated_paints_grid_and_fragile_badge`] (T7b) — a populated
 //!    MACD `SweepReportMirror` (composed `macd(...)` labels + a FRAGILE cell)
 //!    paints the gate-tied FRAGILE clay + the result grid. Writes the PNG.
+//! 8. [`tune_reopened_on_another_coin_footer_names_only_the_landed_grids_coin`]
+//!    (bug-log #200, LR-200) — built through `update`: a grid swept on ETHUSDT,
+//!    then "Tune…" on SOLUSDT, paints the SAME pixels as before the re-open, so
+//!    the footer names the landed grid's coin, not the next sweep's. The footer's
+//!    rows are derived from two `Empty` frames (ETH vs SOL), and the control (an
+//!    ETH grid vs a SOL grid) differs inside them. Five screenshots, each on a
+//!    fresh program. Writes `/tmp/param_sweep_200_*.png`.
 //!
 //! ## macOS gate (ADR-0057 D2)
 //!
@@ -456,12 +462,12 @@ fn sweep_promotable_use_config_is_enabled_accent_button() {
 //   (b) a populated MACD result grid paints the FRAGILE clay + heavy foreground
 //       (the result grid + the gate-tied FRAGILE treatment are family-agnostic).
 
-// NOTE (macOS render-harness hazard): each test below renders EXACTLY ONE
-// screenshot. Rendering two screenshots inside one `#[test]` reliably wedges the
-// cosmic-text/CoreText font mutex on macOS (spec/dev-notes/iced-ui-render-
-// verification.md). So the MACD-vs-SMA discriminator is split into two
-// single-screenshot tests that share the `MACD_AXIS3_*` band: MACD paints a real
-// third-axis row there; SMA (two axes) paints ~nothing there.
+// NOTE: the MACD-vs-SMA discriminator is split into two tests that share the
+// `MACD_AXIS3_*` band: MACD paints a real third-axis row there; SMA (two axes)
+// paints ~nothing there. Several screenshots in one test are fine when each
+// builds a fresh program (`render_tune_rgba` does): two each in the
+// populated-vs-empty, fragile and promotable discriminators, five in LR-200
+// (`docs/dev-notes/iced-ui-render-verification.md`).
 
 /// **Composed-family form proof (T7b), MACD half.** Selecting MACD renders the
 /// MACD axis form — three `{min, max, step}` axis rows (fast / slow / signal) +
@@ -641,5 +647,176 @@ fn sweep_progress_determinate_paints() {
          PNG: /tmp/param_sweep_progress_render.png",
         fill,
         bar_band
+    );
+}
+
+// ── bug-log #200 (LR-200) — the footer names the landed grid's coin ─────────
+//
+// Every frame is built from `Cockpit::new()` through `ui::state::update`, the way
+// the operator gets there: the Lab's "Tune…" (always SMA and `H1_2024`, so two
+// frames can differ only by coin; the Tune view reads no lookback), Run, the
+// sweep's completion. The grids are `fake_sweep_report_mirror()`, the fixture the
+// 80 / 150 floors above were calibrated on, with only its coin changed.
+
+/// `fake_sweep_report_mirror()` swept on `coin`.
+fn grid_swept_on(coin: &str) -> ui::tune::SweepReportMirror {
+    let mut grid = ui::fixtures::fake_sweep_report_mirror();
+    grid.coin = smol_str::SmolStr::new(coin);
+    grid
+}
+
+/// The Lab's "Tune…" as it is sent, on `coin`; asserts it preseeded and navigated.
+fn open_tune_on(cockpit: &mut Cockpit, coin: &str) {
+    use ui::state::{Message, Screen, update};
+    update(
+        cockpit,
+        Message::OpenTuneEditor {
+            family: ui::tune::TuneFamily::Sma,
+            coin: trading_core::Symbol::new(coin),
+            lookback: ui::leaderboard::LeaderboardLookback::H1_2024,
+        },
+    );
+    assert_eq!(
+        cockpit.current_screen,
+        Screen::Tune,
+        "precondition: Tune… navigated to the Tune screen"
+    );
+    assert_eq!(
+        cockpit.tune_coin.0.as_str(),
+        coin,
+        "precondition: Tune… preseeded the Tune coin"
+    );
+}
+
+/// A fresh cockpit with Tune opened on `coin`, swept, and the grid landed `Ready`.
+fn cockpit_with_grid_swept_on(coin: &str) -> Cockpit {
+    use ui::state::{Message, update};
+    let mut cockpit = Cockpit::new();
+    open_tune_on(&mut cockpit, coin);
+    update(&mut cockpit, Message::SweepRunRequested);
+    assert!(
+        cockpit.tune_screen_state.running,
+        "precondition: Run started the {coin} sweep"
+    );
+    let grid = grid_swept_on(coin);
+    update(&mut cockpit, Message::SweepRunCompleted(Ok(grid.clone())));
+    assert!(
+        matches!(&cockpit.tune_screen_state.result, PanelState::Ready(m) if *m == grid),
+        "precondition: the {coin} grid landed Ready"
+    );
+    cockpit
+}
+
+/// The rows, top to bottom, where two frames of width `w` differ.
+fn differing_rows(w: u32, a: &[u8], b: &[u8]) -> Vec<u32> {
+    let row = w as usize * 4;
+    a.chunks(row)
+        .zip(b.chunks(row))
+        .enumerate()
+        .filter(|(_, (ra, rb))| ra != rb)
+        .map(|(y, _)| u32::try_from(y).expect("a row index fits in u32"))
+        .collect()
+}
+
+/// **LR-200 (bug-log #200, AD-10).** A grid swept on ETHUSDT stays on screen
+/// after "Tune…" on SOLUSDT (K1), and the screen must not change: the footer
+/// names the landed grid's coin, not the next sweep's. In order:
+///
+/// 1. the footer's rows are DERIVED, never read off the subject: the rows where
+///    two `Empty` frames (Tune opened on ETH vs on SOL, no sweep) differ. The
+///    Empty prompt names no coin, and `prompt` and `ready_pane` are both
+///    `Length::Fill`, so the footer sits at the same y in `Empty` and `Ready`;
+/// 2. the re-opened frame is populated, at the file's own floors;
+/// 3. the control: an ETH grid and a SOL grid differ, the bottom-most differing
+///    row inside the footer's rows;
+/// 4. the fix: the ETH grid before and after "Tune…" on SOL, byte for byte.
+///
+/// Writes `/tmp/param_sweep_200_{E_eth,E_sol,A_eth,B_eth_reopened_sol,C_sol}.png`.
+#[test]
+fn tune_reopened_on_another_coin_footer_names_only_the_landed_grids_coin() {
+    let mut e_eth = Cockpit::new();
+    open_tune_on(&mut e_eth, "ETHUSDT");
+    let mut e_sol = Cockpit::new();
+    open_tune_on(&mut e_sol, "SOLUSDT");
+    for empty in [&e_eth, &e_sol] {
+        assert!(
+            matches!(empty.tune_screen_state.result, PanelState::Empty),
+            "precondition: no sweep ran, so the Empty prompt (which names no coin) is on screen"
+        );
+    }
+    let f_a = cockpit_with_grid_swept_on("ETHUSDT");
+    let mut f_b = cockpit_with_grid_swept_on("ETHUSDT");
+    open_tune_on(&mut f_b, "SOLUSDT");
+    assert!(
+        matches!(&f_b.tune_screen_state.result, PanelState::Ready(m) if m.coin.as_str() == "ETHUSDT"),
+        "precondition (K1): the ETH grid stays on screen after Tune… on SOL"
+    );
+    let f_c = cockpit_with_grid_swept_on("SOLUSDT");
+
+    let mut frames = Vec::new();
+    for (name, cockpit) in [
+        ("E_eth", e_eth),
+        ("E_sol", e_sol),
+        ("A_eth", f_a),
+        ("B_eth_reopened_sol", f_b),
+        ("C_sol", f_c),
+    ] {
+        let (w, h, rgba) = render_tune_rgba(cockpit);
+        if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+            let _ = img.save(format!("/tmp/param_sweep_200_{name}.png"));
+        }
+        frames.push((w, h, rgba));
+    }
+    let (w, h) = (frames[0].0, frames[0].1);
+    assert!(
+        frames.iter().all(|(fw, fh, _)| (*fw, *fh) == (w, h)),
+        "every frame renders at the same size"
+    );
+    let [e_eth, e_sol, a, b, c] = [0, 1, 2, 3, 4].map(|i| frames[i].2.as_slice());
+
+    // 1. The footer's rows, derived from the two Empty frames.
+    let footer = differing_rows(w, e_eth, e_sol);
+    let (Some(&top), Some(&bottom)) = (footer.first(), footer.last()) else {
+        panic!(
+            "LR-200 (1): the Empty frames opened on ETHUSDT and on SOLUSDT must differ in the \
+             footer, which names the coin. PNGs: /tmp/param_sweep_200_E_{{eth,sol}}.png"
+        );
+    };
+
+    // 2. The re-opened frame is populated (the file's own floors).
+    let clay = grid_clay_pixels(w, h, b);
+    let accent = grid_accent_pixels(w, h, b);
+    assert!(
+        clay > 80 && accent > 150,
+        "LR-200 (2): the re-opened frame must still paint the grid (clay {clay} > 80, accent \
+         {accent} > 150). PNG: /tmp/param_sweep_200_B_eth_reopened_sol.png"
+    );
+
+    // 3. The control: an ETH grid vs a SOL grid, bottom-most difference in the footer.
+    let control = differing_rows(w, a, c);
+    let last = control.last().copied();
+    assert!(
+        last.is_some_and(|y| (top..=bottom).contains(&y)),
+        "LR-200 (3): an ETH grid and a SOL grid must differ, the bottom-most differing row \
+         inside the footer's rows {top}..={bottom}, got {last:?} \
+         ({} rows differ). PNGs: /tmp/param_sweep_200_{{A_eth,C_sol}}.png",
+        control.len()
+    );
+
+    // 4. The fix: "Tune…" on SOL changes nothing on screen.
+    let moved = differing_rows(w, a, b);
+    eprintln!(
+        "#200 pixel margin LR-200: footer rows {top}..={bottom}; control: {} rows, bottom-most \
+         {last:?}; re-open: {} rows differ",
+        control.len(),
+        moved.len()
+    );
+    assert!(
+        moved.is_empty(),
+        "LR-200 (4) #200: the footer must keep naming the landed grid's coin after Tune… on \
+         another coin; {} rows changed (first {:?}). \
+         PNGs: /tmp/param_sweep_200_{{A_eth,B_eth_reopened_sol}}.png",
+        moved.len(),
+        moved.first()
     );
 }

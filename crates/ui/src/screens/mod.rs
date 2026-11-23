@@ -77,6 +77,6 @@ pub mod trail;
 /// config: params · verdict · return · Sharpe p5/p50/p95 · P(loss) ·
 /// P(Sharpe>1) · Max-DD p95) with FRAGILE prominently flagged + promotion-
 /// blocked, the shipped-baseline row, the buy-and-hold strip, the truncation
-/// banner, and the persistent honesty footer. Navigable via the "Tune…" row
-/// drill-down off the Leaderboard; not sidebar-default-routed.
+/// banner, and the persistent honesty footer. Navigable via the Lab's "Tune…"
+/// button and the sidebar's "Calibrate" entry (ADR-0083 D4).
 pub mod tune;

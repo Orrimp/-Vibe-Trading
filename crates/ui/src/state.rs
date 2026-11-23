@@ -168,15 +168,15 @@ pub enum Screen {
 
     // ── advisor-param-tuning (ADR-0069) — the gate-tied sweep editor ──
     /// The gate-tied hyperparameter sweep editor ("Tune"). A power-user
-    /// drill-down off a Leaderboard row's "Tune…" affordance (the
+    /// drill-down off the Lab's "Tune…" button (modelled on the
     /// `InspectStrategyFromLeaderboard` precedent) where the operator picks a
     /// strategy family and a parameter grid, sweeps it, and sees each config
     /// scored through the SAME frozen robustness gate the bake-off uses — so an
     /// overfit config that looks great in-sample but falls apart under
-    /// resampling renders FRAGILE and is promotion-blocked. Navigable, NOT
-    /// sidebar-default-routed (reached only by drill-down, like the inspect
-    /// overlay), so it does not proliferate the sidebar for a tool most journeys
-    /// never touch. Renders a `SweepReportMirror` (the ONE engine→ui boundary).
+    /// resampling renders FRAGILE and is promotion-blocked. Navigable from the
+    /// Lab's "Tune…" button and from the sidebar's "Calibrate" entry (ADR-0083
+    /// D4 promoted it from a drill-down to a Work-group stage). Renders a
+    /// `SweepReportMirror` (the ONE engine→ui boundary).
     Tune,
 
     // ── cockpit-reports-viewer v0.1.0 ─────────────────────────────────
@@ -891,7 +891,7 @@ pub struct ForwardPromotion {
     /// The strategy id the forward path dispatches on (e.g. `"v0.5.macd"`) — the
     /// SAME id `build_registry_for` matches. Resolved from the family at preseed.
     pub strategy_id: StrategyId,
-    /// The coin the tuned config runs on (the Tune sweep's coin).
+    /// The coin the tuned config runs on (the landed grid's coin, bug-log #200).
     pub coin: Symbol,
     /// The structured tuned params (the UI carrier). Mapped to
     /// `agent::ForwardParamOverride` binary-side.
@@ -1171,15 +1171,15 @@ pub struct Cockpit {
     /// `running: false`.
     pub tune_screen_state: crate::tune::TuneScreenState,
 
-    /// advisor-param-tuning (ADR-0069) — the coin the Tune sweep targets,
-    /// preseeded from the Leaderboard's chosen coin via `OpenTuneEditor` (so
-    /// the sweep runs on the coin that was just ranked). Held on the cockpit
-    /// (not the form state) because it is the leaderboard's authoritative
-    /// selection, not a Tune-form field. Cold-start: `BTCUSDT` (the bake-off
-    /// default coin).
+    /// advisor-param-tuning (ADR-0069) — the coin the NEXT Tune sweep targets,
+    /// preseeded by the Lab's "Tune…" (`OpenTuneEditor`) and read at dispatch.
+    /// A landed grid keeps its own coin: promotions and the Tune footer read
+    /// `TuneScreenState::landed_coin`, and this field only with no grid
+    /// (bug-log #200, ADR-0070 § D10). Held on the cockpit, not the form state.
+    /// Cold-start: `BTCUSDT` (the bake-off default coin).
     pub tune_coin: Symbol,
     /// advisor-param-tuning (ADR-0069) — the lookback window the Tune sweep runs
-    /// over, preseeded from the Leaderboard's chosen lookback via
+    /// over, preseeded by the Lab's "Tune…" (today always `H1_2024`) via
     /// `OpenTuneEditor`. Mapped to a `backtest::engine::DateRange` at dispatch
     /// time (runner glue). Cold-start: `H1_2024` (full corpus coverage).
     pub tune_lookback: crate::leaderboard::LeaderboardLookback,
@@ -2572,11 +2572,11 @@ pub enum Message {
     BakeoffSetStartCapital(String),
 
     // ── advisor-param-tuning (ADR-0069) — the gate-tied sweep editor ─────────
-    /// Open the Tune editor for a strategy family (the per-row "Tune…" drill-down
-    /// off the Leaderboard, mirroring `InspectStrategyFromLeaderboard`, or a Lab
-    /// entry point). Navigates to `Screen::Tune` PRESEEDED with the family +
-    /// the leaderboard's chosen coin + lookback (so the sweep targets the coin
-    /// that was just ranked). Pure (navigate + preseed) — the operator presses
+    /// Open the Tune editor (the Lab's "Tune…", its one sender: SMA, the Lab pair
+    /// or the bake-off default coin, `H1_2024`). Navigates to `Screen::Tune`
+    /// PRESEEDED for the NEXT sweep; a landed grid stays on screen, and its
+    /// promotion and footer keep naming its own coin (bug-log #200). Pure
+    /// (navigate + preseed) — the operator presses
     /// Run to execute the sweep. Typed payload (no stringly-typed blob).
     OpenTuneEditor {
         /// The strategy family to tune (preselects the family picker).
@@ -2797,16 +2797,16 @@ fn promote_swept_config(model: &mut Cockpit, params: crate::tune::PromoteParams)
         PromoteParams::Bollinger { .. } => StrategyId::new("v0.5.bbands"),
     };
 
-    // The window label the sweep scored over (for the "robust on THIS window"
-    // honesty copy). The coin is the Tune sweep's authoritative coin.
+    // The window and the coin come off the landed grid (#200, ADR-0070 § D10).
     let window_label = model.tune_screen_state.range_label_or_default();
-
-    // (b) Store the promotion — the binary launches from it (the crowned-pick
-    // precedent) AND the forward-plan view renders the provenance header from its
-    // Some-ness (one field is the launch target AND the provenance signal).
+    let coin = model
+        .tune_screen_state
+        .landed_coin()
+        .map_or_else(|| model.tune_coin.clone(), Symbol::new);
+    // (b) Store the promotion: the binary's launch target AND the view's provenance.
     model.pending_forward_promotion = Some(ForwardPromotion {
         strategy_id,
-        coin: model.tune_coin.clone(),
+        coin,
         params,
         window_label,
     });
@@ -3952,12 +3952,12 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             coin,
             lookback,
         } => {
-            // The "Tune…" drill-down (mirrors InspectStrategyFromLeaderboard):
-            // navigate to the Tune screen PRESEEDED with the family + the
-            // leaderboard's chosen coin + lookback, so the sweep targets the coin
-            // that was just ranked. Pure (navigate + preseed) — the operator
-            // presses Run to execute. The coin/lookback are AUTHORITATIVE (the
-            // operator just chose them on the leaderboard).
+            // The Lab's "Tune…" (its one sender; mirrors InspectStrategyFromLeaderboard):
+            // preseed the NEXT sweep's family, coin and lookback, and navigate to Tune.
+            // Pure (navigate + preseed) — the operator presses Run to execute. The
+            // result is NOT cleared: a landed grid stays on screen, and its promotion
+            // and footer keep naming the coin it was swept on (bug-log #200,
+            // `TuneScreenState::landed_coin`), not this new `tune_coin`.
             model.tune_screen_state.select_family(family);
             model.tune_coin = coin;
             model.tune_lookback = lookback;

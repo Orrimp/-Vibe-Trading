@@ -211,8 +211,8 @@ hypothesis, not a candidate).
 
 ### Step 3c — Tune (screen: **Tune**, engine `run_param_sweep`)
 
-- **What the user does.** Opens the **Tune** editor (preseeded from the
-  Leaderboard's coin + lookback via the `OpenTuneEditor` message), picks a
+- **What the user does.** Opens the **Tune** editor (preseeded with the Lab's
+  coin by its **"Tune…"** button, the `OpenTuneEditor` message), picks a
   strategy family, defines a **hyperparameter grid** (SMA fast/slow, MACD
   fast/slow/signal, RSI period/oversold, Bollinger period/k), and runs the
   sweep.
@@ -256,7 +256,8 @@ hypothesis, not a candidate).
 - **What the user sees.** They land on the **ForwardPlan** screen showing the
   **tuned rules**, with a provenance header (`TUNE_PROMOTE_CONFIRM_FMT`): *"You
   tuned this {family} config ({params}). It survived resampling on {window} —
-  that is not a guarantee, and not advice. Paper-trading your €200."* The plan
+  that is not a guarantee, and not advice. Paper-trading your €200 in {coin}."*
+  (`{coin}` is the landed grid's coin, the one the run paper-trades.) The plan
   flips to a "computing the tuned rules" Loading state so the operator never sees
   a stale crowned plan.
 - **System behind it.** `promote_swept_config` (`crates/ui/src/state.rs`) maps

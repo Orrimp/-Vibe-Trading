@@ -169,8 +169,8 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         // between the crowned Leaderboard pick and the Live view).
         Screen::ForwardPlan => forward_plan::view(model, mode),
         // advisor-param-tuning (ADR-0069): the gate-tied hyperparameter sweep
-        // editor ("Tune") — a power-user drill-down off a Leaderboard row's
-        // "Tune…" affordance (navigable, NOT sidebar-default-routed).
+        // editor ("Tune") — a power-user drill-down off the Lab's "Tune…"
+        // button, also the sidebar's "Calibrate" entry (ADR-0083 D4).
         Screen::Tune => tune::view(model, mode),
         // Phase F: Memory routes to the full memory screen (replaces Phase A placeholder).
         Screen::Memory => memory::view(model, mode),

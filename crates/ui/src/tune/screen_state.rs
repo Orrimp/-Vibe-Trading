@@ -818,6 +818,17 @@ impl TuneScreenState {
             Err(msg) => PanelState::Error(msg),
         };
     }
+
+    /// bug-log #200 (ADR-0070 § D10) — the coin the landed grid was swept on,
+    /// `None` with no grid. Promotions and the Tune footer name THIS coin; the
+    /// cockpit's `tune_coin` is the NEXT sweep's, and only their fallback.
+    #[must_use]
+    pub fn landed_coin(&self) -> Option<&str> {
+        match &self.result {
+            PanelState::Ready(mirror) => Some(mirror.coin.as_str()),
+            PanelState::Loading | PanelState::Empty | PanelState::Error(_) => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1130,5 +1141,33 @@ mod tests {
         );
         // MACD is now runnable (T7b) with its default form — Run is enabled.
         assert!(st.can_run(), "MACD default form is runnable");
+    }
+
+    /// bug-log #200 (U1) — `landed_coin` is the `Ready` grid's coin, and `None`
+    /// in every state without a grid (cold `Empty`, `Loading`, `Error`, a grid
+    /// with no cells). Two-sided over the coin: an ETHUSDT and a SOLUSDT grid.
+    #[test]
+    fn landed_coin_is_the_ready_grids_coin_and_none_without_a_grid() {
+        let mut st = TuneScreenState::default();
+        assert_eq!(st.landed_coin(), None, "cold start (Empty)");
+        st.begin_run();
+        assert_eq!(st.landed_coin(), None, "Loading");
+        st.finish_run(Err(SmolStr::new("boom")));
+        assert_eq!(st.landed_coin(), None, "Error");
+        let mut no_cells = crate::fixtures::fake_sweep_report_mirror();
+        no_cells.coin = SmolStr::new("ETHUSDT");
+        no_cells.cells.clear();
+        st.finish_run(Ok(no_cells));
+        assert!(
+            matches!(st.result, PanelState::Empty),
+            "precondition: a grid with no cells lands Empty"
+        );
+        assert_eq!(st.landed_coin(), None, "Empty (a grid with no cells)");
+        for coin in ["ETHUSDT", "SOLUSDT"] {
+            let mut grid = crate::fixtures::fake_sweep_report_mirror();
+            grid.coin = SmolStr::new(coin);
+            st.finish_run(Ok(grid));
+            assert_eq!(st.landed_coin(), Some(coin), "a Ready grid swept on {coin}");
+        }
     }
 }

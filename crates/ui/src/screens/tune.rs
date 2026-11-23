@@ -1,7 +1,7 @@
 //! advisor-param-tuning (ADR-0069) — the gate-tied hyperparameter sweep editor
 //! ("Tune") screen body.
 //!
-//! A power-user drill-down off a Leaderboard row's "Tune…" affordance: pick a
+//! A power-user drill-down off the Lab's "Tune…" button: pick a
 //! strategy family + a parameter grid, sweep it, and see each config scored
 //! through the SAME frozen robustness gate the bake-off uses. An overfit config
 //! that looks great in-sample but falls apart under resampling renders FRAGILE
@@ -111,11 +111,11 @@ const W_AXIS_FIELD: f32 = 64.0;
 /// Layout, top-to-bottom: the headline/caption + Run button header, the range
 /// form (family picker + SMA axes + presets + the live grid readout), then the
 /// result body (the `PanelState` grid / prompt / spinner / error), then the
-/// persistent honesty footer.
+/// persistent honesty footer, which names the landed grid's coin (bug-log #200).
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let st = &model.tune_screen_state;
-    let coin = model.tune_coin.0.as_str();
+    let coin = st.landed_coin().unwrap_or(model.tune_coin.0.as_str());
 
     // Header: headline + caption on the left, the Run button on the right.
     let header = Row::new()

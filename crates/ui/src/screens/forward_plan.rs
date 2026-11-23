@@ -153,19 +153,19 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 
 /// The promote-provenance header — a `WARN_500`-bordered strip (the same
 /// honesty-tinted card the not-a-prediction banner uses) that names the tuned
-/// config, the window it survived resampling on, and restates "not a guarantee,
-/// not advice". Shown ONLY when the active plan came from a promotion (vs a
+/// config, the window it survived resampling on and the coin it paper-trades, and
+/// restates "not a guarantee, not advice". Shown ONLY for a promotion (vs a
 /// crowned pick) — the only live signal of which provenance is running. The
 /// persistent not-advice footer below it still stays.
 fn promote_provenance_strip(
     promotion: &crate::state::ForwardPromotion,
     mode: ThemeMode,
 ) -> crate::Element<'static> {
-    let family = family_label(&promotion.params);
-    let line = crate::strings::TUNE_PROMOTE_CONFIRM_FMT
-        .replace("{family}", family)
-        .replace("{params}", promotion.params.label().as_str())
-        .replace("{window}", promotion.window_label.as_str());
+    // The copy names the family, params, window and coin the promotion carries;
+    // the coin is the landed grid's (ADR-0070 § D10, bug-log #200), so a
+    // cross-coin promotion is never silent. `promote_provenance_line` builds it
+    // (pinned by `tests::promote_provenance_line_names_the_promotions_coin`).
+    let line = promote_provenance_line(promotion);
 
     Container::new(
         Text::new(line)
@@ -1170,5 +1170,48 @@ pub fn export_current_plan(model: &Cockpit) -> PlanExportOutcome {
     match std::fs::write(dir.join(&filename), text) {
         Ok(()) => PlanExportOutcome::Saved(filename),
         Err(e) => PlanExportOutcome::Failed(e.to_string()),
+    }
+}
+
+/// ADR-0070 § D6 — the promote-provenance copy for `promotion`: the family, the
+/// params, the window and (bug-log #200, § D10) the coin it paper-trades.
+fn promote_provenance_line(promotion: &crate::state::ForwardPromotion) -> String {
+    crate::strings::TUNE_PROMOTE_CONFIRM_FMT
+        .replace("{family}", family_label(&promotion.params))
+        .replace("{params}", promotion.params.label().as_str())
+        .replace("{window}", promotion.window_label.as_str())
+        .replace("{coin}", promotion.coin.0.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// bug-log #200 (U2, ADR-0070 § D6) — the strip names the promotion's coin.
+    /// Two-sided: ETHUSDT and SOLUSDT, each line naming its own coin and not the
+    /// other, every placeholder filled.
+    #[test]
+    fn promote_provenance_line_names_the_promotions_coin() {
+        assert!(
+            crate::strings::TUNE_PROMOTE_CONFIRM_FMT.contains("{coin}"),
+            "#200: the promote-provenance template must name the coin"
+        );
+        for (coin, other) in [("ETHUSDT", "SOLUSDT"), ("SOLUSDT", "ETHUSDT")] {
+            let promotion = crate::state::ForwardPromotion {
+                strategy_id: trading_core::StrategyId::new("v0.5.sma"),
+                coin: trading_core::Symbol::new(coin),
+                params: crate::tune::PromoteParams::Sma {
+                    fast_len: 10,
+                    slow_len: 20,
+                },
+                window_label: SmolStr::new("2024 H1"),
+            };
+            let line = promote_provenance_line(&promotion);
+            assert!(
+                line.contains(coin) && !line.contains(other),
+                "#200: the strip must name the promotion's coin {coin}, not {other}: {line:?}"
+            );
+            assert!(!line.contains('{'), "every placeholder is filled: {line:?}");
+        }
     }
 }

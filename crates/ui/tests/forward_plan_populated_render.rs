@@ -36,6 +36,16 @@
 //!   populated plan and ~no `ACCENT` teal anywhere. Writes
 //!   `/tmp/forward_plan_empty_render.png`.
 //!
+//! ## bug-log #200 (LR-200b)
+//!
+//! [`forward_plan_promoted_strip_names_the_landed_grids_coin`] builds every
+//! frame through `update`: a grid swept on one coin, "Tune…" on another, "Use
+//! this config", the tuned plan. The promote-provenance strip names the landed
+//! grid's coin: an ETH grid re-opened on SOL and a SOL grid re-opened on ETH
+//! differ only inside the strip's band, and an ETH grid re-opened on SOL paints
+//! the same pixels as one re-opened on ETH. Writes
+//! `/tmp/forward_plan_200_*_render.png`.
+//!
 //! ## macOS gate (ADR-0057 D2)
 //!
 //! Like `leaderboard_populated_render.rs`, real-renderer pixel assertions are
@@ -563,5 +573,140 @@ fn forward_plan_f8_buy_and_hold_is_the_negative_control() {
          buy-and-hold {rules_accent_bh}). If they are equal the ensemble guard \
          is a tautology (the vote rule is not discriminating). \
          PNG: /tmp/forward_f8_ensemble_plan_buyhold_control.png"
+    );
+}
+
+// ── bug-log #200 (LR-200b) — the strip names the landed grid's coin ─────────
+
+/// From `Cockpit::new()`, through `ui::state::update` only: the Lab's "Tune…" on
+/// `swept`, Run, the sweep lands `fake_sweep_report_mirror()` swept on `swept`,
+/// "Tune…" on `reopen` (the grid stays), "Use this config" (SMA fast 10 /
+/// slow 20), and the tuned plan arrives.
+fn promoted_after_reopen(swept: &str, reopen: &str) -> Cockpit {
+    use ui::state::{Message, update};
+    let open = |cockpit: &mut Cockpit, coin: &str| {
+        update(
+            cockpit,
+            Message::OpenTuneEditor {
+                family: ui::tune::TuneFamily::Sma,
+                coin: trading_core::Symbol::new(coin),
+                lookback: ui::leaderboard::LeaderboardLookback::H1_2024,
+            },
+        );
+    };
+    let mut grid = ui::fixtures::fake_sweep_report_mirror();
+    grid.coin = smol_str::SmolStr::new(swept);
+
+    let mut cockpit = Cockpit::new();
+    open(&mut cockpit, swept);
+    update(&mut cockpit, Message::SweepRunRequested);
+    assert!(
+        cockpit.tune_screen_state.running,
+        "precondition: Run started the {swept} sweep"
+    );
+    update(&mut cockpit, Message::SweepRunCompleted(Ok(grid.clone())));
+    open(&mut cockpit, reopen);
+    assert_eq!(
+        cockpit.tune_coin.0.as_str(),
+        reopen,
+        "precondition: the second Tune… moved the Tune coin"
+    );
+    assert!(
+        matches!(&cockpit.tune_screen_state.result, PanelState::Ready(m) if *m == grid),
+        "precondition (K1): the {swept} grid is Ready on screen after Tune… on {reopen}"
+    );
+    update(
+        &mut cockpit,
+        Message::PromoteSweptConfig(ui::tune::PromoteParams::Sma {
+            fast_len: 10,
+            slow_len: 20,
+        }),
+    );
+    assert!(
+        cockpit.pending_forward_promotion.is_some(),
+        "precondition: Use this config stored a promotion"
+    );
+    let plan = ui::fixtures::fake_forward_plan();
+    update(&mut cockpit, Message::ForwardPlanReceived(plan.clone()));
+    assert!(
+        matches!(&cockpit.forward_plan_screen_state.plan, PanelState::Ready(v) if *v == plan),
+        "precondition: the tuned plan is on screen"
+    );
+    cockpit
+}
+
+/// **LR-200b (bug-log #200, AD-10, ADR-0070 § D6).** The promote-provenance
+/// strip names the landed grid's coin. Three promotions, each after "Tune…" was
+/// re-opened: P_eth (an ETH grid, re-opened on SOL), P_sol (a SOL grid,
+/// re-opened on ETH), P_eth2 (an ETH grid, re-opened on ETH).
+///
+/// 1. P_eth paints the strip (the file's own > 600 floor);
+/// 2. P_eth and P_sol differ, and every differing row is inside the strip's band
+///    `[PROVENANCE_TOP, PROVENANCE_BOTTOM)`: the coin is the only difference;
+/// 3. P_eth and P_eth2 are byte-identical: the re-open coin is not shown.
+///
+/// Writes `/tmp/forward_plan_200_{eth_reopened_sol,sol_reopened_eth,eth}_render.png`.
+#[test]
+fn forward_plan_promoted_strip_names_the_landed_grids_coin() {
+    let mut frames = Vec::new();
+    for (name, swept, reopen) in [
+        ("eth_reopened_sol", "ETHUSDT", "SOLUSDT"),
+        ("sol_reopened_eth", "SOLUSDT", "ETHUSDT"),
+        ("eth", "ETHUSDT", "ETHUSDT"),
+    ] {
+        let (w, h, rgba) = render_forward_plan_rgba(promoted_after_reopen(swept, reopen));
+        if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+            let _ = img.save(format!("/tmp/forward_plan_200_{name}_render.png"));
+        }
+        frames.push((w, h, rgba));
+    }
+    let (w, h) = (frames[0].0, frames[0].1);
+    assert!(
+        frames.iter().all(|(fw, fh, _)| (*fw, *fh) == (w, h)),
+        "every frame renders at the same size"
+    );
+    let [p_eth, p_sol, p_eth2] = [0, 1, 2].map(|i| frames[i].2.as_slice());
+
+    // 1. The strip paints.
+    let strip = provenance_band_foreground(w, p_eth);
+    assert!(
+        strip > 600,
+        "LR-200b (1): the promote-provenance strip must paint (expected >600 fg px, got \
+         {strip}). PNG: /tmp/forward_plan_200_eth_reopened_sol_render.png"
+    );
+
+    // 2. The two grid coins differ, only inside the strip's band.
+    let row = w as usize * 4;
+    let differing: Vec<u32> = p_eth
+        .chunks(row)
+        .zip(p_sol.chunks(row))
+        .enumerate()
+        .filter(|(_, (ra, rb))| ra != rb)
+        .map(|(y, _)| u32::try_from(y).expect("a row index fits in u32"))
+        .collect();
+    eprintln!(
+        "#200 pixel margin LR-200b: strip fg {strip}; ETH vs SOL grid: {} rows differ ({:?}..={:?})",
+        differing.len(),
+        differing.first(),
+        differing.last()
+    );
+    assert!(
+        !differing.is_empty()
+            && differing
+                .iter()
+                .all(|y| (PROVENANCE_TOP..PROVENANCE_BOTTOM).contains(y)),
+        "LR-200b (2) #200: the strip must name the landed grid's coin, so promotions of an ETH \
+         and a SOL grid differ, and only inside [{PROVENANCE_TOP}, {PROVENANCE_BOTTOM}); got \
+         {} rows ({:?}..={:?}). PNGs: /tmp/forward_plan_200_{{eth_reopened_sol,sol_reopened_eth}}_render.png",
+        differing.len(),
+        differing.first(),
+        differing.last()
+    );
+
+    // 3. The re-open coin is not what the strip names.
+    assert!(
+        p_eth == p_eth2,
+        "LR-200b (3) #200: an ETH grid re-opened on SOL must paint the same strip as one \
+         re-opened on ETH. PNGs: /tmp/forward_plan_200_{{eth_reopened_sol,eth}}_render.png"
     );
 }

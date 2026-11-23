@@ -3901,8 +3901,8 @@ pub const TUNE_RUN_BUTTON_RUNNING: &str = "Running\u{2026}";
 pub const TUNE_RUN_NEEDS_LIVE: &str = "Running a sweep needs the live build. Launch the cockpit with \
      `cargo run -p ui --bin cockpit_live` to sweep parameters on real data.";
 
-/// The "Tune…" drill-down affordance on a leaderboard row (opens the editor for
-/// that row's family). `{family}` is filled at the call site.
+/// The Lab's "Tune…" button label (`screens::lab::tune_entry_button`, which sends
+/// `Message::OpenTuneEditor`). No placeholder.
 pub const TUNE_OPEN_AFFORDANCE: &str = "Tune\u{2026}";
 
 /// Cold-start Empty prompt — what the operator should do next (no blank screen).
@@ -4045,11 +4045,14 @@ pub const TUNE_DISCLAIMER: &str = "Tuning is paper/sim research, not advice. A c
 /// The promote-provenance header on the forward-plan screen when the active plan
 /// came from a PROMOTION (vs a crowned bake-off pick). Distinct from the crowned
 /// "best of the bake-off" provenance — this is the ONLY live promote-vs-crown
-/// signal (ADR-0070 § R5). `{family}` / `{params}` / `{window}` are filled at the
-/// call site from `PromoteParams.label()` + the sweep window. Honest framing: a
-/// config robust on ONE window is NOT a guarantee, and not advice.
+/// signal (ADR-0070 § R5). `{family}` / `{params}` / `{window}` / `{coin}` are
+/// filled at the call site from `PromoteParams.label()`, the sweep window and the
+/// promotion's coin, which is the landed grid's (ADR-0070 § D10, bug-log #200), so
+/// a cross-coin promotion is never silent. Honest framing: a config robust on ONE
+/// window is NOT a guarantee, and not advice.
 pub const TUNE_PROMOTE_CONFIRM_FMT: &str = "You tuned this {family} config ({params}). It survived \
-     resampling on {window} — that is not a guarantee, and not advice. Paper-trading your \u{20ac}200.";
+     resampling on {window} — that is not a guarantee, and not advice. Paper-trading your \
+     \u{20ac}200 in {coin}.";
 
 /// Defensive fallback window label for the promotion honesty copy when no sweep
 /// result is on screen (promotion is only reachable from a `Ready` grid row, so

@@ -5,6 +5,7 @@ status: accepted
 date: 2026-06-25
 supersedes: none
 superseded-by: none
+updated: 2026-11-23
 ---
 
 # ADR-0070: Promotion wiring — carry a robust Tune config into the forward paper-trade
@@ -130,10 +131,13 @@ BYTE-FROZEN gate). Marginal is promotable exactly as today.
 `TUNE_PROMOTE_CONFIRM_FMT` string (zero literals, via `crate::strings`) renders as
 the forward-plan header when the active plan came from a promotion: *"You tuned this
 {family} config ({params}). It survived resampling on {window} — that is not a
-guarantee, and not advice. Paper-trading your €{budget}."* The crowned-pick header
-keeps its "best of the bake-off" provenance; the promoted header says "you tuned
-this" — different provenance, different words. The persistent not-advice footer
-(`TUNE_DISCLAIMER`) stays; promotion adds framing, never removes a disclaimer.
+guarantee, and not advice. Paper-trading your €200 in {coin}."* *(Amended 2026-11-23,
+bug-log `#200`: `{coin}` is the promotion's coin, which D10 takes off the landed grid, so
+a cross-coin promotion is never silent; the €200 literal is the code's, not a `{budget}`
+placeholder.)* The crowned-pick header keeps its "best of the bake-off" provenance; the
+promoted header says "you tuned this" — different provenance, different words. The
+persistent not-advice footer (`TUNE_DISCLAIMER`) stays; promotion adds framing, never
+removes a disclaimer.
 
 **D7 — Day-1 divergence + fidelity gate (CLAUDE.md non-negotiable, the
 v3-vol-overlay-noop precedent).** New `crates/agent/tests/forward_promotion_divergence.rs`
@@ -159,6 +163,15 @@ promote-framing header, with the crowned-pick header as the negative control.
 UI-owned; the `PromoteParams → ForwardParamOverride` map lives binary-side where
 `agent` is already imported — no new `ui` edge. Single-binary / SQLite untouched;
 edition 2024; no stdlib-shadowing name.
+
+**D10 — A promotion names the landed grid (amended 2026-11-23, bug-log `#200`).** Its
+coin, like its window and params, comes off the `Ready` mirror
+(`TuneScreenState::landed_coin`); `Cockpit::tune_coin` is the NEXT sweep's coin, read only
+when no grid is on screen. A grid stays on screen after "Tune…" on another coin (the Lab's
+`tune_entry_button` sends the Lab pair), and a sweep in flight lands its grid after the coin
+moved; "Use this config" then paper-trades the grid's coin, which the Tune footer and the
+D6 strip name. Rejected: clearing the grid on re-open (it misses the sweep that lands
+after, and destroys a grid); disabling Promote on a mismatch (the reducer stays wrong).
 
 ## Alternatives considered
 
@@ -207,6 +220,11 @@ edition 2024; no stdlib-shadowing name.
 
 ## Changelog
 
+- 2026-11-23 (developer, bug-log `#200`): **D10** a promotion's coin now comes off the
+  landed grid (`TuneScreenState::landed_coin`), not `Cockpit::tune_coin`, which "Tune…"
+  moves for the next sweep; the Tune footer names the same coin. **D6** the strip gains
+  `{coin}`, and its quoted copy now matches the code (`€200`, not `€{budget}`). D1–D5 and
+  D7–D9, the FRAGILE lock and the frozen gate unchanged; anchor-neutral (119/119).
 - 2026-06-25 — accepted. Initial promotion-wiring seam: `ForwardRunConfig.param_override`
   (agent-owned `ForwardParamOverride`) honored by `build_registry_for` +
   `build_forward_plan_from_registry`; sweep TOML generators promoted to `pub` for

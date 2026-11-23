@@ -10857,6 +10857,24 @@ The report facts are MEASURED read-only: a Python re-implementation of `parse_re
 3. Decide in the ADR-0055 amendment what `Last30d`, `Last90d` and `Custom` may match. The reports do not record their span (`#207` design § 1), so the honest default is "no committed report".
 4. Use one slug map. `ui` already depends on `backtest`, so make `strategy_dir_slug` `pub` and call it from `strategy_slug`. Pin it with a test that checks every Lab chip id resolves to the dir the engine writes.
 
+### `#213` — a promoted forward run inherits the leaderboard's scorecard, whatever coin and crown it was computed for
+
+**Status**: **`open`** 2026-11-23. Found by the `#200` design pass (read-only) and read-verified on the tree `#200` lands on. MEASURED: the code below. REASONED: the effect on screen. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.** `crates/ui/src/bin/cockpit_live.rs`, in the promotion launch block (`if promote_requested && let Some(promotion) = self.cockpit.pending_forward_promotion.clone()`):
+- `let promote_confidence = if let ui::state::PanelState::Ready(ref mirror) =` `self.cockpit.leaderboard_screen_state.result` copies `mirror.scorecard` into `ForwardRunConfig::confidence` (`cockpit_live.rs:1903-1907`) whenever any bake-off result is on the leaderboard. `agent::plan` passes it on (`confidence: cfg.confidence,`), and the forward plan's confidence block renders it.
+- Its comment says promoted plans inherit the scorecard "(same bake-off, same crown — the confidence check framing applies)". Neither holds in general: nothing compares `BakeoffReportMirror::coin` with `promotion.coin`, and the scorecard (`n_candidates`, the deflated Sharpe, `crown_clears_dsr`, `min_btl_years`) scores the bake-off's crowned pick, not the tuned config.
+- So a tuned ETHUSDT grid promoted while a BTCUSDT bake-off is on the leaderboard launches with the BTC crown's confidence, and with no `Ready` bake-off it launches with none.
+
+**Why it matters.** The forward plan shows a confidence check next to the promoted plan that was computed for another strategy, and possibly another coin. Nothing is traded, but it is honesty copy. Since `#200` the strip names the promoted coin, so the mismatch can now sit on one screen.
+
+**Fix (proposed; its own change), choose one:**
+1. `None` for every promotion: a tuned config has no bake-off scorecard.
+2. Keep the scorecard only when the bake-off's coin is `promotion.coin` and its crowned family is the promoted family, and say so on screen.
+3. Score the sweep: its `n_candidates` and the tuned cell's deflated Sharpe.
+
+Whichever is chosen, move the choice out of the bin into a library function, so a two-sided test (matching vs other coin) can pin it.
+
 ### `#214` — the Compare matrix gives every row label a fixed 120 px, so a long strategy id runs into its first value cell and covers the value
 
 **Status**: **`open`** 2026-11-22. Seen in the `#206` AD-10 PNGs, which are byte-identical before and after `#206`, so the defect predates it. A one-off test harness rendered them from the fixtures build's Compare state; the orchestrator read the fixed-tree PNG. MEASURED: the render. REASONED: the cause and the width budget. Anchor-impacting: **no**. Paper/sim only.

@@ -283,7 +283,8 @@ a forecast*:
 - The **"planned through <date>"** horizon.
 - If you got here by **promotion**, a provenance note: *"You tuned this
   `<family>` config (`<params>`). It survived resampling on `<window>` — that is
-  **not a guarantee**, and **not advice**. Paper-trading your €200."*
+  **not a guarantee**, and **not advice**. Paper-trading your €200 in `<coin>`."*
+  `<coin>` is the coin the tuned grid was swept on.
 - The standing disclaimers: *"This is a conditional, rule-based plan — not a
   price prediction…"* and *"Not financial advice. The €200 is a simulated paper
   budget… no real orders are placed."*

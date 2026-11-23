@@ -28,8 +28,12 @@
 //! (`SweepRunRequested`) and the sweep's completion (`SweepRunCompleted`).
 //! Some tests then change something under the landed grid before the press:
 //! the leaderboard's coin (`SwitchScreen` + `BakeoffSelectCoin`), the family
-//! picker (`SweepSelectFamily`), or the lookback (a second `OpenTuneEditor`).
-//! No model field is written directly, and every step's effect is asserted.
+//! picker (`SweepSelectFamily`), the lookback (a second `OpenTuneEditor`), or
+//! the Tune coin (a second `OpenTuneEditor` on another coin, after the grid
+//! lands or while the sweep is in flight). No model field is written directly,
+//! and every step's effect is asserted (S0 collects its checks and fails once
+//! with the whole list; of each `OpenTuneEditor` it checks the Tune coin, not
+//! the navigation).
 //! The crowned plan of the first test is handed to `update` as the
 //! `ForwardPlanReceived` the agent's relay yields. The relay seam
 //! (`ui::live::forward_plan_stream_impl`) exists only under `live`, and this
@@ -41,14 +45,15 @@
 //! Every preseeded field is tested on both sides of its dimension, and its
 //! expected value comes from the inputs, never from the cockpit:
 //!
-//! - **coin.** Production reads the Tune coin, `model.tune_coin`
-//!   (`ui::state::promote_swept_config`: `coin: model.tune_coin.clone(),`).
-//!   Two cases swap two coins between the Tune screen (opened on one) and the
-//!   leaderboard (where the operator then picks the other for the next
-//!   bake-off). Neither is the cold default. Each case expects its Tune coin,
-//!   written as a literal (D-P17, D-P18). In both cases the grid was swept on
-//!   the Tune coin, so they do not tell `model.tune_coin` from the landed
-//!   grid's own coin: see the known residual below.
+//! - **coin.** Production reads the landed grid's coin, and the Tune coin
+//!   (`model.tune_coin`) only with no grid (bug-log #200, ADR-0070 § D10;
+//!   `ui::state::promote_swept_config`:
+//!   `.map_or_else(|| model.tune_coin.clone(), Symbol::new);`). In
+//!   `promote_swept_config_preseeds_target_and_navigates` two cases swap two
+//!   coins between the Tune screen and the leaderboard's next bake-off; neither
+//!   is the cold default, and the grid was swept on the Tune coin (D-P17,
+//!   D-P18). `promote_swept_config_carries_the_landed_grids_coin_not_the_tune_coin`
+//!   moves the Tune coin away from the landed grid's and tells the two apart.
 //! - **strategy id.** Four families, four different ids, with the family
 //!   picker on the promoted family. In a second test the picker is moved to
 //!   another family after the grid lands, and the id must still follow the
@@ -75,29 +80,58 @@
 //! - the SMA family after `OpenTuneEditor` on SMA. SMA is the default family
 //!   of `TuneScreenState`; the MACD, RSI and Bollinger cases do move it.
 //!
-//! ## Known residual (story 2-63 Wave D round 3, falsifier id R2-X3; for the bug-log)
+//! ## bug-log #200 (was the known residual R2-X3, story 2-63 Wave D round 3)
 //!
-//! - **The coin a promotion carries is the Tune coin, which can have moved
-//!   since the grid on screen was swept.** `update` reaches this state:
-//!   `OpenTuneEditor` sets `model.tune_coin` and leaves
-//!   `tune_screen_state.result` alone, so a grid swept on ETHUSDT stays on
-//!   screen as `Ready` after a second "Tune…" on SOLUSDT. Measured through
-//!   `update` (a throwaway test, since deleted): pressing "Use this config"
-//!   with that grid's first promotable row's params then stores
-//!   `coin: SOLUSDT`, `strategy_id: v0.5.sma`, the ETH grid's params
-//!   (`Sma { fast_len: 10, slow_len: 20 }`) and the ETH grid's window
-//!   ("2024 H1"). The binary launches the forward run from that promotion
-//!   (`cockpit_live.rs`: `symbol: promotion.coin.clone(),`), so the ETH-tuned
-//!   config would paper-trade on SOL while the grid's benchmark strip still
-//!   names ETHUSDT (`ui::screens::tune::benchmark_strip` reads `report.coin`).
-//!   By the code (not run in the GUI), the Lab's "Tune…" button sends the
-//!   Lab's current pair, so changing the Lab pair and pressing "Tune…" again
-//!   reaches this state. No test here pins either behaviour: which coin is
-//!   right is a production decision.
+//! "Tune…" (`OpenTuneEditor`) moves `model.tune_coin` for the NEXT sweep and
+//! leaves `tune_screen_state.result` alone (K1, ADR-0070 § D10), and a sweep in
+//! flight lands its grid after the Tune coin moved. Before the fix the promotion
+//! took `model.tune_coin`, so an ETHUSDT grid's params and window could be
+//! paper-traded on SOLUSDT. It now takes the landed grid's coin
+//! (`TuneScreenState::landed_coin`), the Tune coin only with no grid, and the
+//! forward plan's provenance strip names it (ADR-0070 § D6 `{coin}`).
+//!
+//! Tests: S0 is `promote_swept_config_carries_the_landed_grids_coin_not_the_tune_coin`
+//! (here); U1 is `tune::screen_state::tests::landed_coin_is_the_ready_grids_coin_and_none_without_a_grid`
+//! and U2 `screens::forward_plan::tests::promote_provenance_line_names_the_promotions_coin`
+//! (`--lib`); LR-200 is `param_sweep_render.rs::tune_reopened_on_another_coin_footer_names_only_the_landed_grids_coin`
+//! (macOS only); LR-200b is `forward_plan_populated_render.rs::forward_plan_promoted_strip_names_the_landed_grids_coin`
+//! (macOS only), whose numbers are its asserts (1)–(3). T1–T4 are this file's
+//! other four tests; T5 is `advisor_recipe_state_gating.rs::relayed_plan_resolves_promotion_loading_to_ready`.
+//!
+//! T-T4 probes for `#200`: one edit to production code per row, except P6
+//! (P1's edit plus its own), located by symbol and quoted line (leading spaces
+//! belong to OLD; `\|` is `|`). The procedure is
+//! `advisor_recipe_state_gating.rs`'s (snapshot, apply, run, restore, `touch`,
+//! re-run until `Compiling ui` and the SHA-256 matches), but with this table's
+//! command, because several rows go red outside that file's two targets:
+//!
+//! `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk cargo test -p ui --no-fail-fast --lib --test promote_swept_config --test advisor_recipe_state_gating --test param_sweep_render --test forward_plan_populated_render`
+//!
+//! Each row's "targets" column is the smallest set that shows its RED and its
+//! GREEN; the two render targets compile to nothing off macOS. The RED and
+//! GREEN sets are derived from the code. Every test a row's targets run that
+//! its RED cell does not name is expected GREEN, whether or not its GREEN cell
+//! names it. The runs and the figures they measured are recorded in bug-log
+//! `#200`.
+//!
+//! | # | symbol | OLD → NEW | targets | RED | GREEN |
+//! |---|---|---|---|---|---|
+//! | P1 | `ui::state::promote_swept_config` | `        .map_or_else(\|\| model.tune_coin.clone(), Symbol::new);` → `        .map_or_else(\|\| model.tune_coin.clone(), \|_\| model.tune_coin.clone());` | `--test promote_swept_config --test advisor_recipe_state_gating --test forward_plan_populated_render` | S0 cases b, c, d (coin); LR-200b (3) | S0 a, e, f; T1–T4; T5; LR-200b (1), (2); the other 9 tests in `advisor_recipe_state_gating.rs`; the other 8 in `forward_plan_populated_render.rs` |
+//! | P2 | same | P1's OLD → `        .map_or_else(\|\| Symbol::new(crate::leaderboard::runner::DEFAULT_BAKEOFF_COIN), Symbol::new);` | `--test promote_swept_config` | S0 cases e, f (coin) | S0 a–d; T1–T4 |
+//! | P3 | `ui::tune::TuneScreenState::landed_coin` | `            PanelState::Ready(mirror) => Some(mirror.coin.as_str()),` → `            PanelState::Ready(_) => None,` | `--lib --test promote_swept_config --test param_sweep_render --test forward_plan_populated_render` | U1; S0 b, c, d (coin); LR-200 (4); LR-200b (3) | U2; S0 a, e, f; T1–T4; LR-200 (1)–(3); LR-200b (1), (2); the rest of `--lib`; the other 9 in `param_sweep_render.rs`; the other 8 in `forward_plan_populated_render.rs` |
+//! | P4 | `ui::screens::tune::view` | `    let coin = st.landed_coin().unwrap_or(model.tune_coin.0.as_str());` → `    let coin = model.tune_coin.0.as_str();` | `--test param_sweep_render` (macOS only) | LR-200 (4) | LR-200 (1)–(3); the file's other 9 tests |
+//! | P5 | `ui::tune::TuneScreenState::landed_coin` | `            PanelState::Loading \| PanelState::Empty \| PanelState::Error(_) => None,` → `            PanelState::Loading \| PanelState::Empty \| PanelState::Error(_) => Some("BTCUSDT"),` | `--lib --test promote_swept_config --test param_sweep_render` | U1; S0 e, f (coin); LR-200 (1) | U2; S0 a–d; T1–T4; the other 9 tests in `param_sweep_render.rs` |
+//! | P6 (O1) | P1 applied, plus `ui::state::update`, arm `Message::OpenTuneEditor` | `            model.tune_coin = coin;` → `            if model.tune_coin != coin { model.tune_screen_state.result = PanelState::Empty; } model.tune_coin = coin;` | `--test promote_swept_config --test advisor_recipe_state_gating --test param_sweep_render --test forward_plan_populated_render` | S0 b, c, e, f at the K1 `landed` precondition, b, c, d at the coin and b, c at the window (one failure lists them all); LR-200 and LR-200b, each at its K1 precondition | S0 a; T1–T4 (D-P24's re-open keeps the coin); T5; the other 9 tests in `advisor_recipe_state_gating.rs`; the other 9 in `param_sweep_render.rs`; the other 8 in `forward_plan_populated_render.rs` |
+//! | P7 | `ui::screens::forward_plan::promote_provenance_line` | `        .replace("{coin}", promotion.coin.0.as_str())` → `        .replace("{coin}", "BTCUSDT")` | `--lib --test forward_plan_populated_render` | U2; LR-200b (2) | U1; LR-200b (1); the file's other 8 tests |
+//! | P8 | `ui::strings::TUNE_PROMOTE_CONFIRM_FMT` | `     \u{20ac}200 in {coin}.";` → `     \u{20ac}200.";` | `--lib --test forward_plan_populated_render` | U2; LR-200b (2) | U1; LR-200b (1); the file's other 8 tests |
+//!
+//! D-P17 and D-P18 (the table in `advisor_recipe_state_gating.rs`) now edit
+//! P1's OLD too; with `--test forward_plan_populated_render` added they also
+//! turn LR-200b (2) red.
 //!
 //! The probe ids in the messages (`D-P15`, `D-P17` to `D-P20`, `D-P24`,
-//! `D-P25`) are story 2-63 Wave D's. The procedure and the table are in the
-//! module doc of `advisor_recipe_state_gating.rs`.
+//! `D-P25`) are story 2-63 Wave D's. The procedure and their table are in the
+//! module doc of `advisor_recipe_state_gating.rs`; P1–P8 are `#200`'s, above.
 //!
 //! NOT gated on `feature = "fixtures"` (story 2-63 Wave D). `ui::fixtures` is
 //! compiled in every build (`crates/ui/src/lib.rs`: "Fixtures module is always
@@ -319,12 +353,12 @@ fn promote_swept_config_preseeds_target_and_navigates() {
             "v0.5.sma",
             "[{tune}] SMA promotion must resolve to the v0.5.sma forward id"
         );
-        // Production reads the Tune coin, model.tune_coin (see the known
-        // residual in the module doc for when it differs from the grid's coin).
+        // The landed grid's coin, here also the Tune coin: the grid was swept on
+        // it (the #200 test below tells the two apart).
         assert_eq!(
             promotion.coin.0.as_str(),
             tune,
-            "[{tune}] D-P17 / D-P18: the promotion must carry the Tune coin, model.tune_coin \
+            "[{tune}] D-P17 / D-P18: the promotion must carry the grid's coin, the Tune coin \
              ({tune}), not the leaderboard's next pick ({board}) or the cold default \
              ({DEFAULT_BAKEOFF_COIN})"
         );
@@ -648,4 +682,209 @@ fn promote_swept_config_carries_the_swept_window_label() {
              (for the honesty copy), or the fallback phrase when no grid landed"
         );
     }
+}
+
+/// Record `what` under case `case` unless `holds`. S0 collects every check,
+/// preconditions included, so one run names every case a probe turns red.
+fn note(failures: &mut Vec<String>, case: &str, holds: bool, what: &str) {
+    if !holds {
+        failures.push(format!("[{case}] {what}"));
+    }
+}
+
+/// bug-log #200 (ADR-0070 § D10, S0): the promotion carries the coin the
+/// LANDED grid was swept on. "Tune…" moves the Tune coin for the NEXT sweep and
+/// leaves the landed grid on screen (K1), and a sweep in flight lands its grid
+/// after the Tune coin moved. With no grid the Tune coin is the fallback.
+///
+/// | case | swept on | outcome | "Tune…" again on | when | expected coin |
+/// |---|---|---|---|---|---|
+/// | a | ETHUSDT | `Ok` | ETHUSDT | after the grid landed | ETHUSDT |
+/// | b | ETHUSDT | `Ok` | SOLUSDT | after the grid landed | ETHUSDT |
+/// | c | SOLUSDT | `Ok` | ETHUSDT | after the grid landed | SOLUSDT |
+/// | d | ETHUSDT | `Ok` | SOLUSDT | after Run, before the sweep completed | ETHUSDT |
+/// | e | ETHUSDT | `Err` | SOLUSDT | after the sweep failed | SOLUSDT |
+/// | f | SOLUSDT | `Err` | ETHUSDT | after the sweep failed | ETHUSDT |
+///
+/// The expected coin and window come from the row: the swept coin and
+/// "2024 H1" on `Ok`, else the re-open coin and the fallback phrase. Two-sided
+/// pairs: a/c (one re-open coin, two grid coins), e/f (no grid, two Tune
+/// coins), b/e (one path, `Ok` vs `Err`). Case d cannot use
+/// `open_tune_and_sweep`, which completes the sweep before returning.
+#[test]
+fn promote_swept_config_carries_the_landed_grids_coin_not_the_tune_coin() {
+    /// One row of the table above.
+    struct Case {
+        name: &'static str,
+        swept: &'static str,
+        ok: bool,
+        reopen: &'static str,
+        mid_sweep: bool,
+    }
+    let cases = [
+        Case {
+            name: "a",
+            swept: "ETHUSDT",
+            ok: true,
+            reopen: "ETHUSDT",
+            mid_sweep: false,
+        },
+        Case {
+            name: "b",
+            swept: "ETHUSDT",
+            ok: true,
+            reopen: "SOLUSDT",
+            mid_sweep: false,
+        },
+        Case {
+            name: "c",
+            swept: "SOLUSDT",
+            ok: true,
+            reopen: "ETHUSDT",
+            mid_sweep: false,
+        },
+        Case {
+            name: "d",
+            swept: "ETHUSDT",
+            ok: true,
+            reopen: "SOLUSDT",
+            mid_sweep: true,
+        },
+        Case {
+            name: "e",
+            swept: "ETHUSDT",
+            ok: false,
+            reopen: "SOLUSDT",
+            mid_sweep: false,
+        },
+        Case {
+            name: "f",
+            swept: "SOLUSDT",
+            ok: false,
+            reopen: "ETHUSDT",
+            mid_sweep: false,
+        },
+    ];
+    let params = PromoteParams::Sma {
+        fast_len: 10,
+        slow_len: 20,
+    };
+    let open = |cockpit: &mut Cockpit, coin: &str| {
+        update(
+            cockpit,
+            Message::OpenTuneEditor {
+                family: TuneFamily::Sma,
+                coin: Symbol::new(coin),
+                lookback: LeaderboardLookback::H1_2024,
+            },
+        );
+    };
+
+    let mut failures: Vec<String> = Vec::new();
+    for Case {
+        name,
+        swept,
+        ok,
+        reopen,
+        mid_sweep,
+    } in cases
+    {
+        for coin in [swept, reopen] {
+            assert_ne!(
+                coin, DEFAULT_BAKEOFF_COIN,
+                "fixture: [{name}] no coin is the cold default, so a fallback to it fails"
+            );
+        }
+        let outcome: SweepRunResult = if ok {
+            Ok(sma_grid(swept, "2024 H1"))
+        } else {
+            Err(SmolStr::new("boom"))
+        };
+        let (want_coin, want_window) = if ok {
+            (swept, "2024 H1")
+        } else {
+            (reopen, TUNE_PROMOTE_WINDOW_FALLBACK)
+        };
+
+        let mut cockpit = Cockpit::new();
+        open(&mut cockpit, swept);
+        note(
+            &mut failures,
+            name,
+            cockpit.tune_coin.0.as_str() == swept,
+            "precondition: the first Tune… preseeded the swept coin",
+        );
+        update(&mut cockpit, Message::SweepRunRequested);
+        note(
+            &mut failures,
+            name,
+            cockpit.tune_screen_state.running,
+            "precondition: Run started the sweep",
+        );
+        if mid_sweep {
+            open(&mut cockpit, reopen);
+            note(
+                &mut failures,
+                name,
+                cockpit.tune_screen_state.running,
+                "precondition: the second Tune… came while the sweep was in flight",
+            );
+            update(&mut cockpit, Message::SweepRunCompleted(outcome.clone()));
+        } else {
+            update(&mut cockpit, Message::SweepRunCompleted(outcome.clone()));
+            open(&mut cockpit, reopen);
+        }
+        note(
+            &mut failures,
+            name,
+            cockpit.tune_coin.0.as_str() == reopen,
+            "precondition: the second Tune… moved the Tune coin to the re-open coin",
+        );
+        let on_screen = kind(&cockpit.tune_screen_state.result);
+        note(
+            &mut failures,
+            name,
+            landed(&cockpit.tune_screen_state.result, &outcome),
+            &format!(
+                "precondition (K1): the sweep's outcome is on screen after both, got {on_screen}"
+            ),
+        );
+
+        update(&mut cockpit, Message::PromoteSweptConfig(params.clone()));
+
+        let Some(promotion) = cockpit.pending_forward_promotion.as_ref() else {
+            note(
+                &mut failures,
+                name,
+                false,
+                "PromoteSweptConfig stored no promotion",
+            );
+            continue;
+        };
+        note(
+            &mut failures,
+            name,
+            promotion.coin.0.as_str() == want_coin,
+            &format!(
+                "#200: the promotion must carry the coin the landed grid was swept on (the \
+                 Tune coin only with no grid): want {want_coin}, got {}",
+                promotion.coin.0
+            ),
+        );
+        note(
+            &mut failures,
+            name,
+            promotion.window_label.as_str() == want_window,
+            &format!(
+                "the window comes off the same grid: want {want_window:?}, got {:?}",
+                promotion.window_label
+            ),
+        );
+    }
+    assert!(
+        failures.is_empty(),
+        "{} check(s) failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
