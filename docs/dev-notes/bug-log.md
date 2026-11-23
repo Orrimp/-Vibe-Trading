@@ -10157,12 +10157,18 @@ if pre_is_ident && sign_start {
 
 ### `#200` — "Promote" pairs a grid swept on one coin with another coin, after Tune is re-opened from the Lab
 
-**Status**: **`open`** 2026-11-13. Found by story `2-63` Wave D's round-2 falsifier (its extra
-probe R2-X3 survived). Round 3 measured it through `ui::state::update` with a throwaway test, and
-the orchestrator confirmed it by reading HEAD `a79ad40b`. Anchor-impacting: **no** (the cockpit
-only; paper money only). Not verified in the rendered GUI.
+**Status**: **`fixed` 2026-11-23 — `3d042aa65864`** (a promotion takes the landed grid's
+coin, `TuneScreenState::landed_coin`, and the Tune footer and the forward plan's
+provenance strip name it; ADR-0070 D10 and D6). Anchor-impacting: **no** (the cockpit only;
+paper money only).
 
-**The path, reachable from the GUI.** The Lab's "Tune…" button (`crates/ui/src/screens/lab.rs`
+**History.** Filed `open` 2026-11-13 by story `2-63` Wave D's round-2 falsifier (its extra
+probe R2-X3 survived). Round 3 measured it through `ui::state::update` with a throwaway test,
+and the orchestrator confirmed it by reading HEAD `a79ad40b`. It was not verified in the
+rendered GUI then; the fix's LR-200 and LR-200b render both screens. The sections below, up
+to **Fix**, describe the code before the fix.
+
+**The path, reachable from the GUI (before the fix).** The Lab's "Tune…" button (`crates/ui/src/screens/lab.rs`
 `tune_entry_button`) sends `Message::OpenTuneEditor { family: Sma, coin, lookback: H1_2024 }`, with
 `coin` set to the Lab's current pair.
 
@@ -10185,17 +10191,69 @@ slow_len: 20 } window=2024 H1`, while the grid on screen had been swept on ETHUS
 coin. Nothing is traded (paper/sim only), but the advisor's honesty copy is false in this state.
 
 **Why no test caught it.** Every promotion test swept on the Tune coin, so "the Tune coin" and "the
-grid's coin" could not be told apart. Story `2-63`'s `promote_swept_config.rs` now states this as
-a Known residual; it deliberately pins neither behaviour (AC5: no production change).
+grid's coin" could not be told apart. Story `2-63`'s `promote_swept_config.rs` stated this as
+a Known residual and deliberately pinned neither behaviour (AC5: no production change); the
+fix replaced it with S0 and the `#200` probe table.
 
-**Fix (its own change), choose one:**
+**Fix (landed in `3d042aa65864`, ADR-0070 D10):**
 
-1. `OpenTuneEditor` clears the landed result when the coin or lookback differs from the grid's.
-2. `promote_swept_config` takes the coin from the landed grid's mirror.
-3. The Promote buttons are disabled while the grid's coin differs from `tune_coin`.
+1. **The reducer takes the grid's coin.** `promote_swept_config` takes
+   `TuneScreenState::landed_coin()`, which is `Some` only on a `Ready` grid, and
+   `Cockpit::tune_coin` only with no grid. The window already came off the grid. The sweep
+   dispatch in `cockpit_live.rs` keeps reading `tune_coin`, which is the next sweep's coin.
+2. **K1, decided.** "Tune…" on another coin still leaves the landed grid on screen. Clearing
+   the grid on re-open (`OpenTuneEditor` emptying the result when the coin or lookback
+   differs) was rejected: it misses a sweep that lands after the re-open, and it destroys a
+   grid. Disabling the Promote buttons while the grid's coin differs from `tune_coin` was
+   rejected: the reducer would stay wrong. So the screens name the coin. The Tune footer
+   (`screens::tune::view`) names the landed grid's coin, and `TUNE_PROMOTE_CONFIRM_FMT`
+   gains `{coin}` ("Paper-trading your €200 in {coin}."), filled by
+   `screens::forward_plan::promote_provenance_line`.
+3. **Doc truth.** Eleven comments named a Leaderboard "Tune…" (none exists; the Lab's
+   `tune_entry_button` is the one sender) or called the Tune coin authoritative: six in
+   `state.rs`, one each in `screens/tune.rs`, `screens/mod.rs`, `shell.rs` and
+   `widgets/sidebar_nav.rs`, and `TUNE_OPEN_AFFORDANCE`'s in `strings.rs`, which also
+   claimed a `{family}` placeholder. The `state.rs` `Screen::Tune`, `screens/mod.rs` and
+   `shell.rs` ones also said "not sidebar-default-routed"; Tune is the sidebar's
+   "Calibrate" entry (ADR-0083 D4).
+   They now say what the code does. The docs of `ForwardPromotion::coin`, `tune::view`,
+   `TUNE_PROMOTE_CONFIRM_FMT` and the provenance strip name the landed grid's coin. The
+   edits keep the line counts of `state.rs`, `screens/tune.rs`, `screens/mod.rs`,
+   `shell.rs` and `sidebar_nav.rs`, so line citations into them stay true. Also changed:
+   `promote_swept_config.rs`'s Known residual (now its `#200` section), the D-P17/D-P18
+   rows of `advisor_recipe_state_gating.rs` (they quote the new line), and
+   `param_sweep_render.rs`'s one-screenshot NOTE, whose `spec/dev-notes/` path was dead,
+   and the user docs' quotes of the strip (`doc/end-to-end.md` Step 4b,
+   `doc/user-manual.md` Step 5), which gain the coin; `doc/end-to-end.md` Step 3c no
+   longer says the Leaderboard preseeds Tune. ADR-0070 gains D10 and D6's `{coin}`,
+   ADR-0069 § D6 a note, plus Registry row 0070 and the README marker. No new story, trace
+   row or CHANGELOG line (the `#196` precedent); story 2-63's bug list records the fix.
+4. **Tests.** Expected values are derived from the inputs.
+   - S0 `promote_swept_config_carries_the_landed_grids_coin_not_the_tune_coin`, cases a–f.
+   - U1 and U2, `--lib`.
+   - LR-200 (`param_sweep_render.rs`) and LR-200b (`forward_plan_populated_render.rs`), on
+     macOS. Each has a populated check at its file's own floor and a derived control.
+   - No baseline changed: every committed fixture pairs BTCUSDT with BTCUSDT.
+5. **Not in this fix.** While a re-opened sweep is `Loading`, the footer names the next
+   sweep's coin. With a grid on screen, nothing on Tune names the next sweep's coin
+   (pre-existing). A promoted run inherits the leaderboard's scorecard (`#213`).
 
-Whichever is chosen, the test that pins it is a pair through `update`: sweep on A, re-open on B,
-promote. Once with A == B, and once with A ≠ B expecting the chosen behaviour.
+**Pin / T-T4.** P1–P8 live in the `#200` section of
+`crates/ui/tests/promote_swept_config.rs`'s module doc, each with its OLD → NEW, its
+targets and its RED/GREEN sets, derived from the code. The runs and the figures they
+measured are recorded here.
+Measured: Step 0 red on the tree before the fix at exactly S0 b, c and d (the coin), LR-200 (4) (10 footer
+rows changed, the first at row 1051) and LR-200b (2) (0 strip rows differ between an ETH and a SOL
+promotion); on the fix's bytes 7 test binaries passed 750 tests, 0 failed, 3 ignored: `--lib` 706,
+the four touched test files (`promote_swept_config` 5, `advisor_recipe_state_gating` 10,
+`param_sweep_render` 10, `forward_plan_populated_render` 9 run) and the untouched controls
+`stage_stepper_render` 4 and `gallery_snapshots` 6 (+3 ignored); pixel margins: LR-200's footer rows
+1051..=1060 and 0 rows differ after the re-open, LR-200b's ETH and SOL strips differ in 11 rows
+(116..=126); P1–P8, D-P17 and D-P18 (10/10) each went red at exactly its declared tests and were
+restored byte-identical (then 750 passed, 0 failed); clippy `-p ui --lib --bins --tests` clean;
+anchors 119/119. The CI-equivalent suite over the #202/#200/2-63 batch: `cargo test -p ui` 1460
+passed, 0 failed, 31 ignored over 122 targets (lib 706), the 2 `--features fixtures` targets 6
+passed, `-p agent` 235 and `-p trader` 166 passed, with no baseline moved; cockpit-smoke PASS.
 
 ### `#201` — the faithfulness check panics when an em dash sits at the edge of a P1/P2 window, and one panic ends Explain for the session
 

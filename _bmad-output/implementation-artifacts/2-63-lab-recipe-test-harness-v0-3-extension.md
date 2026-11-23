@@ -276,9 +276,8 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
 - **`#201`, fixed in `cded86b5`** (ADR-0064 D14). Found by the `#199` review. P1 and P2 panicked on an em dash at a window edge, and one panic ended Explain for the session.
   - The containment helper sits after `panic_message`, so `runtime.rs:1627-1653` (rows 18 and "Narration (Wave G)") did not move.
   - Row 19's `runtime.rs:3346` was repointed to `:3375`. It was already stale by 2.
-- **Filed open:**
-  - `#200` (Wave D, above).
-  - `#202`: an Explain answer is not tied to its request, so A's answer can land under bake-off B, and a refused send leaves the panel `InFlight`. It needs an ADR-0064 amendment and gets its own change after this story's waves.
+- **`#200`, fixed 2026-11-23 in `3d042aa65864`** (ADR-0070 D10). Found by Wave D (above). Promote took the Tune coin, which "Tune…" moves under a landed grid; it now takes the grid's coin, and the Tune footer and the forward plan's strip name it.
+- **`#202`, fixed 2026-11-23** (ADR-0064 D15; bug-log `#202` cites the fix commit). Filed open here: an Explain answer was not tied to its request, so A's answer could land under bake-off B, and a refused send left the panel `InFlight`. Each Explain now carries a `NarrationTicket` whose id the narration task echoes, and a refused send lands `FellBack`.
 - **Bug-log ids for the remaining waves:** C1's "gate that cannot fail" entry is now `#203` (E5: ids strictly increase). E2's entry goes to the next free id after C1's.
 
 **2026-11-13: Wave B gate, run by the orchestrator on the committed Wave B (`074e907a`) before E1a.** The results are mechanical and feed the E1a prompt (`scratchpad/e1a/wave-b-gate.md`):
