@@ -2,7 +2,7 @@
 slug: bug-log
 status: living
 owner: orchestrator
-updated: 2026-11-22
+updated: 2026-11-23
 ---
 
 # Bug log
@@ -10270,9 +10270,10 @@ asserts it is served.
   - `narration.rs`: P1 and P2 each use `lower.floor_char_boundary(abs_lex.saturating_sub(N))` and
     `lower.ceil_char_boundary(abs_lex + lexeme.len() + N)`. `:1032` did not move.
   - `runtime.rs`: the narration loop's provider branch calls `narrate_containing_panics(provider,
-    &facts)`. It wraps `generate_narration` in `catch_unwind` and answers `FellBack`. The helper sits
-    after `panic_message`, so the loop (`:1627-1653`) and the call at `:1641` keep the lines cited
-    above. The only citation it moved, story `2-63`'s `runtime.rs:3346`, was repointed to `:3375`.
+    &facts)` (`&req.facts` since `#202`, on the same line). It wraps `generate_narration` in
+    `catch_unwind` and answers `FellBack`. The helper sits after `panic_message`, so the loop
+    (`:1627-1653`) and the call at `:1641` keep the lines cited above. The only citation it moved,
+    story `2-63`'s `runtime.rs:3346`, was repointed to `:3375`.
 - **No verdict moves where the old code returned.** On a char boundary both functions are the
   identity. Past the end, `ceil_char_boundary` gives the length, exactly as the old `.min` did. This
   follows from the functions' contract; it is not a sample.

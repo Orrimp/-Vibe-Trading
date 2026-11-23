@@ -118,7 +118,11 @@ fn pre_198_unit(fraction: Decimal) -> String {
 /// The request's facts for `mirror`, with one KPI-string set per row asserted
 /// (a silent `zip` truncation would make every per-row loop below vacuous).
 fn facts_for(label: &str, mirror: &BakeoffReportMirror) -> NarrationFacts {
-    let facts = ui::live::narration_request_from_mirror(mirror).facts;
+    let facts = ui::live::narration_request_from_mirror(
+        mirror,
+        ui::leaderboard::NarrationTicket::from_raw(1),
+    )
+    .facts;
     assert_eq!(
         facts.candidate_kpi_strings.len(),
         mirror.rows.len(),

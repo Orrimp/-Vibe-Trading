@@ -630,8 +630,8 @@ pub enum NarrationState {
     /// control. The default.
     #[default]
     NotRequested,
-    /// The narration is being generated — show the templated copy + a spinner.
-    InFlight,
+    /// Request `ticket` is being answered — show the templated copy + a spinner.
+    InFlight(NarrationTicket),
     /// A faithful narration passed the agent-side post-check — show this prose
     /// (with the `disclaimer()` framing around it).
     Ready(SmolStr),
@@ -1215,13 +1215,13 @@ pub struct LeaderboardScreenState {
     pub start_capital_input: String,
 
     // ── F9 LLM "why this one" narration (ADR-0064) ───────────────────────────
-    /// The opt-in LLM-narration lifecycle on the recommendation block (F9).
-    /// Defaults to [`NarrationState::NotRequested`] and is INDEPENDENT of
-    /// `result` — the structured bake-off renders immediately on
-    /// `BakeoffRunCompleted`; pressing "Explain" flips this to `InFlight` and
-    /// the second async step lands `Ready`/`FellBack` in place. String/enum only
-    /// — no `llm`/`agent` type crosses `view`.
+    /// The opt-in LLM-narration lifecycle on the recommendation block (F9),
+    /// independent of `result`; "Explain" flips it to `InFlight(ticket)` and only
+    /// that ticket's answer lands (bug-log #202). String/enum only.
     pub narration: NarrationState,
+    /// The last ticket `begin_narration` minted. Never reset (not even by
+    /// `begin_run`), so no ticket is reused within a session.
+    pub narration_seq: u64,
 }
 
 impl Default for LeaderboardScreenState {
@@ -1243,8 +1243,8 @@ impl Default for LeaderboardScreenState {
             // H1 = identity pass-through (no bar fold); 100_000 = legacy capital.
             timeframe: BakeoffTimeframe::OneHour,
             start_capital_input: DEFAULT_START_CAPITAL_INPUT.to_string(),
-            // F9 — no narration requested until the operator presses "Explain".
-            narration: NarrationState::NotRequested,
+            narration: NarrationState::NotRequested, // F9: none until "Explain" is pressed.
+            narration_seq: 0,
         }
     }
 }
@@ -1289,25 +1289,47 @@ impl LeaderboardScreenState {
         };
     }
 
-    /// Mark the F9 narration as in flight — flips `narration` to `InFlight`.
-    /// Called from the `Message::BakeoffNarrationRequested` update arm (after
-    /// guarding against a re-request). The templated copy stays visible the
-    /// whole time (the floor), so the block never goes blank.
-    pub fn begin_narration(&mut self) {
-        self.narration = NarrationState::InFlight;
+    /// Mark the F9 narration as in flight under a fresh ticket and return it:
+    /// `narration` becomes `InFlight(ticket)`. Called from the
+    /// `Message::BakeoffNarrationRequested` update arm (after guarding against a
+    /// re-request). The templated copy stays visible the whole time (the floor).
+    /// Not `#[must_use]`: the arm discards the ticket, and the dispatch reads it
+    /// back with [`NarrationState::in_flight_ticket`] (bug-log #202).
+    pub fn begin_narration(&mut self) -> NarrationTicket {
+        self.narration_seq = self.narration_seq.wrapping_add(1);
+        let ticket = NarrationTicket(self.narration_seq);
+        self.narration = NarrationState::InFlight(ticket);
+        ticket
     }
 
-    /// Land a completed F9 narration in place — maps the `core`-clean
-    /// [`NarrationOutcome`] into the render-side [`NarrationState`]:
-    /// `Ready(prose) → Ready(prose)`, `FellBack → FellBack` (the honest
-    /// fallback to the templated copy). Called from the
-    /// `Message::BakeoffNarrationCompleted` update arm. Never touches `result`
-    /// — the structured bake-off is independent of the narration.
-    pub fn set_narration(&mut self, outcome: NarrationOutcome) {
+    /// Land a completed F9 narration only on its own request. While `narration`
+    /// is `InFlight(ticket)`, map the `core`-clean [`NarrationOutcome`] into the
+    /// render-side [`NarrationState`] (`Ready(prose) → Ready(prose)`,
+    /// `FellBack → FellBack`) and return `true`. In any other state (a later
+    /// Explain, a new run, an answer that already landed) change nothing and
+    /// return `false` (bug-log #202). Called from the
+    /// `Message::BakeoffNarrationCompleted` update arm. Never touches `result`.
+    pub fn set_narration(&mut self, ticket: NarrationTicket, outcome: NarrationOutcome) -> bool {
+        if self.narration != NarrationState::InFlight(ticket) {
+            return false;
+        }
         self.narration = match outcome {
             NarrationOutcome::Ready(prose) => NarrationState::Ready(prose),
             NarrationOutcome::FellBack => NarrationState::FellBack,
         };
+        true
+    }
+
+    /// The narration task ended (its reply channel closed), so an `InFlight`
+    /// request can never be answered: land `FellBack` and return `true`. Any
+    /// other state is kept and this returns `false` (bug-log #202; ADR-0064
+    /// § D6). Called from the `Message::BakeoffNarrationTaskEnded` update arm.
+    pub fn fall_back_if_in_flight(&mut self) -> bool {
+        if self.narration.in_flight_ticket().is_none() {
+            return false;
+        }
+        self.narration = NarrationState::FellBack;
+        true
     }
 
     /// The parsed budget (euros), or `None` when the input is blank /
@@ -1329,6 +1351,42 @@ impl LeaderboardScreenState {
     pub fn start_capital(&self) -> Decimal {
         parse_start_capital(&self.start_capital_input)
             .unwrap_or_else(|| rust_decimal_macros::dec!(100_000))
+    }
+}
+
+/// The identity of one "Explain" request (bug-log #202). Minted by
+/// [`LeaderboardScreenState::begin_narration`], sent to the agent as
+/// `NarrationRequest::request_id` and echoed on its reply; an answer lands only
+/// while `narration` is `InFlight` under the same ticket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NarrationTicket(u64);
+
+impl NarrationTicket {
+    /// The ticket an echoed `request_id` names (the inverse of
+    /// [`NarrationTicket::raw`], used by the `live` adapter).
+    #[must_use]
+    pub fn from_raw(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// The id that crosses to the agent as `NarrationRequest::request_id`.
+    #[must_use]
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+}
+
+impl NarrationState {
+    /// The ticket of the request in flight, or `None` when none is. The
+    /// "Explain" dispatch reads it to build the request it sends (bug-log #202).
+    #[must_use]
+    pub fn in_flight_ticket(&self) -> Option<NarrationTicket> {
+        match self {
+            NarrationState::InFlight(ticket) => Some(*ticket),
+            NarrationState::NotRequested | NarrationState::Ready(_) | NarrationState::FellBack => {
+                None
+            }
+        }
     }
 }
 
@@ -1720,16 +1778,20 @@ mod tests {
     #[test]
     fn begin_narration_sets_in_flight() {
         let mut s = LeaderboardScreenState::default();
-        s.begin_narration();
-        assert_eq!(s.narration, NarrationState::InFlight);
+        let ticket = s.begin_narration();
+        assert_eq!(s.narration, NarrationState::InFlight(ticket));
+        assert_eq!(s.narration.in_flight_ticket(), Some(ticket));
         assert!(s.narration.is_requested(), "InFlight counts as requested");
     }
 
     #[test]
     fn set_narration_ready_lands_prose() {
         let mut s = LeaderboardScreenState::default();
-        s.begin_narration();
-        s.set_narration(NarrationOutcome::Ready(SmolStr::new("because reasons")));
+        let ticket = s.begin_narration();
+        assert!(s.set_narration(
+            ticket,
+            NarrationOutcome::Ready(SmolStr::new("because reasons"))
+        ));
         match &s.narration {
             NarrationState::Ready(prose) => assert_eq!(prose.as_str(), "because reasons"),
             other => panic!("expected Ready, got {other:?}"),
@@ -1741,8 +1803,8 @@ mod tests {
         // Every failure mode maps to FellBack — the honest floor (templated copy
         // renders), NOT an error surface.
         let mut s = LeaderboardScreenState::default();
-        s.begin_narration();
-        s.set_narration(NarrationOutcome::FellBack);
+        let ticket = s.begin_narration();
+        assert!(s.set_narration(ticket, NarrationOutcome::FellBack));
         assert_eq!(s.narration, NarrationState::FellBack);
         assert!(s.narration.is_requested());
     }
@@ -1752,8 +1814,8 @@ mod tests {
         // A fresh bake-off must NOT carry over the prior run's "Explain" prose —
         // begin_run resets the narration so the new result starts clean.
         let mut s = LeaderboardScreenState::default();
-        s.begin_narration();
-        s.set_narration(NarrationOutcome::Ready(SmolStr::new("stale prose")));
+        let ticket = s.begin_narration();
+        assert!(s.set_narration(ticket, NarrationOutcome::Ready(SmolStr::new("stale prose"))));
         assert!(matches!(s.narration, NarrationState::Ready(_)));
 
         s.begin_run();
@@ -1762,6 +1824,66 @@ mod tests {
             NarrationState::NotRequested,
             "a new bake-off resets the narration to NotRequested"
         );
+    }
+
+    /// **F5 (bug-log #202).** Explain on bake-off A, a new run, Explain on B:
+    /// the ticket in flight (what the dispatch reads, not `begin_narration`'s
+    /// return value, which production discards) differs, so A's answer cannot
+    /// land on B. T-T4 T3 (no bump) and T10 (`begin_run` resets the counter)
+    /// both make the two equal.
+    #[test]
+    fn explain_on_two_bakeoffs_mints_distinct_tickets() {
+        let mut s = LeaderboardScreenState::default();
+        s.begin_run();
+        s.finish_run(Ok(crate::fixtures::fake_bakeoff_report_mirror()));
+        s.begin_narration();
+        let on_a = s.narration.in_flight_ticket();
+        s.begin_run();
+        s.finish_run(Ok(
+            crate::fixtures::fake_bakeoff_report_mirror_benchmark_wins(),
+        ));
+        s.begin_narration();
+        let on_b = s.narration.in_flight_ticket();
+        assert!(
+            on_a.is_some() && on_b.is_some(),
+            "both Explains are in flight"
+        );
+        assert_ne!(on_a, on_b, "a new bake-off's Explain mints a new ticket");
+    }
+
+    /// **K2 (bug-log #202).** `fall_back_if_in_flight` changes `InFlight` only:
+    /// each of the four states, its result and whether it reported a change.
+    #[test]
+    fn fall_back_if_in_flight_touches_only_in_flight() {
+        let mut s = LeaderboardScreenState::default();
+        let ticket = s.begin_narration();
+        let cases = [
+            (
+                NarrationState::NotRequested,
+                NarrationState::NotRequested,
+                false,
+            ),
+            (
+                NarrationState::InFlight(ticket),
+                NarrationState::FellBack,
+                true,
+            ),
+            (
+                NarrationState::Ready(SmolStr::new("kept")),
+                NarrationState::Ready(SmolStr::new("kept")),
+                false,
+            ),
+            (NarrationState::FellBack, NarrationState::FellBack, false),
+        ];
+        for (before, after, changed) in cases {
+            s.narration = before.clone();
+            assert_eq!(
+                s.fall_back_if_in_flight(),
+                changed,
+                "{before:?}: reported change"
+            );
+            assert_eq!(s.narration, after, "{before:?}: state after a task end");
+        }
     }
 
     // ── F3 guided input — lookback + budget ──────────────────────────────────

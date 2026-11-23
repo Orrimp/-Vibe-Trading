@@ -34,8 +34,8 @@ pub use kill_switch::{
 };
 pub use narration::{
     BudgetExceededFakeProvider, CandidateKpiStrings, FaithfulFakeProvider, FaithfulnessVerdict,
-    NarrationFacts, NarrationOutcome, NarrationOutcome_, NarrationRequest, RejectReason,
-    UnfaithfulFakeProvider, UnfaithfulViolation, build_faithful_text, check_faithful,
+    NarrationFacts, NarrationOutcome, NarrationOutcome_, NarrationReply, NarrationRequest,
+    RejectReason, UnfaithfulFakeProvider, UnfaithfulViolation, build_faithful_text, check_faithful,
     generate_narration,
 };
 pub use plan::build_forward_plan_from_registry;

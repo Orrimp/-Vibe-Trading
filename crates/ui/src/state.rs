@@ -2525,25 +2525,25 @@ pub enum Message {
 
     // ── advisor-llm-narration F9 — the opt-in "why this one" narration ───────
     /// Operator pressed "Explain" on the crowned recommendation block (the
-    /// opt-in trigger, ADR-0064 § D3). Flips the F9 narration to `InFlight`
-    /// (pure, in the update arm); the BINARY-side intercept (the `LabRunRequested`
-    /// / `BakeoffRunRequested` precedent in `cockpit_live.rs`) dispatches the
-    /// second async step — it builds the `NarrationFacts` from the already-mirrored
-    /// `BakeoffReportMirror` and runs the agent's `generate_narration` on the
-    /// side-thread runtime. Niladic — the facts are derived UI-side from the
-    /// rendered result, not carried as payload. The templated copy stays the
-    /// floor the whole time (no blank/half-answer).
+    /// opt-in trigger, ADR-0064 § D3). Flips the F9 narration to `InFlight` under
+    /// a fresh ticket (pure, in the update arm). `ui::live::update_and_dispatch_explain`,
+    /// which the live binary calls in place of `update`, then sends that ticket's
+    /// request, or lands `FellBack` when the send is refused (bug-log #202).
+    /// Niladic — the facts are derived UI-side from the rendered result.
     BakeoffNarrationRequested,
-    /// A narration completed (faithful → `Ready(prose)`; any failure mode →
-    /// `FellBack`). Carries the `core`-clean `ui`-owned [`NarrationOutcome`]
-    /// already mapped from the agent's `agent::NarrationOutcome` at the single
-    /// `#[cfg(feature = "live")]` adapter (no `llm`/`agent` type crosses into
-    /// iced state — the INVARIANT seam, exactly like `BakeoffRunCompleted`
-    /// carrying a `BakeoffReportMirror`). Updates the recommendation block IN
-    /// PLACE; never re-fetches or blocks the structured bake-off result.
-    ///
-    /// [`NarrationOutcome`]: crate::leaderboard::NarrationOutcome
-    BakeoffNarrationCompleted(crate::leaderboard::NarrationOutcome),
+    /// The narration for request `ticket` completed (faithful → `Ready(prose)`;
+    /// any failure → `FellBack`), mapped from the agent's `NarrationReply` at the
+    /// single `#[cfg(feature = "live")]` adapter (no `llm`/`agent` type crosses
+    /// into iced state). Lands only on `InFlight(ticket)`; any other state drops
+    /// it (bug-log #202). Never re-fetches or blocks the structured result.
+    BakeoffNarrationCompleted(
+        crate::leaderboard::NarrationTicket,
+        crate::leaderboard::NarrationOutcome,
+    ),
+    /// The narration task's reply channel closed (the task ended, e.g. on a
+    /// kill-switch halt): an `InFlight` narration lands `FellBack`, so no request
+    /// spins forever (ADR-0064 § D6, bug-log #202). Any other state is kept.
+    BakeoffNarrationTaskEnded,
 
     // ── advisor-bakeoff-ranking F3 — guided input (coin + budget + lookback) ──
     /// Operator chose a coin in the guided-input coin picker. Stores it on the
@@ -3878,12 +3878,12 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
 
         // ── advisor-llm-narration F9 — the opt-in "why this one" narration ───
         Message::BakeoffNarrationRequested => {
-            // Pure-state half: flip the narration to InFlight so the spinner
-            // shows + the Explain control hides (the templated copy stays the
-            // floor). The actual async dispatch (build the facts from the
-            // mirror + run `generate_narration` on the side-thread runtime) is
-            // wired BINARY-side in `cockpit_live.rs` (the `BakeoffRunRequested`
-            // precedent) — `update` stays pure (no I/O, no Task spawn here).
+            // Pure-state half: flip the narration to `InFlight` under a fresh
+            // ticket, so the spinner shows + the Explain control hides (the
+            // templated copy stays the floor). Sending the ticketed request is
+            // `ui::live::update_and_dispatch_explain`'s job (bug-log #202): the
+            // live binary calls it in place of `update`, so `update` stays pure
+            // (no I/O, no Task spawn here).
             // Only request when a structured result is on screen and a
             // narration is not already in flight / resolved (guard re-request).
             let st = &mut model.leaderboard_screen_state;
@@ -3891,13 +3891,30 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
                 st.begin_narration();
             }
         }
-        Message::BakeoffNarrationCompleted(outcome) => {
-            // Update the recommendation block IN PLACE: Ready(prose) → show the
-            // prose; FellBack → fall back to the templated copy (silently). The
-            // `agent::NarrationOutcome` was already mapped into the pure-`ui`
-            // `NarrationOutcome` at the `#[cfg(feature = "live")]` adapter. The
-            // structured bake-off result is never re-fetched or blocked.
-            model.leaderboard_screen_state.set_narration(outcome);
+        Message::BakeoffNarrationCompleted(ticket, outcome) => {
+            // Land the answer only on its own request (bug-log #202): any state
+            // but `InFlight(ticket)` (a later Explain, a new run, an answer that
+            // already landed) drops it. FellBack → the templated copy (silently).
+            // The structured bake-off result is never re-fetched or blocked.
+            if !model
+                .leaderboard_screen_state
+                .set_narration(ticket, outcome)
+            {
+                tracing::debug!(
+                    ?ticket,
+                    "F9-NARRATION: dropped an answer whose request is off screen (bug-log #202)"
+                );
+            }
+        }
+        Message::BakeoffNarrationTaskEnded => {
+            // The narration task's reply channel closed: an `InFlight` request
+            // can never be answered, so it lands `FellBack` (ADR-0064 § D6).
+            if model.leaderboard_screen_state.fall_back_if_in_flight() {
+                tracing::warn!(
+                    "F9-NARRATION: the narration task ended with an Explain in flight \
+                     — FellBack (bug-log #202)"
+                );
+            }
         }
 
         // ── advisor-bakeoff-ranking F3 — guided input ────────────────────────

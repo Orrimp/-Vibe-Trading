@@ -19,8 +19,8 @@
 //! (`narration_request_from_mirror`) over two fixtures that differ in every
 //! fact it carries. The ENQUEUE (the `try_send` on `BakeoffNarrationRequested`)
 //! is `ui::live::update_and_dispatch_explain`, which the binary calls in place
-//! of `update` (bug-log #202). No test drives it yet, here or elsewhere — a
-//! residual, not a claim.
+//! of `update` (bug-log #202); `narration_request_correlation.rs` drives it
+//! over real channels, so this file does not.
 //!
 //! Story 2-63 (lab-recipe-test-harness v0.3, Wave A S1) adds the full
 //! `Recipe::stream` path for both recipes (`ForwardPlanRecipe`,
@@ -33,6 +33,9 @@
 //! Every relay test proves it RAN: exact message counts and order, and the
 //! stream end observed as `Ok(None)` inside a timeout that FAILS the test. No
 //! timeout is ever accepted as "drained" — [`next_or_fail`] panics on elapse.
+//! Since bug-log #202 a narration relay over a real receiver yields exactly one
+//! `BakeoffNarrationTaskEnded` when its sender drops, just before that end, and
+//! every narration stream-end check expects it ([`expect_task_ended_then_end`]).
 //! "Nothing more is buffered" is OBSERVED with [`assert_pending`], never read
 //! off a counter the test increments itself. A state precondition is asserted
 //! only where a seeded prior state lets it fail; checks that hold by
@@ -64,9 +67,9 @@
 //! | P14 | `ui::live::forward_plan_stream_impl` | `debug!(channel = "forward_plan", "plan channel closed — stopping recipe");` | append `futures::future::pending::<()>().await;` | `forward_plan_relay_yields_message_and_populates_state`, `forward_plan_relay_terminates_on_sender_drop`, the in-order test, the recipe test (each final `Ok(None)` times out → panic) |
 //! | P3 | `<ForwardPlanRecipe as Recipe>::stream` | `forward_plan_stream_impl(rx_opt)` | → `forward_plan_stream_impl(None)` | `forward_plan_recipe_stream_takes_receiver_once_and_relays`, at its `assert_pending` right after `stream()` ("the stream already ENDED") — before any send |
 //! | P15 | `<ForwardPlanRecipe as Recipe>::stream` | `forward_plan_stream_impl(rx_opt)` | insert `if rx_opt.is_none() { return Box::pin(futures::stream::pending()); }` before it | `forward_plan_recipe_stream_takes_receiver_once_and_relays`, at the SECOND recipe on the taken cell (its 1 s `Ok(None)` times out). The only test that drives `stream()`'s own empty-cell path; `forward_plan_relay_none_yields_nothing` bypasses `stream()` and stays green |
-//! | P4 | `ui::live::narration_outcome_stream_impl` | `while let Some(outcome) = rx.recv().await {` | `while` → `if` | `narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver`: after run 1 its `assert_pending` finds the stream ENDED, so run 2 can never be relayed |
-//! | P4b | `ui::live::narration_outcome_stream_impl` | `debug!(channel = "narration_outcome", "narration channel closed — stopping recipe");` | append `futures::future::pending::<()>().await;` | the two-runs test, `narration_outcome_relay_ready_yields_message_and_sets_state`, `narration_outcome_relay_fellback_yields_message_and_sets_state`, the narration recipe test (each final `Ok(None)` times out → panic) |
-//! | P16 | `ui::live::narration_outcome_stream_impl` | `yield Message::BakeoffNarrationCompleted(narration_outcome_to_ui(outcome));` | append a second `yield Message::BakeoffNarrationCompleted(crate::leaderboard::NarrationOutcome::FellBack);` | the two-runs test, at its post-run-1 `assert_pending` ("an unexpected extra message": exactly ONE message per run); the ready/fellback/recipe tests' final `Ok(None)` receives the extra message too |
+//! | P4 | `ui::live::narration_outcome_stream_impl` | `while let Some(outcome) = rx.recv().await {` | `while` → `if` | `narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver`: after run 1 its `assert_pending` finds the `BakeoffNarrationTaskEnded` the stopped relay yields at once ("an unexpected extra message"), so run 2 can never be relayed |
+//! | P4b | `ui::live::narration_outcome_stream_impl` | `debug!(channel = "narration_outcome", "narration channel closed — stopping recipe");` | append `futures::future::pending::<()>().await;` | the two-runs test, `narration_outcome_relay_ready_yields_message_and_sets_state`, `narration_outcome_relay_fellback_yields_message_and_sets_state`, the narration recipe test (each final `BakeoffNarrationTaskEnded` times out → panic); also `narration_request_correlation.rs`'s S0-4 and K2b, and `leaderboard_narration_render.rs`'s R3 (bug-log #202: the parked relay never yields its task end) |
+//! | P16 | `ui::live::narration_outcome_stream_impl` | `yield narration_reply_to_message(outcome);` | append a second `yield Message::BakeoffNarrationCompleted(crate::leaderboard::NarrationTicket::from_raw(0), crate::leaderboard::NarrationOutcome::FellBack);` | the two-runs test, at its post-run-1 `assert_pending` ("an unexpected extra message": exactly ONE message per run); the ready/fellback/recipe tests' stream-end check receives the extra message where it expects `BakeoffNarrationTaskEnded` |
 //! | P5 | `<NarrationOutcomeRecipe as Recipe>::stream` | `narration_outcome_stream_impl(rx_opt)` | → `narration_outcome_stream_impl(None)` | `narration_outcome_recipe_stream_takes_receiver_once_and_relays`, at its `assert_pending` right after `stream()` |
 //! | P17 | `<NarrationOutcomeRecipe as Recipe>::stream` | `narration_outcome_stream_impl(rx_opt)` | insert `if rx_opt.is_none() { return Box::pin(futures::stream::pending()); }` before it | `narration_outcome_recipe_stream_takes_receiver_once_and_relays`, at the SECOND recipe on the taken cell |
 //! | P6 | `ui::state::update`, arm `Message::BakeoffNarrationRequested` (`crates/ui/src/state.rs`) | `st.begin_narration();` | delete the line | `narration_outcome_relay_ready_yields_message_and_sets_state`, `narration_outcome_relay_fellback_yields_message_and_sets_state`, the two-runs test (`request_explain`'s `InFlight` precondition) |
@@ -102,7 +105,7 @@ use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use tokio::time::timeout;
 
-use ui::leaderboard::{BakeoffReportMirror, NarrationState, OutcomeKind};
+use ui::leaderboard::{BakeoffReportMirror, NarrationState, NarrationTicket, OutcomeKind};
 use ui::live::{ForwardPlanRecipe, NarrationOutcomeRecipe};
 use ui::state::{Cockpit, Message, PanelState, update};
 
@@ -186,6 +189,22 @@ async fn drain_to_end(stream: &mut BoxStream<'static, Message>, what: &str) -> V
     }
 }
 
+/// After a narration relay's sender drops: exactly one
+/// `BakeoffNarrationTaskEnded` (bug-log #202: the task ended, so a request in
+/// flight falls back), then the stream END, each under a failing timeout.
+async fn expect_task_ended_then_end(stream: &mut BoxStream<'static, Message>, what: &str) {
+    let last = next_or_fail(stream, 2, what).await;
+    assert!(
+        matches!(last, Some(Message::BakeoffNarrationTaskEnded)),
+        "{what}: one BakeoffNarrationTaskEnded when the sender drops (got {last:?})"
+    );
+    let end = next_or_fail(stream, 2, what).await;
+    assert!(
+        end.is_none(),
+        "{what}: the relay ends after its BakeoffNarrationTaskEnded (got {end:?})"
+    );
+}
+
 /// The relayed plan view, or a panic naming what arrived instead.
 fn plan_view(msg: &Message) -> &ui::forward_plan::ForwardPlanView {
     match msg {
@@ -213,11 +232,17 @@ fn cockpit_with_ready_bakeoff() -> Cockpit {
         Message::BakeoffRunCompleted(Ok(ui::fixtures::fake_bakeoff_report_mirror())),
     );
     update(&mut cockpit, Message::BakeoffNarrationRequested);
+    let seed_ticket = cockpit
+        .leaderboard_screen_state
+        .narration
+        .in_flight_ticket()
+        .expect("seed: Explain on the prior run's Ready result was accepted");
     update(
         &mut cockpit,
-        Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::Ready(SmolStr::new(
-            STALE,
-        ))),
+        Message::BakeoffNarrationCompleted(
+            seed_ticket,
+            ui::leaderboard::NarrationOutcome::Ready(SmolStr::new(STALE)),
+        ),
     );
     assert_eq!(
         cockpit.leaderboard_screen_state.narration,
@@ -247,14 +272,28 @@ fn cockpit_with_ready_bakeoff() -> Cockpit {
 }
 
 /// Press "Explain" and PROVE it flipped `NotRequested → InFlight` — the
-/// precondition the outcome then resolves (pinned, not assumed).
-fn request_explain(cockpit: &mut Cockpit) {
+/// precondition the outcome then resolves (pinned, not assumed). Returns the
+/// ticket in flight: the reply must echo it to land (bug-log #202).
+fn request_explain(cockpit: &mut Cockpit) -> NarrationTicket {
     update(cockpit, Message::BakeoffNarrationRequested);
-    assert_eq!(
-        cockpit.leaderboard_screen_state.narration,
-        NarrationState::InFlight,
-        "precondition: BakeoffNarrationRequested flipped NotRequested → InFlight"
-    );
+    cockpit
+        .leaderboard_screen_state
+        .narration
+        .in_flight_ticket()
+        .unwrap_or_else(|| {
+            panic!(
+                "precondition: BakeoffNarrationRequested flipped NotRequested → InFlight (got {:?})",
+                cockpit.leaderboard_screen_state.narration
+            )
+        })
+}
+
+/// The agent's reply to the request `ticket` names.
+fn reply(ticket: NarrationTicket, outcome: agent::NarrationOutcome) -> agent::NarrationReply {
+    agent::NarrationReply {
+        request_id: ticket.raw(),
+        outcome,
+    }
 }
 
 // ── F6 — forward-plan relay ─────────────────────────────────────────────────
@@ -462,40 +501,49 @@ async fn forward_plan_recipe_stream_takes_receiver_once_and_relays() {
 
 // ── F9 — narration-outcome relay ────────────────────────────────────────────
 
-/// **F9 outcome last-mile proof.** Feeding `agent::NarrationOutcome::Ready(prose)`
-/// into the outcome channel makes the relay yield
-/// `Message::BakeoffNarrationCompleted(Ready(_))`, AND applying it flips the
-/// leaderboard `NarrationState` from a PROVEN `InFlight` to `Ready(prose)`
-/// (the prose the operator sees). This is the return path that was dead.
+/// **F9 outcome last-mile proof.** Feeding an `agent::NarrationReply` whose
+/// outcome is `Ready(prose)` into the outcome channel makes the relay yield
+/// `Message::BakeoffNarrationCompleted(ticket, Ready(_))` under the reply's id,
+/// AND applying it flips the leaderboard `NarrationState` from a PROVEN
+/// `InFlight(ticket)` to `Ready(prose)` (the prose the operator sees). This is
+/// the return path that was dead.
 #[tokio::test]
 async fn narration_outcome_relay_ready_yields_message_and_sets_state() {
     let prose = "SMA crossover came out on top here, with the strongest \
                  risk-adjusted return across the field.";
-    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
+    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
     let mut stream = ui::live::narration_outcome_stream_impl(Some(rx));
 
-    tx.send(agent::NarrationOutcome::Ready(SmolStr::new(prose)))
-        .await
-        .unwrap();
+    // The InFlight precondition is driven through `update`, not assumed (T-T4
+    // P6), from a seeded NotRequested (T-T4 P18). Its ticket is the reply's id.
+    let mut cockpit = cockpit_with_ready_bakeoff();
+    let ticket = request_explain(&mut cockpit);
+    tx.send(reply(
+        ticket,
+        agent::NarrationOutcome::Ready(SmolStr::new(prose)),
+    ))
+    .await
+    .unwrap();
 
     let msg = timeout(Duration::from_secs(2), stream.next())
         .await
         .expect("a Message arrived within 2s")
         .expect("the relay yielded a Message");
 
-    // 1) agent::NarrationOutcome → Message::BakeoffNarrationCompleted(ui outcome).
+    // 1) agent::NarrationReply → Message::BakeoffNarrationCompleted(ticket, ui outcome).
     match &msg {
-        Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::Ready(p)) => {
+        Message::BakeoffNarrationCompleted(t, ui::leaderboard::NarrationOutcome::Ready(p)) => {
+            assert_eq!(
+                *t, ticket,
+                "the reply's id comes back as the request's ticket"
+            );
             assert_eq!(p.as_str(), prose, "prose mirrored verbatim across the seam");
         }
-        other => panic!("expected BakeoffNarrationCompleted(Ready), got {other:?}"),
+        other => panic!("expected BakeoffNarrationCompleted(_, Ready), got {other:?}"),
     }
 
     // 2) Applying it resolves the in-flight narration to Ready (the prose card
-    //    state). The InFlight precondition is driven through `update`, not
-    //    assumed (T-T4 P6), from a seeded NotRequested (T-T4 P18).
-    let mut cockpit = cockpit_with_ready_bakeoff();
-    request_explain(&mut cockpit);
+    //    state).
     update(&mut cockpit, msg);
     match &cockpit.leaderboard_screen_state.narration {
         NarrationState::Ready(p) => assert_eq!(p.as_str(), prose),
@@ -503,20 +551,23 @@ async fn narration_outcome_relay_ready_yields_message_and_sets_state() {
     }
 
     drop(tx);
-    let end = next_or_fail(&mut stream, 2, "the relay end after drop").await;
-    assert!(end.is_none(), "the relay ends on sender drop (got {end:?})");
+    expect_task_ended_then_end(&mut stream, "the relay end after drop").await;
 }
 
-/// **F9 fallback path.** `agent::NarrationOutcome::FellBack` relays to
-/// `BakeoffNarrationCompleted(FellBack)` and resolves a PROVEN `InFlight`
-/// narration to `NarrationState::FellBack` (the honest templated floor).
-/// Proves the relay discriminates the two arms.
+/// **F9 fallback path.** A `FellBack` reply relays to
+/// `BakeoffNarrationCompleted(ticket, FellBack)` and resolves a PROVEN
+/// `InFlight(ticket)` narration to `NarrationState::FellBack` (the honest
+/// templated floor). Proves the relay discriminates the two arms.
 #[tokio::test]
 async fn narration_outcome_relay_fellback_yields_message_and_sets_state() {
-    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
+    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
     let mut stream = ui::live::narration_outcome_stream_impl(Some(rx));
 
-    tx.send(agent::NarrationOutcome::FellBack).await.unwrap();
+    let mut cockpit = cockpit_with_ready_bakeoff();
+    let ticket = request_explain(&mut cockpit);
+    tx.send(reply(ticket, agent::NarrationOutcome::FellBack))
+        .await
+        .unwrap();
 
     let msg = timeout(Duration::from_secs(2), stream.next())
         .await
@@ -526,13 +577,12 @@ async fn narration_outcome_relay_fellback_yields_message_and_sets_state() {
     assert!(
         matches!(
             &msg,
-            Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::FellBack)
+            Message::BakeoffNarrationCompleted(t, ui::leaderboard::NarrationOutcome::FellBack)
+                if *t == ticket
         ),
-        "FellBack relays as FellBack, got {msg:?}"
+        "FellBack relays as FellBack under the request's ticket, got {msg:?}"
     );
 
-    let mut cockpit = cockpit_with_ready_bakeoff();
-    request_explain(&mut cockpit);
     update(&mut cockpit, msg);
     assert!(
         matches!(
@@ -543,8 +593,7 @@ async fn narration_outcome_relay_fellback_yields_message_and_sets_state() {
     );
 
     drop(tx);
-    let end = next_or_fail(&mut stream, 2, "the relay end after drop").await;
-    assert!(end.is_none(), "the relay ends on sender drop (got {end:?})");
+    expect_task_ended_then_end(&mut stream, "the relay end after drop").await;
 }
 
 /// **Two bake-off runs through ONE receiver (T-T4 P4, the AC4-designated
@@ -552,24 +601,25 @@ async fn narration_outcome_relay_fellback_yields_message_and_sets_state() {
 /// cockpit and streams it for the whole session, so the relay must keep
 /// draining across runs. One stream for the whole test:
 ///
-/// - Run 1: Requested → Completed(Ok) → Explain (`InFlight`) → relay `Ready(p1)`.
+/// - Run 1: Requested → Completed(Ok) → Explain (`InFlight(t1)`) → relay
+///   `Ready(p1)` under `t1`.
 /// - Run 2: Requested resets the narration to `NotRequested` → Completed(Ok) →
-///   Explain (`InFlight`) → relay `FellBack`.
+///   Explain (`InFlight(t2)`) → relay `FellBack` under `t2`.
 ///
 /// Exactly ONE message per run is OBSERVED, not counted: after each run's
 /// outcome, [`assert_pending`] proves the stream is still live (a `while`→`if`
-/// relay has ENDED after run 1 — P4) and holds nothing else (an extra yield is
-/// caught — P16). Then the end on sender drop.
+/// relay has stopped after run 1 — P4) and holds nothing else (an extra yield is
+/// caught — P16). Then the task end and the end on sender drop.
 #[tokio::test]
 async fn narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver() {
     const P1: &str = "Run one: the SMA crossover led on risk-adjusted return.";
-    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
+    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
     let mut stream = ui::live::narration_outcome_stream_impl(Some(rx));
 
     // ── Run 1 ──
     let mut cockpit = cockpit_with_ready_bakeoff();
-    request_explain(&mut cockpit);
-    tx.send(agent::NarrationOutcome::Ready(SmolStr::new(P1)))
+    let t1 = request_explain(&mut cockpit);
+    tx.send(reply(t1, agent::NarrationOutcome::Ready(SmolStr::new(P1))))
         .await
         .unwrap();
     let msg = next_or_fail(&mut stream, 2, "run 1's narration outcome")
@@ -578,10 +628,10 @@ async fn narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver
     assert!(
         matches!(
             &msg,
-            Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::Ready(p))
-                if p.as_str() == P1
+            Message::BakeoffNarrationCompleted(t, ui::leaderboard::NarrationOutcome::Ready(p))
+                if *t == t1 && p.as_str() == P1
         ),
-        "run 1 relays Ready(p1), got {msg:?}"
+        "run 1 relays Ready(p1) under t1, got {msg:?}"
     );
     assert_pending(
         &mut stream,
@@ -612,17 +662,20 @@ async fn narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver
         ),
         "run 2 result is Ready"
     );
-    request_explain(&mut cockpit);
-    tx.send(agent::NarrationOutcome::FellBack).await.unwrap();
+    let t2 = request_explain(&mut cockpit);
+    tx.send(reply(t2, agent::NarrationOutcome::FellBack))
+        .await
+        .unwrap();
     let msg = next_or_fail(&mut stream, 2, "run 2's narration outcome")
         .await
         .expect("run 2: the SAME receiver relayed a second outcome (not an ended stream)");
     assert!(
         matches!(
             &msg,
-            Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::FellBack)
+            Message::BakeoffNarrationCompleted(t, ui::leaderboard::NarrationOutcome::FellBack)
+                if *t == t2
         ),
-        "run 2 relays FellBack, got {msg:?}"
+        "run 2 relays FellBack under t2, got {msg:?}"
     );
     assert_pending(
         &mut stream,
@@ -636,11 +689,7 @@ async fn narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver
     );
 
     drop(tx);
-    let end = next_or_fail(&mut stream, 2, "the relay end after both runs").await;
-    assert!(
-        end.is_none(),
-        "the relay ends on sender drop after both runs (got {end:?})"
-    );
+    expect_task_ended_then_end(&mut stream, "the relay end after both runs").await;
 }
 
 /// **Recipe-path integration (T-T4 P5, P17).** The FULL
@@ -648,12 +697,12 @@ async fn narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver
 /// `cockpit_live::subscription()` runs; zero test references before 2-63.
 /// Same three claims as the forward-plan recipe test: `stream()` empties the
 /// cell and returns a stream live on the receiver it took (P5 red at
-/// `assert_pending`, before any send) that relays `Ready("p")`; `stream()` on
-/// the taken cell ends instead of parking (P17 red only here); the first
-/// stream ends on sender drop.
+/// `assert_pending`, before any send) that relays `Ready("p")` under the
+/// reply's id; `stream()` on the taken cell ends instead of parking (P17 red
+/// only here); the first stream yields its task end and ends on sender drop.
 #[tokio::test]
 async fn narration_outcome_recipe_stream_takes_receiver_once_and_relays() {
-    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
+    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
     let cell = Arc::new(Mutex::new(Some(rx)));
 
     let recipe = NarrationOutcomeRecipe {
@@ -675,19 +724,23 @@ async fn narration_outcome_recipe_stream_takes_receiver_once_and_relays() {
         !tx.is_closed(),
         "the receiver Recipe::stream took is alive inside the returned stream"
     );
-    tx.send(agent::NarrationOutcome::Ready(SmolStr::new("p")))
-        .await
-        .unwrap();
+    let ticket = NarrationTicket::from_raw(41);
+    tx.send(reply(
+        ticket,
+        agent::NarrationOutcome::Ready(SmolStr::new("p")),
+    ))
+    .await
+    .unwrap();
     let msg = next_or_fail(&mut stream, 2, "the outcome via Recipe::stream")
         .await
         .expect("the outcome sent after stream() is relayed by the recipe's stream");
     assert!(
         matches!(
             &msg,
-            Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::Ready(p))
-                if p.as_str() == "p"
+            Message::BakeoffNarrationCompleted(t, ui::leaderboard::NarrationOutcome::Ready(p))
+                if *t == ticket && p.as_str() == "p"
         ),
-        "Ready(\"p\") relayed through the recipe, got {msg:?}"
+        "Ready(\"p\") relayed through the recipe under id 41, got {msg:?}"
     );
 
     // 2) stream() on the now-taken cell ends instead of parking.
@@ -702,13 +755,9 @@ async fn narration_outcome_recipe_stream_takes_receiver_once_and_relays() {
         "a second recipe on a taken cell is empty (got {none:?})"
     );
 
-    // 3) end.
+    // 3) the task end, then the end.
     drop(tx);
-    let end = next_or_fail(&mut stream, 2, "the first recipe's end after drop").await;
-    assert!(
-        end.is_none(),
-        "the recipe stream ends on sender drop (got {end:?})"
-    );
+    expect_task_ended_then_end(&mut stream, "the first recipe's end after drop").await;
 }
 
 // ── F9 — Explain request BUILD (iced→agent) ─────────────────────────────────
@@ -842,7 +891,7 @@ fn assert_kpi_pair_preconditions(mirror: &BakeoffReportMirror, label: &str) {
 /// `agent::narration`'s `#198` unit tests ([`assert_kpi_pair_preconditions`]
 /// names them).
 fn assert_request_mirrors(mirror: &BakeoffReportMirror, label: &str) {
-    let facts = ui::live::narration_request_from_mirror(mirror).facts;
+    let facts = ui::live::narration_request_from_mirror(mirror, NarrationTicket::from_raw(1)).facts;
     let rec = &mirror.recommendation;
 
     assert_eq!(
@@ -956,7 +1005,7 @@ fn assert_request_mirrors(mirror: &BakeoffReportMirror, label: &str) {
 }
 
 /// **F9 request BUILD, two-sided (T-T4 P19, E2-P10..E2-P12).**
-/// `narration_request_from_mirror` — the build the binary's Explain dispatch
+/// `narration_request_from_mirror` — the build `update_and_dispatch_explain`
 /// `try_send`s — carries the on-screen mirror's facts: winner, every candidate
 /// id in order, the KPI strings keyed per row AND carrying that row's values
 /// (F1-F3 in [`assert_request_mirrors`]), the outcome, the robustness label,
@@ -1035,7 +1084,7 @@ fn narration_request_from_mirror_carries_the_on_screen_facts() {
 #[tokio::test]
 async fn explain_request_carries_non_empty_sortino_and_calmar() {
     let mirror = ui::fixtures::fake_bakeoff_report_mirror();
-    let request = ui::live::narration_request_from_mirror(&mirror);
+    let request = ui::live::narration_request_from_mirror(&mirror, NarrationTicket::from_raw(1));
     let facts = &request.facts;
 
     // The per-candidate loop below is vacuous over an empty set (bug-log #66):

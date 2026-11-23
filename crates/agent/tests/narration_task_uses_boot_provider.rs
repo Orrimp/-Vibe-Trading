@@ -3,7 +3,7 @@
 //! Until 2026-11-11 `runtime::run` hard-coded `llm_provider = None` in BOTH branches
 //! of `if config.llm.enabled`, so every "Explain" answered `FellBack` while the
 //! CHANGELOG, PRD FR-11 and README said an LLM wrote the narration. The first two
-//! of this file's three tests drive the REAL runtime (`agent::runtime::run`) over the real
+//! of this file's four tests drive the REAL runtime (`agent::runtime::run`) over the real
 //! request/outcome channels and differ ONLY in `RunHandles::llm_provider`:
 //!
 //! - a configured (no-network) faithful provider → `Ready(prose)`: the provider was
@@ -20,6 +20,14 @@
 //! only: the first answer is `FellBack`, the second `Ready`. Probe: drop the task's
 //! `catch_unwind` → the outcome channel closes and that test fails at its first
 //! answer.
+//!
+//! bug-log `#202`: each reply echoes its request's `request_id`, so the cockpit
+//! lands an answer only on the request it answers. A fourth test sends ids 7 and
+//! 9 and gets 7 and 9 back, in order; the `#201` test checks its ids too, and
+//! `explain_once` checks the first two tests' id (1). Probe (T-T4 T4 in
+//! `crates/ui/tests/narration_request_correlation.rs`): in
+//! `NarrationRequest::reply`, `request_id: self.request_id,` → `request_id: 0,`
+//! → all four turn red, each at its id check.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::sync::Arc;
@@ -29,7 +37,7 @@ use std::time::Duration;
 use agent::config::{BusConfig, Config};
 use agent::narration::{
     CandidateKpiStrings, FaithfulFakeProvider, NarrationFacts, NarrationOutcome, NarrationOutcome_,
-    NarrationRequest,
+    NarrationReply, NarrationRequest,
 };
 use agent::{EventBus, IncidentSpawner, KillSwitch, MockIncidentSpawner, RunHandles};
 use smol_str::SmolStr;
@@ -58,13 +66,14 @@ fn facts() -> NarrationFacts {
     }
 }
 
-/// Boot the real runtime with the narration channels wired, send `requests`
-/// "Explain" requests one after another, and return the outcomes the agent sends
-/// back, in order. Every send and receive is bounded, so a dead task fails the test.
+/// Boot the real runtime with the narration channels wired, send one "Explain"
+/// request per id in `request_ids`, one after another, and return the replies the
+/// agent sends back, in order. Every send and receive is bounded, so a dead task
+/// fails the test.
 async fn explain(
     llm_provider: Option<Arc<dyn llm::LlmProvider>>,
-    requests: usize,
-) -> Vec<NarrationOutcome> {
+    request_ids: &[u64],
+) -> Vec<NarrationReply> {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut cfg = Config::default(); // research mode: no exchange reach-out
     cfg.audit.ledger_db_path = temp.path().join("ledger.db").to_string_lossy().into_owned();
@@ -92,7 +101,7 @@ async fn explain(
         .expect("uptime");
 
     let (req_tx, req_rx) = tokio::sync::mpsc::channel::<NarrationRequest>(4);
-    let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<NarrationOutcome>(4);
+    let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<NarrationReply>(4);
     let handles = RunHandles {
         config: Arc::new(cfg),
         ledger: Arc::clone(&ledger),
@@ -111,9 +120,12 @@ async fn explain(
     let cancel = CancellationToken::new();
     let runtime = tokio::spawn(agent::runtime::run(handles, cancel.clone()));
 
-    let mut outcomes = Vec::with_capacity(requests);
-    for i in 0..requests {
-        let send = req_tx.send(NarrationRequest { facts: facts() });
+    let mut outcomes = Vec::with_capacity(request_ids.len());
+    for (i, &request_id) in request_ids.iter().enumerate() {
+        let send = req_tx.send(NarrationRequest {
+            facts: facts(),
+            request_id,
+        });
         match tokio::time::timeout(Duration::from_secs(10), send).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => panic!("request {i}: the request channel closed (bug-log #201)"),
@@ -135,9 +147,14 @@ async fn explain(
     outcomes
 }
 
-/// Boot, send one request, return its outcome.
+/// Boot, send one request (id 1), return its outcome.
 async fn explain_once(llm_provider: Option<Arc<dyn llm::LlmProvider>>) -> NarrationOutcome {
-    explain(llm_provider, 1).await.remove(0)
+    let reply = explain(llm_provider, &[1]).await.remove(0);
+    assert_eq!(
+        reply.request_id, 1,
+        "the reply echoes its request's id (bug-log #202)"
+    );
+    reply.outcome
 }
 
 /// Bug-log `#201`: panics on its FIRST call only, then answers as the faithful fake
@@ -194,23 +211,50 @@ async fn a_panicking_narration_falls_back_and_the_task_serves_the_next_request()
         then: FaithfulFakeProvider { facts: facts() },
     });
     let dyn_provider: Arc<dyn llm::LlmProvider> = provider.clone();
-    let outcomes = tokio::time::timeout(Duration::from_secs(60), explain(Some(dyn_provider), 2))
-        .await
-        .expect("boot, two requests and shutdown finished within 60 s");
+    let replies = tokio::time::timeout(
+        Duration::from_secs(60),
+        explain(Some(dyn_provider), &[11, 12]),
+    )
+    .await
+    .expect("boot, two requests and shutdown finished within 60 s");
 
+    let ids: Vec<u64> = replies.iter().map(|r| r.request_id).collect();
     assert_eq!(
-        outcomes[0],
+        ids,
+        [11, 12],
+        "each reply echoes its request's id, the contained panic's FellBack too (bug-log #202)"
+    );
+    assert_eq!(
+        replies[0].outcome,
         NarrationOutcome::FellBack,
         "the panicking call must answer FellBack"
     );
     assert!(
-        matches!(&outcomes[1], NarrationOutcome::Ready(prose) if prose.contains("v0.5.macd")),
+        matches!(&replies[1].outcome, NarrationOutcome::Ready(prose) if prose.contains("v0.5.macd")),
         "the task must outlive the panic and serve the second request; got {:?}",
-        outcomes[1]
+        replies[1].outcome
     );
     assert_eq!(
         provider.calls.load(Ordering::SeqCst),
         2,
         "both requests reached the provider: the FellBack came from the panic"
+    );
+}
+
+/// **F9 (bug-log `#202`).** The task echoes each request's `request_id` on its
+/// reply, in order: ids 7 and 9 (neither a count nor a constant) come back as 7
+/// and 9. No provider, so both answer `FellBack` at once; the echo is the subject.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_narration_task_echoes_each_request_id() {
+    let replies = tokio::time::timeout(Duration::from_secs(60), explain(None, &[7, 9]))
+        .await
+        .expect("boot, two requests and shutdown finished within 60 s");
+    let ids: Vec<u64> = replies.iter().map(|r| r.request_id).collect();
+    assert_eq!(ids, [7, 9], "F9: each reply carries its own request's id");
+    assert!(
+        replies
+            .iter()
+            .all(|r| r.outcome == NarrationOutcome::FellBack),
+        "no provider: every reply is FellBack (got {replies:?})"
     );
 }

@@ -29,6 +29,25 @@
 //!   - `FellBack`  → `/tmp/forward_f9_narration_fallback_render.png`
 //!   - `NotRequested` (the Explain control) → `/tmp/forward_f9_narration_not_requested_render.png`
 //!
+//! ## Bug-log `#202`: an answer paints only on its own request (frame proofs)
+//!
+//! Four tests drive a cockpit through `ui::state::update` from
+//! `fake_cockpit_leaderboard(PanelState::Empty)` (the expected frame's own
+//! constructor, so a difference outside the subject cannot pass or fail them,
+//! bug-log `#189`) and compare its frame to a fixture frame PIXEL FOR PIXEL
+//! (0 px), each with a control frame that must differ (> 0 px):
+//!
+//! | test | subject equals | control differs | PNGs (`/tmp/forward_f9_narration_<name>_render.png`) |
+//! |---|---|---|---|
+//! | `a_late_answer_for_bakeoff_a_paints_nothing_on_bakeoff_b` (R1) | B, `NotRequested` | B with A's prose | `late_answer_subject`, `late_answer_dropped`, `late_answer_landed` |
+//! | `an_answer_for_bakeoff_b_paints_on_bakeoff_b` (R1c) | B with B's prose | B, `NotRequested` | `current_answer_subject`, `current_answer_lands` |
+//! | `a_refused_explain_paints_the_fallback_note` (R2, `live`) | A, `FellBack` | an accepted Explain (`InFlight`) | `refused_fallback`, `accepted_inflight` |
+//! | `a_halted_task_paints_the_fallback_note` (R3, `live`) | A, `FellBack` | the same cockpit, nothing drained (`InFlight`) | `task_ended_fallback`, `task_ended_inflight` |
+//!
+//! R3 drains the REAL `ui::live::narration_outcome_stream_impl` after its sender
+//! drops, on a current-thread runtime under a 5 s timeout, and applies every
+//! message. Their T-T4 probes are in `narration_request_correlation.rs`.
+//!
 //! ## macOS gate (ADR-0057 D2)
 //!
 //! Like `leaderboard_populated_render.rs`, real-renderer pixel assertions are
@@ -42,8 +61,8 @@
 
 use std::time::Duration;
 
-use ui::leaderboard::NarrationState;
-use ui::state::{Cockpit, PanelState};
+use ui::leaderboard::{BakeoffReportMirror, NarrationOutcome, NarrationState};
+use ui::state::{Cockpit, Message, PanelState, update};
 use ui::test_support::leaderboard_screen_program;
 
 /// Render the whole PANE, not the fold.
@@ -397,6 +416,261 @@ fn narration_not_requested_paints_explain_control() {
          Explain control (expected >200 foreground px, got {rec_fg}). \
          PNG: /tmp/forward_f9_narration_not_requested_render.png"
     );
+}
+
+// ── Bug-log #202: frame equality through `update` ────────────────────────────
+
+/// How many pixels differ between two same-size RGBA frames (the
+/// `lab_buy_sell_overlay_render.rs` helper).
+fn differing_pixels(a: &[u8], b: &[u8]) -> usize {
+    a.chunks_exact(4)
+        .zip(b.chunks_exact(4))
+        .filter(|(p, q)| p != q)
+        .count()
+}
+
+/// Save one frame as `/tmp/forward_f9_narration_<name>_render.png`.
+fn save_png(name: &str, frame: &(u32, u32, Vec<u8>)) {
+    let (w, h, rgba) = frame;
+    if let Some(img) = image::RgbaImage::from_raw(*w, *h, rgba.clone()) {
+        let _ = img.save(format!("/tmp/forward_f9_narration_{name}_render.png"));
+    }
+}
+
+/// The frame of a fixture cockpit with `result` Ready and `narration` set.
+fn fixture_frame(mirror: BakeoffReportMirror, narration: NarrationState) -> (u32, u32, Vec<u8>) {
+    render_leaderboard_rgba(ui::fixtures::fake_cockpit_leaderboard_with_narration(
+        PanelState::Ready(mirror),
+        narration,
+    ))
+}
+
+/// The cockpit each `#202` subject starts from: the expected frames' own
+/// constructor, with nothing on screen.
+fn empty_leaderboard() -> Cockpit {
+    ui::fixtures::fake_cockpit_leaderboard(PanelState::Empty)
+}
+
+/// Press Run and land `mirror` through `update`, as the binary does.
+fn drive_run(cockpit: &mut Cockpit, mirror: BakeoffReportMirror) {
+    update(cockpit, Message::BakeoffRunRequested);
+    update(cockpit, Message::BakeoffRunCompleted(Ok(mirror.clone())));
+    assert!(
+        matches!(&cockpit.leaderboard_screen_state.result, PanelState::Ready(m) if *m == mirror),
+        "precondition: the bake-off landed Ready"
+    );
+}
+
+/// Assert the subject drew its recommendation band, then that a control frame
+/// differs from the expected one (the comparison can fail), then that the
+/// subject equals the expected frame pixel for pixel.
+fn assert_frames(
+    label: &str,
+    subject: &(u32, u32, Vec<u8>),
+    expected: &(u32, u32, Vec<u8>),
+    control: &(u32, u32, Vec<u8>),
+) {
+    let rec_fg = recommendation_band_foreground(subject.0, &subject.2);
+    assert!(
+        rec_fg > 200,
+        "{label}: the subject must paint its recommendation band (expected >200 \
+         foreground px, got {rec_fg})"
+    );
+    assert_eq!(
+        (subject.0, subject.1),
+        (expected.0, expected.1),
+        "{label}: the frames have one size"
+    );
+    let control_px = differing_pixels(&expected.2, &control.2);
+    assert!(
+        control_px > 0,
+        "{label}: control: the control frame must differ from the expected frame (got 0 px)"
+    );
+    let subject_px = differing_pixels(&subject.2, &expected.2);
+    assert_eq!(
+        subject_px, 0,
+        "{label}: the subject frame must equal the expected frame pixel for pixel \
+         (the control differs by {control_px} px)"
+    );
+}
+
+/// Press Explain through `update` and return the ticket now in flight.
+fn explain_ticket(cockpit: &mut Cockpit) -> ui::leaderboard::NarrationTicket {
+    update(cockpit, Message::BakeoffNarrationRequested);
+    cockpit
+        .leaderboard_screen_state
+        .narration
+        .in_flight_ticket()
+        .expect("precondition: Explain on a Ready result was accepted (InFlight)")
+}
+
+/// **R1 = S0-2 (bug-log #202, AD-10).** Explain on bake-off A, Run B, B lands,
+/// THEN A's answer arrives under A's ticket. B's frame must be B's own
+/// `NotRequested` frame, pixel for pixel. Control: B's frame with A's prose
+/// landed differs. RED before the fix (the prose card painted under B).
+#[test]
+fn a_late_answer_for_bakeoff_a_paints_nothing_on_bakeoff_b() {
+    let prose_a = ui::fixtures::FAKE_NARRATION_READY_PROSE;
+    let b = ui::fixtures::fake_bakeoff_report_mirror_benchmark_wins();
+    let mut subject = empty_leaderboard();
+    drive_run(&mut subject, ui::fixtures::fake_bakeoff_report_mirror());
+    let t_a = explain_ticket(&mut subject);
+    drive_run(&mut subject, b.clone());
+    update(
+        &mut subject,
+        Message::BakeoffNarrationCompleted(
+            t_a,
+            NarrationOutcome::Ready(smol_str::SmolStr::new(prose_a)),
+        ),
+    );
+
+    let got = render_leaderboard_rgba(subject);
+    let dropped = fixture_frame(b.clone(), NarrationState::NotRequested);
+    let landed = fixture_frame(b, NarrationState::Ready(smol_str::SmolStr::new(prose_a)));
+    save_png("late_answer_subject", &got);
+    save_png("late_answer_dropped", &dropped);
+    save_png("late_answer_landed", &landed);
+    assert_frames("R1 / S0-2 (bug-log #202)", &got, &dropped, &landed);
+}
+
+/// **R1c (bug-log #202).** R1's two-sided twin: Explain on A, Run B, B lands,
+/// Explain on B; A's late answer arrives, then B's own. B's frame must be B's
+/// frame with B's prose, pixel for pixel. Control: R1's expected frame (B,
+/// `NotRequested`) differs. RED under a guard that drops every answer (T15).
+#[test]
+fn an_answer_for_bakeoff_b_paints_on_bakeoff_b() {
+    const PROSE_B: &str = "Simply holding the coin came out on top here. No active strategy \
+         beat buy-and-hold on risk-adjusted return over this window, so none could be \
+         crowned, and the field's best Sharpe still trailed the benchmark's. This describes \
+         how the strategies behaved on past data; it is not a forecast.";
+    let prose_a = ui::fixtures::FAKE_NARRATION_READY_PROSE;
+    let b = ui::fixtures::fake_bakeoff_report_mirror_benchmark_wins();
+    let mut subject = empty_leaderboard();
+    drive_run(&mut subject, ui::fixtures::fake_bakeoff_report_mirror());
+    let t_a = explain_ticket(&mut subject);
+    drive_run(&mut subject, b.clone());
+    let t_b = explain_ticket(&mut subject);
+    update(
+        &mut subject,
+        Message::BakeoffNarrationCompleted(
+            t_a,
+            NarrationOutcome::Ready(smol_str::SmolStr::new(prose_a)),
+        ),
+    );
+    update(
+        &mut subject,
+        Message::BakeoffNarrationCompleted(
+            t_b,
+            NarrationOutcome::Ready(smol_str::SmolStr::new(PROSE_B)),
+        ),
+    );
+
+    let got = render_leaderboard_rgba(subject);
+    let lands = fixture_frame(
+        b.clone(),
+        NarrationState::Ready(smol_str::SmolStr::new(PROSE_B)),
+    );
+    let not_requested = fixture_frame(b, NarrationState::NotRequested);
+    save_png("current_answer_subject", &got);
+    save_png("current_answer_lands", &lands);
+    assert_frames("R1c (bug-log #202)", &got, &lands, &not_requested);
+}
+
+/// **R2 (bug-log #202, ADR-0064 § D6).** Explain while the request channel is
+/// closed (the narration task has ended), through
+/// `ui::live::update_and_dispatch_explain`: the frame must be the fallback
+/// frame (A, `FellBack`), pixel for pixel. Control: the same press over an open
+/// channel is accepted and stays `InFlight`, and its frame differs. RED on the
+/// refactor commit (a refusal was only logged, the spinner stayed).
+#[cfg(feature = "live")]
+#[test]
+fn a_refused_explain_paints_the_fallback_note() {
+    use ui::live::{ExplainDispatch, ExplainRefusal, update_and_dispatch_explain};
+
+    let a = ui::fixtures::fake_bakeoff_report_mirror();
+    let mut subject = empty_leaderboard();
+    drive_run(&mut subject, a.clone());
+    let (closed_tx, closed_rx) =
+        tokio::sync::mpsc::channel::<agent::narration::NarrationRequest>(4);
+    drop(closed_rx);
+    let refused = update_and_dispatch_explain(
+        &mut subject,
+        Message::BakeoffNarrationRequested,
+        Some(&closed_tx),
+    );
+    assert_eq!(
+        refused,
+        ExplainDispatch::Refused(ExplainRefusal::Closed),
+        "precondition: a closed request channel refuses the Explain"
+    );
+
+    let mut accepted = empty_leaderboard();
+    drive_run(&mut accepted, a.clone());
+    let (open_tx, _open_rx) = tokio::sync::mpsc::channel::<agent::narration::NarrationRequest>(4);
+    let sent = update_and_dispatch_explain(
+        &mut accepted,
+        Message::BakeoffNarrationRequested,
+        Some(&open_tx),
+    );
+    assert_eq!(
+        sent,
+        ExplainDispatch::Sent,
+        "control precondition: an open request channel takes the Explain"
+    );
+
+    let got = render_leaderboard_rgba(subject);
+    let fallback = fixture_frame(a, NarrationState::FellBack);
+    let in_flight = render_leaderboard_rgba(accepted);
+    save_png("refused_fallback", &got);
+    save_png("accepted_inflight", &in_flight);
+    assert_frames("R2 (bug-log #202)", &got, &fallback, &in_flight);
+}
+
+/// **R3 (bug-log #202, ADR-0064 § D6).** Explain is in flight and the narration
+/// task ends (its reply sender drops, as on a kill-switch halt). The REAL
+/// `ui::live::narration_outcome_stream_impl` is drained to its end on a
+/// current-thread runtime under a 5 s timeout, and every message is applied: the
+/// frame must be the fallback frame (A, `FellBack`), pixel for pixel. Control:
+/// the same cockpit with nothing drained (`InFlight`) differs.
+#[cfg(feature = "live")]
+#[test]
+fn a_halted_task_paints_the_fallback_note() {
+    use futures::StreamExt;
+
+    let a = ui::fixtures::fake_bakeoff_report_mirror();
+    let mut subject = empty_leaderboard();
+    drive_run(&mut subject, a.clone());
+    explain_ticket(&mut subject);
+    let undrained = subject.clone();
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
+    drop(tx);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a current-thread runtime for the drain");
+    let drained: Vec<Message> = runtime.block_on(async move {
+        let mut stream = ui::live::narration_outcome_stream_impl(Some(rx));
+        let mut out = Vec::new();
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), stream.next()).await {
+                Ok(Some(msg)) => out.push(msg),
+                Ok(None) => return out,
+                Err(_) => panic!("R3: the relay did not end within 5 s of its sender dropping"),
+            }
+            assert!(out.len() <= 64, "R3: the relay did not end after 64 items");
+        }
+    });
+    for msg in drained {
+        update(&mut subject, msg);
+    }
+
+    let got = render_leaderboard_rgba(subject);
+    let fallback = fixture_frame(a, NarrationState::FellBack);
+    let in_flight = render_leaderboard_rgba(undrained);
+    save_png("task_ended_fallback", &got);
+    save_png("task_ended_inflight", &in_flight);
+    assert_frames("R3 (bug-log #202)", &got, &fallback, &in_flight);
 }
 
 /// Prints the geometry table in [`REC_TOP`]'s doc comment — and the identical one in

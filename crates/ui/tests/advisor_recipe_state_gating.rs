@@ -64,7 +64,8 @@
 //!   it can reach: a `Loading` bake-off result is always a running one, and a
 //!   run that is over shows the result it ended with. The pairs: a `Loading` /
 //!   `Error` / `Empty` result refuses Explain where `Ready` accepts it; a
-//!   resolved narration is kept where `NotRequested` flips to `InFlight`; a
+//!   resolved narration is kept where `NotRequested` flips to `InFlight` (under
+//!   a fresh ticket, bug-log #202); a
 //!   press mid-run keeps the bar and the run where an idle press clears the bar
 //!   and starts one; an idle press on an unrunnable sweep form is refused where
 //!   a runnable one starts. `set_plan` is unconditional, so its pair (an
@@ -120,7 +121,7 @@
 //! | D-P3 | `ui::state::update`, arm `Message::BakeoffNarrationRequested` | `if matches!(st.result, PanelState::Ready(_)) && !st.narration.is_requested() {` | → `if !st.narration.is_requested() {` | `explain_request_ignored_until_a_ready_result_is_on_screen`, at the `Loading` side |
 //! | D-P11 | same arm | `if matches!(st.result, PanelState::Ready(_)) && !st.narration.is_requested() {` | → `if !matches!(st.result, PanelState::Loading) && !st.narration.is_requested() {` | `explain_request_ignored_until_a_ready_result_is_on_screen`, at the `Error` side (the `Loading` side stays green, which is why the test walks all three non-`Ready` results) |
 //! | D-P4 | same arm | `if matches!(st.result, PanelState::Ready(_)) && !st.narration.is_requested() {` | → `if matches!(st.result, PanelState::Ready(_)) {` | `explain_rerequest_does_not_clobber_a_resolved_narration` (the re-press flips `Ready(p)` back to `InFlight`) |
-//! | D-P28 | same arm | `if matches!(st.result, PanelState::Ready(_)) && !st.narration.is_requested() {` | → `if matches!(st.result, PanelState::Ready(_)) && !matches!(st.narration, crate::leaderboard::NarrationState::InFlight \| crate::leaderboard::NarrationState::Ready(_)) {` (a guard that forgets `FellBack`; round 3's extra R3-X3) | `explain_rerequest_does_not_clobber_a_resolved_narration`, at its second `D-P4` site (the re-press after `FellBack`). D-P4 reaches only the first site |
+//! | D-P28 | same arm | `if matches!(st.result, PanelState::Ready(_)) && !st.narration.is_requested() {` | → `if matches!(st.result, PanelState::Ready(_)) && !matches!(st.narration, crate::leaderboard::NarrationState::InFlight(_) \| crate::leaderboard::NarrationState::Ready(_)) {` (a guard that forgets `FellBack`; round 3's extra R3-X3) | `explain_rerequest_does_not_clobber_a_resolved_narration`, at its second `D-P4` site (the re-press after `FellBack`). D-P4 reaches only the first site |
 //! | D-P5 | `ui::leaderboard::LeaderboardScreenState::begin_run` (`crates/ui/src/leaderboard/state.rs`) | `self.progress = None;` (under the comment `(a stale "7 of 7" from the last run must never show on the new one).`) | delete the line | `bakeoff_run_requested_clears_prior_runs_progress`; also `second_bakeoff_request_mid_run_keeps_progress` at its idle side |
 //! | D-P6 | `ui::leaderboard::LeaderboardScreenState::finish_run` | `self.progress = None;` (under the comment `lingers under the (now Ready/Error) result.`) | delete the line | `bakeoff_progress_cleared_on_completion` |
 //! | D-P13 | `ui::leaderboard::LeaderboardScreenState::finish_run` | `self.running = false;` (its first line) | delete the line | `bakeoff_progress_cleared_on_completion`, at its `D-P13` check. The other bake-off tests go red too, each at a `!running` check, because the run never ends: the explain tests at `seed: the prior run is over` (in `cockpit_after_an_explained_run`), `bakeoff_run_requested_clears_prior_runs_progress` and `second_bakeoff_request_mid_run_keeps_progress` at their `precondition:` that the run completed |
@@ -140,7 +141,8 @@
 //! `spawn_sweep` dispatch, the promotion's `ForwardCommand::Launch`). They live
 //! in `cockpit_live.rs`, a bin target an integration test cannot link
 //! (the K3 #6 `AppState` residual). The Explain `try_send` moved into the
-//! library in bug-log `#202`: `ui::live::update_and_dispatch_explain`.
+//! library in bug-log `#202`: `ui::live::update_and_dispatch_explain`, which
+//! `narration_request_correlation.rs` drives.
 //!
 //! Gated on `live` (the build where the relay seams and the `agent` types
 //! exist), NOT on `fixtures` (`ui::fixtures` is always compiled) and NOT on
@@ -295,24 +297,45 @@ async fn relay_plan(
     msg
 }
 
-/// Send one narration outcome into the agent→ui narration channel and return
-/// what the relay yields for it, which must be a `BakeoffNarrationCompleted`.
+/// Send the agent's reply to the request in flight on `cockpit` (its ticket
+/// as `request_id`, bug-log #202) into the agent→ui narration channel and
+/// return what the relay yields for it, which must be a
+/// `BakeoffNarrationCompleted` under that ticket.
 async fn relay_narration(
-    tx: &tokio::sync::mpsc::Sender<agent::NarrationOutcome>,
+    tx: &tokio::sync::mpsc::Sender<agent::NarrationReply>,
     stream: &mut BoxStream<'static, Message>,
+    cockpit: &Cockpit,
     outcome: agent::NarrationOutcome,
 ) -> Message {
-    tx.send(outcome)
-        .await
-        .expect("the outcome entered the channel (receiver alive)");
+    let ticket = cockpit
+        .leaderboard_screen_state
+        .narration
+        .in_flight_ticket()
+        .expect("a narration relay answers the request in flight");
+    tx.send(agent::NarrationReply {
+        request_id: ticket.raw(),
+        outcome,
+    })
+    .await
+    .expect("the outcome entered the channel (receiver alive)");
     let msg = next_or_fail(stream, 2, "the relayed narration outcome")
         .await
         .expect("the relay yielded the outcome, it did not END");
     assert!(
-        matches!(msg, Message::BakeoffNarrationCompleted(_)),
-        "the narration relay yields BakeoffNarrationCompleted, got {msg:?}"
+        matches!(msg, Message::BakeoffNarrationCompleted(t, _) if t == ticket),
+        "the narration relay yields BakeoffNarrationCompleted under the request's ticket, got {msg:?}"
     );
     msg
+}
+
+/// Whether a request is in flight (`InFlight` carries its ticket since bug-log
+/// #202, so the state is compared by kind).
+fn in_flight(cockpit: &Cockpit) -> bool {
+    cockpit
+        .leaderboard_screen_state
+        .narration
+        .in_flight_ticket()
+        .is_some()
 }
 
 /// A ranked mirror with no candidate rows: what a bake-off that scored nothing
@@ -546,7 +569,7 @@ async fn relayed_second_plan_replaces_the_first() {
 /// out of `narration_outcome_stream_impl` over the caller's channel, the way
 /// production delivers it.
 async fn cockpit_after_an_explained_run(
-    tx: &tokio::sync::mpsc::Sender<agent::NarrationOutcome>,
+    tx: &tokio::sync::mpsc::Sender<agent::NarrationReply>,
     stream: &mut BoxStream<'static, Message>,
 ) -> Cockpit {
     const STALE: &str = "A prior run's narration, which must not carry into the next run.";
@@ -565,14 +588,15 @@ async fn cockpit_after_an_explained_run(
         "seed: the prior run is over"
     );
     update(&mut cockpit, Message::BakeoffNarrationRequested);
-    assert_eq!(
-        cockpit.leaderboard_screen_state.narration,
-        NarrationState::InFlight,
-        "seed: Explain on the prior run's Ready result was accepted"
+    assert!(
+        in_flight(&cockpit),
+        "seed: Explain on the prior run's Ready result was accepted (got {:?})",
+        cockpit.leaderboard_screen_state.narration
     );
     let msg = relay_narration(
         tx,
         stream,
+        &cockpit,
         agent::NarrationOutcome::Ready(SmolStr::new(STALE)),
     )
     .await;
@@ -597,34 +621,28 @@ async fn cockpit_after_an_explained_run(
 /// | `Loading` (the run is in flight) | `NotRequested` |
 /// | `Error` (the run failed) | `NotRequested` |
 /// | `Empty` (the run ranked nothing) | `NotRequested` |
-/// | `Ready` (a ranked leaderboard) | `InFlight` |
+/// | `Ready` (a ranked leaderboard) | `InFlight` (under a fresh ticket) |
 ///
 /// The three refusals are separate cases because a guard can refuse one and
 /// accept another (D-P11 refuses `Loading` only; it is red at `Error`).
 #[tokio::test]
 async fn explain_request_ignored_until_a_ready_result_is_on_screen() {
-    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
+    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
     let mut stream = ui::live::narration_outcome_stream_impl(Some(rx));
-    let cases: [(&str, Option<BakeoffRunResult>, NarrationState); 4] = [
-        ("Loading", None, NarrationState::NotRequested),
-        (
-            "Error",
-            Some(Err(SmolStr::new("boom"))),
-            NarrationState::NotRequested,
-        ),
-        (
-            "Empty",
-            Some(Ok(bakeoff_mirror_without_rows())),
-            NarrationState::NotRequested,
-        ),
+    // The third field: whether Explain is accepted (`InFlight`, under a ticket
+    // the test cannot know in advance) or refused (`NotRequested`).
+    let cases: [(&str, Option<BakeoffRunResult>, bool); 4] = [
+        ("Loading", None, false),
+        ("Error", Some(Err(SmolStr::new("boom"))), false),
+        ("Empty", Some(Ok(bakeoff_mirror_without_rows())), false),
         (
             "Ready",
             Some(Ok(ui::fixtures::fake_bakeoff_report_mirror())),
-            NarrationState::InFlight,
+            true,
         ),
     ];
 
-    for (want_result, outcome, want_narration) in cases {
+    for (want_result, outcome, accepted) in cases {
         let mut cockpit = cockpit_after_an_explained_run(&tx, &mut stream).await;
         update(&mut cockpit, Message::BakeoffRunRequested);
         assert!(
@@ -647,15 +665,20 @@ async fn explain_request_ignored_until_a_ready_result_is_on_screen() {
 
         update(&mut cockpit, Message::BakeoffNarrationRequested);
 
-        let probe = if want_narration == NarrationState::InFlight {
-            "the Ready side"
+        if accepted {
+            assert!(
+                in_flight(&cockpit),
+                "[{want_result}] the Ready side: Explain with a {want_result} result on screen \
+                 (got {:?})",
+                cockpit.leaderboard_screen_state.narration
+            );
         } else {
-            "D-P3 / D-P11"
-        };
-        assert_eq!(
-            cockpit.leaderboard_screen_state.narration, want_narration,
-            "[{want_result}] {probe}: Explain with a {want_result} result on screen"
-        );
+            assert_eq!(
+                cockpit.leaderboard_screen_state.narration,
+                NarrationState::NotRequested,
+                "[{want_result}] D-P3 / D-P11: Explain with a {want_result} result on screen"
+            );
+        }
     }
 }
 
@@ -672,7 +695,7 @@ async fn explain_request_ignored_until_a_ready_result_is_on_screen() {
 #[tokio::test]
 async fn explain_rerequest_does_not_clobber_a_resolved_narration() {
     const PROSE: &str = "SMA crossover led on risk-adjusted return over this window.";
-    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
+    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
     let mut stream = ui::live::narration_outcome_stream_impl(Some(rx));
     let mut cockpit = cockpit_after_an_explained_run(&tx, &mut stream).await;
 
@@ -693,14 +716,15 @@ async fn explain_rerequest_does_not_clobber_a_resolved_narration() {
         "precondition: a ranked result is on screen"
     );
     update(&mut cockpit, Message::BakeoffNarrationRequested);
-    assert_eq!(
-        cockpit.leaderboard_screen_state.narration,
-        NarrationState::InFlight,
-        "the other side of the pair: with nothing requested, Explain is accepted"
+    assert!(
+        in_flight(&cockpit),
+        "the other side of the pair: with nothing requested, Explain is accepted (got {:?})",
+        cockpit.leaderboard_screen_state.narration
     );
     let msg = relay_narration(
         &tx,
         &mut stream,
+        &cockpit,
         agent::NarrationOutcome::Ready(SmolStr::new(PROSE)),
     )
     .await;
@@ -729,12 +753,18 @@ async fn explain_rerequest_does_not_clobber_a_resolved_narration() {
         Message::BakeoffRunCompleted(Ok(ui::fixtures::fake_bakeoff_report_mirror())),
     );
     update(&mut cockpit, Message::BakeoffNarrationRequested);
-    assert_eq!(
-        cockpit.leaderboard_screen_state.narration,
-        NarrationState::InFlight,
-        "precondition: run 2's Explain was accepted"
+    assert!(
+        in_flight(&cockpit),
+        "precondition: run 2's Explain was accepted (got {:?})",
+        cockpit.leaderboard_screen_state.narration
     );
-    let msg = relay_narration(&tx, &mut stream, agent::NarrationOutcome::FellBack).await;
+    let msg = relay_narration(
+        &tx,
+        &mut stream,
+        &cockpit,
+        agent::NarrationOutcome::FellBack,
+    )
+    .await;
     update(&mut cockpit, msg);
     assert_eq!(
         cockpit.leaderboard_screen_state.narration,

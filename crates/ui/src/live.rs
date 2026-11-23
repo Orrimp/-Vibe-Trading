@@ -948,21 +948,21 @@ pub fn forward_plan_stream_impl(
 // ── F9 narration-outcome recipe (advisor-llm-narration / ADR-0064 § D3) ──────
 //
 // Symmetric with F6's plan recipe. The agent narration task sends a `core`-clean
-// `agent::NarrationOutcome { Ready(SmolStr) | FellBack }` over the
+// `agent::NarrationReply { request_id, outcome }` over the
 // `RunHandles.narration_outcome_tx` channel; the iced thread holds the matching
 // `mpsc::Receiver`. THIS recipe drains it, maps each outcome into the pure-`ui`
 // `crate::leaderboard::NarrationOutcome` at the single adapter (below), and emits
-// `Message::BakeoffNarrationCompleted(outcome)`. Without it, the outcome channel
+// `BakeoffNarrationCompleted(ticket, outcome)` (bug-log #202). Without it, the channel
 // is never consumed and "Explain" can only ever show the templated fallback.
 
 /// iced `Recipe` that drains the F9 narration-outcome return channel and emits
-/// `Message::BakeoffNarrationCompleted` per `agent::NarrationOutcome`.
+/// `Message::BakeoffNarrationCompleted` per `agent::NarrationReply`.
 ///
 /// Batched by [`subscription_batch`] while `SubscriptionCtx::narration_outcome` is
 /// `Some`. Same tokio-mpsc-in-`Mutex` ownership as `ForwardPlanRecipe`.
 pub struct NarrationOutcomeRecipe {
     pub rt_handle: tokio::runtime::Handle,
-    pub rx: Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>>>,
+    pub rx: Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationReply>>>>,
 }
 
 impl Recipe for NarrationOutcomeRecipe {
@@ -990,29 +990,29 @@ impl Recipe for NarrationOutcomeRecipe {
 }
 
 /// Inner stream logic for `NarrationOutcomeRecipe`, extracted so the relay
-/// integration test can drive it directly. Maps each `agent::NarrationOutcome`
-/// to `Message::BakeoffNarrationCompleted` via [`narration_outcome_to_ui`] (the
-/// single `#[cfg(feature = "live")]` adapter), until the sender drops.
+/// integration test can drive it directly. Maps each `agent::NarrationReply`
+/// to `Message::BakeoffNarrationCompleted` via [`narration_reply_to_message`];
+/// when the sender drops, yields `BakeoffNarrationTaskEnded` once (bug-log #202).
 #[must_use]
 pub fn narration_outcome_stream_impl(
-    rx_opt: Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>,
+    rx_opt: Option<tokio::sync::mpsc::Receiver<agent::NarrationReply>>,
 ) -> BoxStream<'static, Message> {
     Box::pin(async_stream::stream! {
         if let Some(mut rx) = rx_opt {
             while let Some(outcome) = rx.recv().await {
-                yield Message::BakeoffNarrationCompleted(narration_outcome_to_ui(outcome));
+                yield narration_reply_to_message(outcome);
             }
             debug!(channel = "narration_outcome", "narration channel closed — stopping recipe");
+            yield Message::BakeoffNarrationTaskEnded;
         }
         // If rx_opt was None: yields nothing (double-stream() after .take()).
     })
 }
 
-/// The ONE place `ui` reads `agent::NarrationOutcome` — map the `core`-clean
-/// agent outcome into the pure-`ui` `crate::leaderboard::NarrationOutcome` (the
-/// `ForwardPlanView::from_plan` discipline, but for the narration return type).
-/// Both enums are `{ Ready(SmolStr) | FellBack }`; exhaustive so a future agent
-/// variant fails to compile here until mapped.
+/// The ONE place `ui` reads `agent::NarrationOutcome`: map it into the pure-`ui`
+/// `crate::leaderboard::NarrationOutcome` (the `ForwardPlanView::from_plan`
+/// discipline). Both enums are `{ Ready(SmolStr) | FellBack }`; exhaustive so a
+/// future agent variant fails to compile here until mapped.
 #[must_use]
 pub fn narration_outcome_to_ui(
     outcome: agent::NarrationOutcome,
@@ -1182,10 +1182,9 @@ pub fn sweep_progress_stream_impl(
     })
 }
 
-/// Build the F9 [`agent::narration::NarrationRequest`] for the "Explain" action
-/// from the on-screen `BakeoffReportMirror` — the iced→agent send the cockpit
-/// dispatches over `narration_request_tx` (the F5 `forward_tx` build-from-mirror
-/// precedent, but for the narration request).
+/// Build the F9 [`agent::narration::NarrationRequest`] for the "Explain" request
+/// `ticket` from the on-screen `BakeoffReportMirror`, the request
+/// [`update_and_dispatch_explain`] sends over `narration_request_tx` (bug-log #202).
 ///
 /// This is the iced→agent direction of the narration seam: it names
 /// `agent::narration::*` ONLY here, under `#[cfg(feature = "live")]`, never
@@ -1195,13 +1194,13 @@ pub fn sweep_progress_stream_impl(
 ///
 /// ## Sortino / Calmar fidelity
 ///
-/// `LeaderRow` now carries `sortino` and `calmar` (mirrored from
-/// `CandidateKpis` in `BakeoffReportMirror::from_report`) so the P3
-/// allowed-number set includes all 6 KPIs. The LLM can faithfully cite
-/// Sortino/Calmar and the post-check will accept them.
+/// `LeaderRow` carries `sortino` and `calmar` (mirrored from `CandidateKpis` in
+/// `BakeoffReportMirror::from_report`) so the P3 allowed-number set includes all
+/// 6 KPIs: the LLM can faithfully cite Sortino/Calmar and the post-check accepts.
 #[must_use]
 pub fn narration_request_from_mirror(
     mirror: &crate::leaderboard::BakeoffReportMirror,
+    ticket: crate::leaderboard::NarrationTicket,
 ) -> agent::narration::NarrationRequest {
     use crate::leaderboard::{OutcomeKind, RobustnessLabel};
     use agent::narration::{
@@ -1246,6 +1245,7 @@ pub fn narration_request_from_mirror(
     let reason_codes: Vec<SmolStr> = rec.reasons.iter().map(|c| reason_code_str(*c)).collect();
 
     NarrationRequest {
+        request_id: ticket.raw(),
         facts: NarrationFacts {
             outcome: outcome_(rec.outcome),
             winner_id: rec.winner.clone(),
@@ -1416,7 +1416,7 @@ pub type ForwardPlanCell =
 
 /// The F9 narration return channel; [`NarrationOutcomeRecipe`] takes it once.
 pub type NarrationOutcomeCell =
-    Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>>>;
+    Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationReply>>>>;
 
 /// The bake-off AND the sweep progress channel: both carry `BakeoffProgress`, so
 /// a swapped field in a `SubscriptionCtx` literal compiles (documented residual).
@@ -1687,22 +1687,38 @@ pub enum ExplainRefusal {
     Unwired,
 }
 
-/// What [`update_and_dispatch_explain`] did with the message it applied.
+/// What [`update_and_dispatch_explain`] did after applying its message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExplainDispatch {
     /// The message started no new request: nothing was sent.
     Idle,
     /// The new request was queued for the narration task.
     Sent,
-    /// The new request was refused (logged only, the binary's behaviour).
+    /// The new request was refused, and the narration landed `FellBack`.
     Refused(ExplainRefusal),
 }
 
-/// Send the "Explain" request `msg` starts, if any, then apply `msg` with
-/// [`crate::state::update`]. The live binary calls this in place of `update`;
-/// it is the binary's former inline enqueue, lifted unchanged (bug-log #202,
-/// commit 1 of 2): the same guard on the PRE-mutation state, the same
-/// `try_send`, the same log lines, and a refusal is only logged.
+/// Map one agent reply into the message that lands it: the echoed `request_id`
+/// becomes the [`NarrationTicket`](crate::leaderboard::NarrationTicket) the
+/// answer may land on, and the outcome goes through [`narration_outcome_to_ui`].
+#[must_use]
+pub fn narration_reply_to_message(reply: agent::NarrationReply) -> Message {
+    Message::BakeoffNarrationCompleted(
+        crate::leaderboard::NarrationTicket::from_raw(reply.request_id),
+        narration_outcome_to_ui(reply.outcome),
+    )
+}
+
+/// Apply `msg` with [`crate::state::update`], then send the "Explain" request
+/// it started, if any (bug-log #202). The live binary calls this in place of
+/// `update`, so the request carries the ticket `update` just minted.
+///
+/// `msg` started a request when, after `update`, the narration is `InFlight`
+/// under a ticket it was not in flight under before, with a `Ready` result on
+/// screen. That request goes to `tx` with `try_send`. When the send is refused
+/// (`Full`, `Closed`) or there is no channel, the narration lands `FellBack`
+/// through `update` (ADR-0064 § D6), so the panel never spins on a request
+/// nothing will answer.
 #[allow(clippy::result_large_err)] // tokio's TrySendError hands the unsent request back
 pub fn update_and_dispatch_explain(
     cockpit: &mut crate::state::Cockpit,
@@ -1711,41 +1727,43 @@ pub fn update_and_dispatch_explain(
 ) -> ExplainDispatch {
     use tokio::sync::mpsc::error::TrySendError;
 
-    let mut dispatch = ExplainDispatch::Idle;
-    // Read the PRE-mutation mirror: the request arm leaves `result` untouched.
-    if matches!(msg, Message::BakeoffNarrationRequested)
-        && let crate::state::PanelState::Ready(mirror) = &cockpit.leaderboard_screen_state.result
-        && !cockpit.leaderboard_screen_state.narration.is_requested()
-    {
-        dispatch = match tx.map(|tx| tx.try_send(narration_request_from_mirror(mirror))) {
-            Some(Ok(())) => {
-                tracing::info!(
-                    winner = %mirror.recommendation.winner,
-                    "F9-NARRATION: NarrationRequest sent to agent task"
-                );
-                ExplainDispatch::Sent
-            }
-            Some(Err(e)) => {
-                warn!(
-                    error = %e,
-                    "F9-NARRATION: narration_request channel full — Explain deferred"
-                );
-                ExplainDispatch::Refused(match e {
-                    TrySendError::Full(_) => ExplainRefusal::Full,
-                    TrySendError::Closed(_) => ExplainRefusal::Closed,
-                })
-            }
-            None => {
-                warn!(
-                    "F9-NARRATION: narration_request_tx is None — narration not wired \
-                     (non-fatal; the templated fallback stays the floor)"
-                );
-                ExplainDispatch::Refused(ExplainRefusal::Unwired)
-            }
-        };
-    }
+    let before = cockpit
+        .leaderboard_screen_state
+        .narration
+        .in_flight_ticket();
     crate::state::update(cockpit, msg);
-    dispatch
+    let st = &cockpit.leaderboard_screen_state;
+    let Some(ticket) = st.narration.in_flight_ticket() else {
+        return ExplainDispatch::Idle;
+    };
+    if before == Some(ticket) {
+        return ExplainDispatch::Idle;
+    }
+    let crate::state::PanelState::Ready(mirror) = &st.result else {
+        return ExplainDispatch::Idle;
+    };
+    let refusal = match tx.map(|tx| tx.try_send(narration_request_from_mirror(mirror, ticket))) {
+        Some(Ok(())) => {
+            tracing::info!(
+                winner = %mirror.recommendation.winner,
+                request_id = ticket.raw(),
+                "F9-NARRATION: NarrationRequest sent to agent task"
+            );
+            return ExplainDispatch::Sent;
+        }
+        Some(Err(TrySendError::Full(_))) => ExplainRefusal::Full,
+        Some(Err(TrySendError::Closed(_))) => ExplainRefusal::Closed,
+        None => ExplainRefusal::Unwired,
+    };
+    warn!(
+        ?refusal,
+        "F9-NARRATION: Explain could not be queued — FellBack (bug-log #202)"
+    );
+    crate::state::update(
+        cockpit,
+        Message::BakeoffNarrationCompleted(ticket, crate::leaderboard::NarrationOutcome::FellBack),
+    );
+    ExplainDispatch::Refused(refusal)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────

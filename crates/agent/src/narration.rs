@@ -14,8 +14,8 @@
 //! ## Layering invariant
 //!
 //! `NarrationOutcome { Ready(SmolStr) | FellBack }` carries NO `llm` type and
-//! NO `ChatResponse`.  It crosses the agent→iced seam the same way
-//! `ForwardPlan` does.  The `ui` crate names `agent::NarrationOutcome` ONLY in
+//! NO `ChatResponse`.  It crosses the agent→iced seam inside a [`NarrationReply`]
+//! (ADR-0064 § D15).  The `ui` crate names `agent::NarrationOutcome` ONLY in
 //! the `#[cfg(feature = "live")]` recipe/adapter — the single edit site if a
 //! name drifts.
 //!
@@ -59,11 +59,9 @@ use llm::{
 
 // ── NarrationOutcome ─────────────────────────────────────────────────────────
 
-/// The `core`-clean result that crosses the agent→iced seam (ADR-0064 § D1).
-///
-/// `Clone + Debug` — no `llm` type, no `ChatResponse`.  This is what the
-/// `#[cfg(feature = "live")]` recipe/adapter in `ui` reads to produce
-/// `Message::BakeoffNarrationCompleted`.
+/// The `core`-clean result that crosses the agent→iced seam (ADR-0064 § D1),
+/// inside a [`NarrationReply`]. `Clone + Debug`: no `llm` type, no `ChatResponse`;
+/// `ui`'s `#[cfg(feature = "live")]` adapter maps it into a `Message`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NarrationOutcome {
     /// A faithful narration passed the post-check — the prose can be shown.
@@ -81,6 +79,8 @@ pub enum NarrationOutcome {
 pub struct NarrationRequest {
     /// The structured facts the generator will render into prose.
     pub facts: NarrationFacts,
+    /// Echoed on the [`NarrationReply`], so `ui` lands it on this request only (#202).
+    pub request_id: u64,
 }
 
 // ── NarrationFacts ───────────────────────────────────────────────────────────
@@ -1191,6 +1191,30 @@ pub fn kpi_drawdown_pct(fraction: rust_decimal::Decimal) -> String {
 fn pct_digits(fraction: rust_decimal::Decimal) -> String {
     let pct = (fraction * rust_decimal::Decimal::ONE_HUNDRED).round_dp(2);
     pad_fractional_kpi(&pct.abs().to_string(), 2)
+}
+
+// ── NarrationReply (the agent→iced answer, bug-log `#202`) ──────────────────────
+
+/// The narration task's answer to one [`NarrationRequest`]: that request's
+/// `request_id`, echoed, and the outcome. `ui` lands `outcome` only while that
+/// request is the one on screen (ADR-0064 § D15).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NarrationReply {
+    /// The [`NarrationRequest::request_id`] this answers.
+    pub request_id: u64,
+    /// What the generator returned for that request.
+    pub outcome: NarrationOutcome,
+}
+
+impl NarrationRequest {
+    /// The reply to this request: `outcome` under this request's id.
+    #[must_use]
+    pub fn reply(&self, outcome: NarrationOutcome) -> NarrationReply {
+        NarrationReply {
+            request_id: self.request_id,
+            outcome,
+        }
+    }
 }
 
 // ── Unit tests ────────────────────────────────────────────────────────────────

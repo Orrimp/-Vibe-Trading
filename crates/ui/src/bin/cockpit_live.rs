@@ -437,7 +437,7 @@ fn main() -> Result<()> {
         tokio::sync::mpsc::channel::<agent::narration::NarrationRequest>(4);
     #[cfg(feature = "live")]
     let (narration_outcome_tx_live, narration_outcome_rx_live) =
-        tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
+        tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
 
     let agent_handle = {
         let cancel = cancel.clone();
@@ -476,7 +476,7 @@ fn main() -> Result<()> {
         let narration_outcome_tx_for_handles = Some(narration_outcome_tx_live);
         #[cfg(not(feature = "live"))]
         let narration_outcome_tx_for_handles: Option<
-            tokio::sync::mpsc::Sender<agent::NarrationOutcome>,
+            tokio::sync::mpsc::Sender<agent::NarrationReply>,
         > = None;
 
         let handles = RunHandles {
@@ -1235,23 +1235,23 @@ struct AppState {
     /// F9-NARRATION — sender side of the narration-REQUEST channel (ADR-0064 § D3).
     ///
     /// Held on the iced side. `ui::live::update_and_dispatch_explain`, which this
-    /// binary's `update` calls in place of `ui::state::update`, builds a
-    /// `NarrationRequest` from the on-screen `BakeoffReportMirror` when "Explain"
-    /// (`Message::BakeoffNarrationRequested`) is accepted and `try_send`s it here
-    /// (the F5 `forward_tx` iced→agent dispatch precedent).
+    /// binary's `update` calls in place of `ui::state::update`, `try_send`s the
+    /// ticketed `NarrationRequest` here when "Explain" is accepted, and lands
+    /// `FellBack` when the send is refused (bug-log #202; the F5 `forward_tx`
+    /// iced→agent dispatch precedent).
     #[cfg(feature = "live")]
     narration_request_tx: Option<tokio::sync::mpsc::Sender<agent::narration::NarrationRequest>>,
 
     /// F9-NARRATION — receiver side of the narration-OUTCOME return channel.
     ///
     /// Symmetric with `plan_rx`: `NarrationOutcomeRecipe` `take()`s it in
-    /// `stream()`, drains `agent::NarrationOutcome`, maps each into the pure-`ui`
+    /// `stream()`, drains `agent::NarrationReply`, maps each into the pure-`ui`
     /// `NarrationOutcome`, and emits `BakeoffNarrationCompleted`. `subscription()`
     /// builds the recipe whenever this is `Some`.
     #[cfg(feature = "live")]
     narration_outcome_rx: Option<
         std::sync::Arc<
-            std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>>,
+            std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationReply>>>,
         >,
     >,
 

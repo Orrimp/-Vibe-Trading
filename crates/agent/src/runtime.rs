@@ -172,7 +172,7 @@ pub struct RunHandles {
     /// [`crate::narration::NarrationRequest`] when the operator clicks "Explain".
     /// The agent's narration task (spawned inside `run`) receives it and runs
     /// [`crate::narration::generate_narration`] on the async runtime, then sends
-    /// the `NarrationOutcome` back via `narration_outcome_tx`.
+    /// the request's [`crate::narration::NarrationReply`] via `narration_outcome_tx`.
     ///
     /// `None` → byte-identical to today (headless / soak unaffected — D6 invariant).
     pub narration_request_rx:
@@ -181,11 +181,11 @@ pub struct RunHandles {
     /// F9-NARRATION — sender side of the narration-outcome return channel (ADR-0064 § D3).
     ///
     /// `Some(tx)` only for the cockpit; the narration task sends the
-    /// [`crate::narration::NarrationOutcome`] back to the iced thread's recipe
+    /// [`crate::narration::NarrationReply`] back to the iced thread's recipe
     /// (symmetric with F6's `plan_tx`).
     ///
     /// `None` → byte-identical to today (headless / soak unaffected — D6 invariant).
-    pub narration_outcome_tx: Option<tokio::sync::mpsc::Sender<crate::narration::NarrationOutcome>>,
+    pub narration_outcome_tx: Option<tokio::sync::mpsc::Sender<crate::narration::NarrationReply>>,
 
     /// F9-NARRATION — the boot-built LLM provider (bug-log `#197`).
     ///
@@ -1612,7 +1612,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
     // ── F9-NARRATION — triggered narration task (ADR-0064 § D3) ─────────────────
     // Receives a `NarrationRequest` from the iced thread (via the cockpit's
     // "Explain" action), calls `generate_narration(provider, facts)` on the
-    // async runtime, and returns the `NarrationOutcome` over the return channel.
+    // async runtime, and returns a `NarrationReply` (the request's id + outcome).
     //
     // `None` channels → byte-identical to today (headless / soak unaffected —
     // the absent-channel path is structurally guaranteed by the Option guards).
@@ -1633,20 +1633,20 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                     biased;
                     () = narration_cancel.cancelled() => break,
                     req = req_rx.recv() => {
-                        let Some(crate::narration::NarrationRequest { facts }) = req else {
+                        let Some(req) = req else {
                             // Channel closed — exit.
                             break;
                         };
                         let outcome = if let Some(ref provider) = llm_provider {
-                            narrate_containing_panics(provider, &facts).await
+                            narrate_containing_panics(provider, &req.facts).await
                         } else {
                             tracing::debug!(
-                                winner = %facts.winner_id,
+                                winner = %req.facts.winner_id,
                                 "narration_task: provider not enabled — FellBack"
                             );
                             crate::narration::NarrationOutcome::FellBack
                         };
-                        if outcome_tx.send(outcome).await.is_err() {
+                        if outcome_tx.send(req.reply(outcome)).await.is_err() {
                             tracing::warn!("narration_task: outcome channel closed — stopping");
                             break;
                         }

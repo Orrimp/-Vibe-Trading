@@ -122,7 +122,7 @@
 //! | `escape_keypress_maps_to_modal_closed` | `ui::widgets::journal_transaction_modal::esc_closes_modal`, the fn both cockpits batch while the tape-audit modal is open: an `Esc` PRESS closes the modal, whatever its event status |
 //! | `non_escape_events_map_to_none` | the negative half: another key, an `Esc` RELEASE, and a non-key event close nothing, at both event statuses |
 //! | (C2) `batched_forward_plan_recipe_relays` | the `ForwardPlan` unit: none at boot, exactly one while the cell is held; its `stream()` takes THIS ctx's receiver (the cell is empty right after it); it relays a plan as `ForwardPlanReceived` with the strategy sent, then a SECOND plan while the sender lives (a body that relays once and ends fails there); it ends when the sender drops. Sender alive and dropped are the two sides of one pair: an item arrives, then the end |
-//! | (C2) `batched_narration_outcome_recipe_relays` | the `NarrationOutcome` unit, the same shape: `Ready(prose)` relayed as `BakeoffNarrationCompleted(Ready(prose))`, then a second outcome, `FellBack`, then the end |
+//! | (C2) `batched_narration_outcome_recipe_relays` | the `NarrationOutcome` unit, the same shape: a reply `Ready(prose)` under id 5 relayed as `BakeoffNarrationCompleted(5, Ready(prose))`, then a second reply, `FellBack` under id 6, then one `BakeoffNarrationTaskEnded` (bug-log #202) and the end |
 //! | (C2) `batched_bakeoff_progress_recipe_relays` | the `BakeoffProgress` unit: none at boot (neither the salt-7 id nor the boot salt's, 0); at salt 7 the salt-7 reference id matches exactly one unit and the salt-6 one none; it takes THIS ctx's receiver, relays `Message::BakeoffProgress` with the payload sent, a second while the sender lives, and ends |
 //! | (C2) `batched_sweep_progress_recipe_relays` | the `SweepProgress` unit, with the bake-off cell absent: the same boot and salt pairs and take, and it relays `Message::SweepProgress` twice, never the sibling's `BakeoffProgress` |
 //! | (C2) `batched_bakeoff_and_sweep_units_drain_own_cells_equal_salts` | BOTH `BakeoffProgressCell`-typed cells held at once, salts 7 and 7 (the realistic case: the bin bumps the two salts independently): each unit, taken by its own reference id, takes ITS cell's receiver (checked right after its `stream()`) and relays ITS sender's value in ITS variant (`BakeoffProgress` / `SweepProgress`), then both end. The only fixture that STREAMS with both cells held (the all-Some identity fixtures hold both too, at equal salts, but only hash them): an arm that drains the sibling's cell whenever it is held (the falsifier's OWN-1, C2-P21 / C2-P22) passes every other test |
@@ -289,7 +289,7 @@
 //! | C2-P22 | `ui::live::variant_subscription`'s `BakeoffProgress` arm | `SubscriptionVariant::BakeoffProgress => match ctx.bakeoff_progress {` | → `SubscriptionVariant::BakeoffProgress => match ctx.sweep_progress.or(ctx.bakeoff_progress) {` (the mirror: the arm drains the SWEEP cell whenever it is held) | `batched_bakeoff_and_sweep_units_drain_own_cells_equal_salts`, at "both cells, salts 7/7: the bake-off unit took the BAKE-OFF cell's receiver"; `batched_bakeoff_and_sweep_units_drain_own_cells_distinct_salts`, at "both cells, salts 7/8: bake-off unit: exactly one batched unit carries the reference id" (0 hits: the unit carries the sweep salt, 8). Every other test stays GREEN: the bake-off relay holds no sweep cell, and the all-Some fixtures hold equal salts, so no id moves. MEASURED (2026-11-14, `wf_be1acf7b-3e7` falsifier) |
 //! | C2-P23 | `ui::live::forward_plan_stream_impl` | `while let Some(plan) = rx.recv().await {` | → `if let Some(plan) = rx.recv().await {` (the plan stream relays ONE plan and then ends, whatever the sender does: the falsifier's OWN-3) | `batched_forward_plan_recipe_relays`, at "forward_plan: stream ENDED before its second item". `forward_plan_stays_batched_after_receiver_taken` stays GREEN (one plan per stream). MEASURED (2026-11-14, `wf_be1acf7b-3e7` falsifier; OWN-3's mutant is byte-identical). Outside this target, MEASURED as OWN-3 (2026-11-14, `wf_a82b74dd-7bb` falsifier; this target was then 23/23 green) and again in `wf_be1acf7b-3e7`: `forward_narration_relay::forward_plan_relay_yields_one_message_per_plan_in_order`, at "exactly one ForwardPlanReceived per plan sent" |
 //! | C2-P24 | `ui::live::bakeoff_progress_stream_impl` | `yield Message::BakeoffProgress(progress);` | the `while let Some(progress) = rx.recv().await {` line above it → `if let Some(progress) = rx.recv().await {`. That line alone occurs twice in `live.rs` (here and in `sweep_progress_stream_impl`), so the OLD is the two lines together, which occur once | `batched_bakeoff_progress_recipe_relays`, at "bakeoff_progress: stream ENDED before its second item". The both-cells tests stay GREEN (one item per unit). MEASURED (2026-11-14, `wf_be1acf7b-3e7` falsifier). Outside this target, MEASURED in the same run: `bakeoff_progress_relay::bakeoff_progress_relay_forwards_every_event_in_order_then_ends`, at "every event forwarded, in send order" (`left: [0]`), and `bakeoff_progress_relay::bakeoff_progress_relay_latest_event_wins_on_state`, at "every one of the 3 sent events was relayed" (`left: 1`) |
-//! | C2-P25 | `ui::live::narration_outcome_stream_impl` | `while let Some(outcome) = rx.recv().await {` | → `if let Some(outcome) = rx.recv().await {` | `batched_narration_outcome_recipe_relays`, at "narration_outcome: stream ENDED before its second item". `forward_plan_stays_batched_after_receiver_taken` stays GREEN (one outcome per stream). MEASURED (2026-11-14, `wf_be1acf7b-3e7` falsifier). Outside this target, MEASURED in the same run: `forward_narration_relay::narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver`, at "after run 1's outcome (exactly one message for run 1; the relay must stay live for run 2): the stream already ENDED (expected it live on its receiver)" |
+//! | C2-P25 | `ui::live::narration_outcome_stream_impl` | `while let Some(outcome) = rx.recv().await {` | → `if let Some(outcome) = rx.recv().await {` | `batched_narration_outcome_recipe_relays`, at "narration_outcome: expected a second BakeoffNarrationCompleted, FellBack, got BakeoffNarrationTaskEnded" (REASONED: since bug-log #202 the stopped relay yields its task end at once; MEASURED before it as "stream ENDED before its second item"). `forward_plan_stays_batched_after_receiver_taken` stays GREEN (one outcome per stream). MEASURED (2026-11-14, `wf_be1acf7b-3e7` falsifier), before bug-log #202. Outside this target, MEASURED in the same run: `forward_narration_relay::narration_outcome_stream_resolves_two_bakeoff_runs_through_one_receiver`, at "after run 1's outcome (exactly one message for run 1; the relay must stay live for run 2): an unexpected extra message was buffered: BakeoffNarrationTaskEnded" (REASONED: since bug-log #202 the stopped relay yields its task end at once; MEASURED before it as "the stream already ENDED (expected it live on its receiver)") |
 //! | C2-P26 | `ui::live::variant_subscription`'s `BakeoffProgress` arm | `Some((rx, salt)) => from_recipe(BakeoffProgressRecipe {` | `BakeoffProgressRecipe` → `SweepProgressRecipe` (the arm builds the SIBLING recipe: C2-P12's reverse direction). The edited line then reads like the Sweep arm's own (C2-P12's quoted line), so it occurs twice: restore from the snapshot, never by reversing the text | `batched_bakeoff_progress_recipe_relays`, at "bakeoff_progress: exactly one batched unit carries the reference id" (0 hits); `batched_bakeoff_and_sweep_units_drain_own_cells_equal_salts`, at "both cells, salts 7/7: bake-off unit: exactly one batched unit carries the reference id" (0 hits); `batched_bakeoff_and_sweep_units_drain_own_cells_distinct_salts`, at "both cells, salts 7/8: bake-off unit: exactly one batched unit carries the reference id" (0 hits); `recipe_ids_are_pairwise_distinct`, at "all 22 units of the all-Some batch have distinct ids (every salt 0)" (21: units 19 and 20 collide). The salted test and every C1 test stay GREEN (both ids still move with the salt; the count is unchanged). MEASURED (2026-11-14, `wf_be1acf7b-3e7` falsifier) |
 //! | C2-P27 | `ui::live::variant_subscription`'s `ServerTime` arm | `SubscriptionVariant::ServerTime => from_recipe(ServerTimeRecipe {` | → `SubscriptionVariant::ServerTime => from_recipe(ToastDismissRecipe {` (the arm builds the toast recipe: C2-P19's arm-level twin) | `batched_server_time_recipe_relays`, at "server-time: exactly one batched unit carries the reference id" (0 hits); `batched_toast_dismiss_recipe_relays`, at "toast: exactly one batched unit carries the reference id" (2 hits); `recipe_ids_are_pairwise_distinct`, at "all 22 units of the all-Some batch have distinct ids (every salt 0)" (21). The salted, frame-stable and C1 tests stay GREEN (the count is unchanged and every id is stable), and so does the `ModalEsc` set difference (opening the modal still adds one id). MEASURED (2026-11-14, `wf_be1acf7b-3e7` falsifier) |
 //!
@@ -1415,28 +1415,50 @@ async fn batched_narration_outcome_recipe_relays() {
         "{LABEL}: the batched unit took THIS ctx's receiver"
     );
 
-    tx.send(agent::NarrationOutcome::Ready(SmolStr::new("c2 prose")))
-        .await
-        .expect("the receiver is held by the stream");
+    tx.send(agent::NarrationReply {
+        request_id: 5,
+        outcome: agent::NarrationOutcome::Ready(SmolStr::new("c2 prose")),
+    })
+    .await
+    .expect("the receiver is held by the stream");
     match next_item(&mut stream, LABEL).await {
-        Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::Ready(prose)) => {
+        Message::BakeoffNarrationCompleted(
+            ticket,
+            ui::leaderboard::NarrationOutcome::Ready(prose),
+        ) => {
+            assert_eq!(
+                ticket.raw(),
+                5,
+                "{LABEL}: the reply's id is echoed as its ticket"
+            );
             assert_eq!(
                 prose, "c2 prose",
                 "{LABEL}: the relayed prose is the one sent"
             );
         }
-        other => panic!("{LABEL}: expected BakeoffNarrationCompleted(Ready(..)), got {other:?}"),
+        other => panic!("{LABEL}: expected BakeoffNarrationCompleted(_, Ready(..)), got {other:?}"),
     }
-    tx.send(agent::NarrationOutcome::FellBack)
-        .await
-        .expect("the receiver is still held by the stream");
+    tx.send(agent::NarrationReply {
+        request_id: 6,
+        outcome: agent::NarrationOutcome::FellBack,
+    })
+    .await
+    .expect("the receiver is still held by the stream");
     match nth_item(&mut stream, LABEL, "second", RELAY).await {
-        Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::FellBack) => {}
+        Message::BakeoffNarrationCompleted(ticket, ui::leaderboard::NarrationOutcome::FellBack)
+            if ticket.raw() == 6 => {}
         other => {
             panic!("{LABEL}: expected a second BakeoffNarrationCompleted, FellBack, got {other:?}")
         }
     }
     drop(tx);
+    match nth_item(&mut stream, LABEL, "task-end", RELAY).await {
+        Message::BakeoffNarrationTaskEnded => {}
+        other => panic!(
+            "{LABEL}: expected one BakeoffNarrationTaskEnded once the sender dropped (bug-log #202), \
+             got {other:?}"
+        ),
+    }
     assert_ends(&mut stream, LABEL).await;
 }
 
@@ -2241,7 +2263,10 @@ async fn forward_plan_stays_batched_after_receiver_taken() {
         other => panic!("frame 1's plan stream: expected ForwardPlanReceived, got {other:?}"),
     }
     narration_tx
-        .send(agent::NarrationOutcome::FellBack)
+        .send(agent::NarrationReply {
+            request_id: 7,
+            outcome: agent::NarrationOutcome::FellBack,
+        })
         .await
         .expect("frame 1's stream holds the narration receiver");
     match next_item(
@@ -2250,9 +2275,10 @@ async fn forward_plan_stays_batched_after_receiver_taken() {
     )
     .await
     {
-        Message::BakeoffNarrationCompleted(ui::leaderboard::NarrationOutcome::FellBack) => {}
+        Message::BakeoffNarrationCompleted(ticket, ui::leaderboard::NarrationOutcome::FellBack)
+            if ticket.raw() == 7 => {}
         other => panic!(
-            "frame 1's narration stream: expected BakeoffNarrationCompleted(FellBack), got {other:?}"
+            "frame 1's narration stream: expected BakeoffNarrationCompleted(7, FellBack), got {other:?}"
         ),
     }
 }

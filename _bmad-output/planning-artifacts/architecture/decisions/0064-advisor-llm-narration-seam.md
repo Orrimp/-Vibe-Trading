@@ -5,7 +5,7 @@ status: accepted
 date: 2026-07-01
 supersedes: none
 superseded-by: none
-updated: 2026-11-13
+updated: 2026-11-23
 ---
 
 # ADR-0064: Advisor LLM "why this one" narration seam
@@ -753,8 +753,8 @@ This was live whenever `llm.enabled = true`, since `bab164f0` (bug-log `#197`).
    `ceil_char_boundary` clamps to `lower.len()`, so the `.min` goes. Both functions are stable on
    the pinned toolchain, 1.94.1 (ADR-0091).
 2. **Containment (the narration task).** The provider branch now calls
-   `narrate_containing_panics(provider, &facts)`, a private helper in `runtime.rs` placed after
-   `panic_message`. It awaits
+   `narrate_containing_panics(provider, &req.facts)` (`&facts` until D15), a private helper in
+   `runtime.rs` placed after `panic_message`. It awaits
    `futures::FutureExt::catch_unwind(AssertUnwindSafe(generate_narration(provider, facts)))`.
    - A panic becomes `NarrationOutcome::FellBack`. It is logged at error level with the winner id,
      the panic message and "bug-log #201".
@@ -878,8 +878,87 @@ byte-identically, and each log showed `Compiling agent`.
 **Anchor safety.** Unchanged from D7: the narration is report-free, and no `evidence/` file is
 touched. `scripts/verify_anchors.sh` is 119/119 after the change, which edits no file it reads.
 
+## Amendment 2026-11-23 (bug-log `#202`: an Explain answer lands only on its own request)
+
+**Context.** § D3's request carried only `facts`, and the task answered with a bare
+`NarrationOutcome`, which `set_narration` stored over whatever was on screen. Request and answer
+shared no identity. So an Explain on bake-off A, then a Run of bake-off B, landed A's answer
+(faithful to A's facts, never B's) under B's table, and from there into B's hand-off export
+(`serialize_plan_export` embeds a `Ready` narration). Separately, the binary's `try_send` only
+logged a refusal (`Full`, and `Closed` under the same "channel full" text), and a kill-switch
+halt ends the narration task with a request queued or in a provider call. Neither path answered,
+so the panel stayed `InFlight` until the next Run, and § D6's "every failure mode lands
+`FellBack`" did not hold.
+
+**D15: every Explain carries a ticket, and every request ends.**
+
+1. **The ticket.** `begin_narration` mints a `ui::leaderboard::NarrationTicket` from
+   `LeaderboardScreenState::narration_seq`, which only grows (`begin_run` does not reset it, so no
+   ticket repeats in a session), and sets `NarrationState::InFlight(ticket)`.
+2. **The wire.** `NarrationRequest` gains `request_id: u64`; the task answers each request with
+   `NarrationReply { request_id, outcome }` (`NarrationRequest::reply`), on the channel that used
+   to carry the bare outcome. The loop stays sequential and keeps calling
+   `narrate_containing_panics` (D14), so a contained panic's `FellBack` carries its id too.
+3. **Landing.** `Message::BakeoffNarrationCompleted(NarrationTicket, NarrationOutcome)`, mapped
+   from the reply by `ui::live::narration_reply_to_message`, lands only while the narration is
+   `InFlight(that ticket)`. Any other state (a later Explain, a new run, an answer that already
+   landed) drops it at debug level.
+4. **The dispatch.** `ui::live::update_and_dispatch_explain` replaces the binary's inline enqueue:
+   the binary calls it in place of `ui::state::update`. It applies the message, and when the
+   narration went `InFlight` under a new ticket with a `Ready` result on screen, it `try_send`s
+   that ticket's request. A refused send (`Full`, `Closed`, or no channel) lands `FellBack`
+   through `update`, and the log names the refusal.
+5. **The end of the task.** When the reply channel closes, the outcome stream yields one
+   `Message::BakeoffNarrationTaskEnded` before it ends, which lands `FellBack` on an `InFlight`
+   narration and leaves every other state alone. A stream built on an already-taken receiver
+   still yields nothing.
+
+**Why a ticket, not the entry's two options.** A pending flag that `begin_run` clears fails the
+queued case: Explain on A, Run B, Explain on B, and A's answer (served first by the sequential
+task) lands as B's. A generation counter bumped by `begin_run` passes that case but assumes one
+request per run, so a second answer to one request (F4) would still land. The ticket names the
+request, not the run.
+
+**Supersedes:** in § D1, "it crosses the seam exactly as `ForwardPlan` does" (the reply wraps
+the outcome); in § D3, `NarrationRequest { facts }`,
+`Message::BakeoffNarrationCompleted(NarrationOutcome)` and "updates the recommendation block
+**in place**" (now: on its own ticket only); in § D4's sketch, `InFlight,` (now
+`InFlight(NarrationTicket)`). § D14's quoted call now reads
+`narrate_containing_panics(provider, &req.facts)`.
+
+**Unchanged:** § D2 (FROZEN): P1–P4, `check_faithful`, the tokenizer, `allowed_numbers`,
+`BANNED_PHRASES` and D12–D14's verdicts. The cancel arm, the absent-provider `FellBack`, the
+headless path (no narration task), and the sequential loop: B's request still waits behind A's
+billed call, which is accepted. AD-1 is untouched.
+
+**Verification.** `crates/ui/tests/narration_request_correlation.rs` (new, `live`) drives the
+correlation through `update` and the dispatch through `update_and_dispatch_explain` with real
+channels; `crates/ui/tests/leaderboard_narration_render.rs` gains four pixel proofs (a late
+answer paints nothing, the current answer paints, a refused Explain and a halted task paint the
+fallback), each a 0-px equality to the expected frame plus a control that differs;
+`leaderboard::state` gains two unit tests; `crates/agent/tests/narration_task_uses_boot_provider.rs`
+checks the echo. Fifteen one-edit T-T4 probes (T1–T15) are listed in the new file's module doc.
+Measured by the orchestrator: Step 0 red on the tree before the fix at exactly S0-1, S0-3, S0-4 and
+R1; on the fix's bytes the 11 touched test binaries passed 913 tests, 0 failed, 1 ignored, and the
+18 probes (T1–T15, P16, P4b, D-P28) each went red at exactly its named tests and were restored
+byte-identical (then 792 passed, 0 failed); clippy `-p agent -p ui --tests` clean; anchors 119/119.
+The CI-equivalent suite over the #202/#200/2-63 batch: `cargo test -p ui` 1460 passed, 0 failed, 31
+ignored over 122 targets (lib 706), the 2 `--features fixtures` targets 6 passed, `-p agent` 235 and
+`-p trader` 166 passed, with no baseline moved; cockpit-smoke PASS.
+
+**Anchor safety.** Unchanged from D7: the narration is report-free, and no `evidence/` file is
+touched. `scripts/verify_anchors.sh` is 119/119 after the change.
+
 ## Changelog
 
+- 2026-11-23 (developer, bug-log `#202` amendment): **an Explain answer lands only on its
+  own request.** **D15** Each Explain mints a `NarrationTicket`; the request carries it as
+  `request_id`, the agent echoes it on a `NarrationReply`, and `BakeoffNarrationCompleted` lands
+  only on `InFlight(its ticket)`, so A's answer can no longer land under bake-off B or in B's
+  export. `ui::live::update_and_dispatch_explain` replaced the binary's enqueue, so a refused send
+  lands `FellBack`, and a closed reply channel (a kill-switch halt) yields
+  `BakeoffNarrationTaskEnded`, which lands `FellBack` on an `InFlight` narration: § D6 now holds.
+  § D14's quoted call reads `&req.facts`. § D2 (FROZEN) unchanged. Anchor-neutral, 119/119.
 - 2026-11-13 (developer, bug-log `#201` amendment): **the P1 and P2 windows sit on char boundaries,
   and a narration panic falls back.** **D14** `check_faithful` cut the P1 (±120) and P2
   `BenchmarkWins` (±150) windows at raw byte offsets around a lexeme. A multi-byte character (an em

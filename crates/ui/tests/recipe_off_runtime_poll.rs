@@ -1862,9 +1862,10 @@ fn plan_strategy(msg: &Message) -> String {
     }
 }
 
-fn narration(msg: &Message) -> ui::leaderboard::NarrationOutcome {
+/// The relayed reply as `(echoed request id, outcome)` (bug-log #202).
+fn narration(msg: &Message) -> (u64, ui::leaderboard::NarrationOutcome) {
     match msg {
-        Message::BakeoffNarrationCompleted(outcome) => outcome.clone(),
+        Message::BakeoffNarrationCompleted(ticket, outcome) => (ticket.raw(), outcome.clone()),
         other => panic!("expected Message::BakeoffNarrationCompleted, got {other:?}"),
     }
 }
@@ -3183,8 +3184,9 @@ fn forward_plan_recipe_drains_off_runtime() {
 /// **B-P4.** `NarrationOutcomeRecipe::stream` on the event-loop stand-in
 /// (taking the receiver there), drained on iced's executor. Three outcomes,
 /// sent from the runtime with production's `send().await` (checked) on its
-/// depth-4 channel, one per turn, each relayed mapped before the next is sent.
-/// The stream then ends.
+/// depth-4 channel, one per turn, each relayed mapped (its id echoed) before
+/// the next is sent. The stream then yields one `BakeoffNarrationTaskEnded`
+/// (bug-log #202) and ends.
 #[test]
 fn narration_outcome_recipe_drains_off_runtime() {
     use ui::leaderboard::NarrationOutcome as UiOutcome;
@@ -3192,7 +3194,7 @@ fn narration_outcome_recipe_drains_off_runtime() {
     let _timing = timing_shared();
     let producer = ProducerRuntime::new();
     let executor = iced_executor();
-    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
+    let (tx, rx) = tokio::sync::mpsc::channel::<agent::NarrationReply>(4);
     let cell = Arc::new(Mutex::new(Some(rx)));
     let recipe = NarrationOutcomeRecipe {
         rt_handle: producer.handle(),
@@ -3214,30 +3216,35 @@ fn narration_outcome_recipe_drains_off_runtime() {
     let third = "No active edge survived the gate.";
     let turns = [
         (
+            3,
             agent::NarrationOutcome::Ready(SmolStr::new(first)),
             UiOutcome::Ready(SmolStr::new(first)),
         ),
-        (agent::NarrationOutcome::FellBack, UiOutcome::FellBack),
+        (5, agent::NarrationOutcome::FellBack, UiOutcome::FellBack),
         (
+            8,
             agent::NarrationOutcome::Ready(SmolStr::new(third)),
             UiOutcome::Ready(SmolStr::new(third)),
         ),
     ];
-    for (n, (outcome, expected)) in turns.into_iter().enumerate() {
+    for (n, (request_id, outcome, expected)) in turns.into_iter().enumerate() {
         let what = format!("narration outcome {}", n + 1);
         expect_waiting(&reports, &what);
         let sender = tx.clone();
         producer.produce(&what, async move {
             sender
-                .send(outcome)
+                .send(agent::NarrationReply {
+                    request_id,
+                    outcome,
+                })
                 .await
                 .map_err(|e| format!("narration outcome: {e}"))
         });
         let got = next_item(&reports, WAIT, &format!("{what}, sent with a sender alive"));
         assert_eq!(
             narration(&got.msg),
-            expected,
-            "{what}: relayed once, mapped, before the next send"
+            (request_id, expected),
+            "{what}: relayed once, mapped, its id echoed, before the next send"
         );
     }
     let tail = close_and_drain(&producer, &reports, "narration outcome", async move {
@@ -3245,8 +3252,9 @@ fn narration_outcome_recipe_drains_off_runtime() {
         Ok(())
     });
     assert!(
-        tail.is_empty(),
-        "narration outcome: after the last sender dropped, the end and nothing else: {tail:?}"
+        matches!(tail.as_slice(), [Message::BakeoffNarrationTaskEnded]),
+        "narration outcome: after the last sender dropped, one BakeoffNarrationTaskEnded \
+         (bug-log #202), the end and nothing else: {tail:?}"
     );
 }
 

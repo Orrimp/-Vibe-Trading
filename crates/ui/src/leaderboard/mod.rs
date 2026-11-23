@@ -33,7 +33,7 @@ pub mod state;
 pub use state::{
     BAKEOFF_COIN_UNIVERSE, BakeoffReportMirror, BakeoffTimeframe, DataQualityView,
     DataQualityWarning, FdrAnnexView, FdrInsufficiency, LeaderRow, LeaderboardLookback,
-    LeaderboardScreenState, NarrationOutcome, NarrationState, OutcomeKind, ReasonLabel,
-    RecommendationMirror, RobustnessLabel, ScorecardView, TailSummaryView, VenueTrust,
+    LeaderboardScreenState, NarrationOutcome, NarrationState, NarrationTicket, OutcomeKind,
+    ReasonLabel, RecommendationMirror, RobustnessLabel, ScorecardView, TailSummaryView, VenueTrust,
     parse_budget, parse_start_capital,
 };

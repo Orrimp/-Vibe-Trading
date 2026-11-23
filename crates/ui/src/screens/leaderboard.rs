@@ -718,7 +718,7 @@ fn narration_section<'a>(
             .into(),
         // Generating — the templated reasons stay visible (the floor) + a quiet
         // spinner line so the operator knows work is happening.
-        NarrationState::InFlight => Column::new()
+        NarrationState::InFlight(_) => Column::new()
             .spacing(space::S)
             .push(templated_reasons(rec, mode))
             .push(frame::loading_with_spinner(
