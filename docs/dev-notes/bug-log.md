@@ -10306,11 +10306,19 @@ asserts it is served.
 
 ### `#202` — an "Explain" answer for one bake-off lands on the next one, and a refused request leaves the panel spinning
 
-**Status**: **`open`** 2026-11-13. Found by reading `crates/ui/src/leaderboard/state.rs` and
+**Status**: **`fixed` 2026-11-23 — `80e7abf3d07d`** (each Explain mints a `NarrationTicket`; the
+request carries it as `request_id`, the agent echoes it on a `NarrationReply`, and an answer
+lands only on `InFlight(its ticket)`; `ui::live::update_and_dispatch_explain` replaced the
+binary's enqueue, so a refused send lands `FellBack`; a closed reply channel yields
+`BakeoffNarrationTaskEnded`, which lands `FellBack` on an `InFlight` narration; ADR-0064 D15;
+anchor-neutral).
+
+History: filed **`open`** 2026-11-13. Found by reading `crates/ui/src/leaderboard/state.rs` and
 `crates/ui/src/bin/cockpit_live.rs` at HEAD `9a83b987`, after the `#201` review flagged the second
 half. Not yet reproduced in a test or against an LLM. Anchor-impacting: **no** (narration is
 report-free). Live whenever `llm.enabled = true` (default `false`), since `bab164f0` (`#197`) made
-Explain reach a real provider; before that, every answer was an immediate `FellBack`.
+Explain reach a real provider; before that, every answer was an immediate `FellBack`. The two
+findings below describe the code before the fix.
 
 **1. Outcomes are not tied to the request they answer.** `NarrationRequest` carries only `facts`.
 `NarrationOutcome` is only `Ready(prose) | FellBack`. On the iced side,
@@ -10340,22 +10348,39 @@ deferred". No `BakeoffNarrationCompleted` follows, so the panel shows its spinne
 - `Closed` needs the narration task to have ended. Since the `#201` fix, a narration panic no longer
   ends it.
 
-**Why no test caught it.** Every Explain test drives one request and its own answer. No test runs a
-second bake-off while an answer is in flight, or refuses a send.
+**Why no test caught it.** Every Explain test drove one request and its own answer. No test ran a
+second bake-off while an answer was in flight, or refused a send.
 
-**Fix (its own change; an ADR-0064 amendment, since D1/D4 define the request and outcome).**
+**Fix (landed in `80e7abf3d07d`, ADR-0064 D15):**
 
-1. Correlate answers with requests. Options, to be decided in the fix:
-   - a generation counter: stamped on the request, echoed on the outcome, bumped by `begin_run`, and
-     with a mismatched outcome dropped;
-   - or a pending flag that `begin_run` clears, after which a late outcome is ignored.
-2. On a refused `try_send`, dispatch `BakeoffNarrationCompleted(FellBack)`, so the templated copy
-   stays the floor. Log `Closed` as closed.
+1. **The ticket, not the entry's options.** `begin_narration` mints a `NarrationTicket` from a
+   counter `begin_run` never resets, into `InFlight(ticket)`. The pending flag fails the queued case
+   (Explain A, Run B, Explain B: A's answer, served first, lands as B's); a generation counter
+   bumped by `begin_run` lets a second answer to one request land (F4).
+2. **The wire.** `NarrationRequest.request_id`; the task answers `NarrationReply { request_id,
+   outcome }` through `NarrationRequest::reply`; `BakeoffNarrationCompleted(ticket, outcome)` lands
+   only on `InFlight(ticket)` (`set_narration` returns whether it landed).
+3. **The enqueue moved into the library.** `ui::live::update_and_dispatch_explain` (lifted
+   behaviour-neutrally in the refactor commit before `80e7abf3d07d`) replaces the binary's
+   `ui::state::update` call. A refused `try_send` (`Full`, `Closed`, or no channel) lands
+   `FellBack`, and the log names the refusal.
+4. **The halt.** When the reply channel closes, the outcome stream yields one
+   `BakeoffNarrationTaskEnded`, which lands `FellBack` on an `InFlight` narration.
 
-The pin, through `update`:
-- Explain on A, Run B, then A's answer arrives: B's narration stays `NotRequested`.
-- The same with no Run in between: the answer lands.
-- A refused send ends at `FellBack`, not `InFlight`.
+**Pin.** `crates/ui/tests/narration_request_correlation.rs` (new, `live`): an answer for A does not
+land on B, nor reach B's export; a closed reply channel and a closed request channel each end
+`InFlight` at `FellBack`; the round trip lands its own answer and a wrong id does not; each refusal
+kind; a re-press sends one request. Pixels (`leaderboard_narration_render.rs`, AD-10): a late answer
+paints nothing, the current answer paints, a refused Explain and a halted task paint the fallback.
+The Step-0 tests were RED before the fix for this entry's reason. T-T4: fifteen one-edit probes
+(T1–T15), tabled in `narration_request_correlation.rs`'s module doc, each RED on its named
+tests. Measured by the orchestrator: Step 0 red on the tree before the fix at exactly S0-1, S0-3, S0-4 and
+R1; on the fix's bytes the 11 touched test binaries passed 913 tests, 0 failed, 1 ignored, and the
+18 probes (T1–T15, P16, P4b, D-P28) each went red at exactly its named tests and were restored
+byte-identical (then 792 passed, 0 failed); clippy `-p agent -p ui --tests` clean; anchors 119/119.
+The CI-equivalent suite over the #202/#200/2-63 batch: `cargo test -p ui` 1460 passed, 0 failed, 31
+ignored over 122 targets (lib 706), the 2 `--features fixtures` targets 6 passed, `-p agent` 235 and
+`-p trader` 166 passed, with no baseline moved; cockpit-smoke PASS.
 
 ### `#203` — the v0.2 subscription-batch gates could not fail: no test ran a conversion arm, and the trail file's bin-arm probe edited code no test executes
 
