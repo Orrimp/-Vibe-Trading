@@ -45,10 +45,10 @@ pub enum ForwardParamOverride {
 
 /// F5 — the selection carried from the leaderboard into the forward paper run.
 ///
-/// Constructed UI-side from the crowned/picked [`LeaderRow`] + the F3 budget +
-/// the bake-off coin. Consumed by `build_registry_for` (strategy injection) and
-/// `spawn_trading_loop` (budget capital + cap). `lookback` is `None` for the
-/// real-time-only MVP; the v0.2 replay-preview will populate it (OQ-1).
+/// Built UI-side by `ui::live::crowned_forward_run_config` (a crowned row) or
+/// `ui::live::promoted_forward_run_config` (a Tune promotion), with the F3 budget.
+/// Consumed by `build_registry_for` (strategy injection) and `spawn_trading_loop`
+/// (budget capital + cap). `lookback` is `None`: real-time only (v0.2 replay, OQ-1).
 ///
 /// **`core`-types-only invariant**: every field type must be from `trading_core`
 /// (or `Decimal`) so the `ui` crate — which imports this via `agent` — never
@@ -57,7 +57,7 @@ pub enum ForwardParamOverride {
 pub struct ForwardRunConfig {
     /// The selected (or crowned) strategy id, e.g. `"v0.sma"`.
     pub strategy: trading_core::StrategyId,
-    /// The bake-off coin, e.g. `"BTCUSDT"` — becomes the feed symbol.
+    /// The coin, e.g. `"BTCUSDT"`: the bake-off's, or a promotion's grid's (ADR-0070 D10).
     pub symbol: trading_core::Symbol,
     /// The user's budget — €200 ≈ 200 USDT (product § D4). Starting cash and
     /// per-trade notional cap (the `with_budget_cap` F4 modifier).
@@ -71,13 +71,13 @@ pub struct ForwardRunConfig {
     /// strategy from the tuned params instead (the same identity-guard path the
     /// sweep used to score the cell).
     pub param_override: Option<ForwardParamOverride>,
-    /// P0-3 — the scorecard summary from the crowning bake-off (ADR-0076).
+    /// P0-3 — the scorecard summary from the crowning bake-off (ADR-0075).
     ///
-    /// Populated by `cockpit_live.rs` at `ForwardCommand::Launch` time from the
-    /// `BakeoffReportMirror.scorecard` (the leaderboard already holds the
-    /// scorecard from the completed bake-off). `None` when no scorecard was
-    /// computed (degenerate bake-off or older launch paths). Threaded through to
-    /// `ForwardPlan.confidence` so the plan screen can frame the forward run as
+    /// Set by `ui::live::crowned_forward_run_config` from the crowning bake-off's
+    /// `BakeoffReportMirror.scorecard`. `None` for a promoted launch (bug-log
+    /// #213, ADR-0070 D11: that scorecard scores the bake-off's crown, not a tuned
+    /// config) and when no scorecard was computed (degenerate bake-off). Threaded
+    /// to `ForwardPlan.confidence` so the plan screen can frame the forward run as
     /// "a confidence check on the crowned pick, not a fresh prediction".
     ///
     /// **`backtest` is already a `ui` dep**, so this does not add a new edge.
@@ -275,12 +275,12 @@ pub struct ForwardPlan {
     /// the coming N days"), NOT a self-terminate condition.  The
     /// `paper_loop_supervisor` / `spawn_trading_loop` lifecycle is unchanged.
     pub horizon_days: u16,
-    /// P0-3 — the scorecard summary from the crowning bake-off (ADR-0076).
+    /// P0-3 — the scorecard summary from the crowning bake-off (ADR-0075).
     ///
     /// A 4-field projection of the bake-off `Scorecard` (`n_candidates`,
     /// `deflated_sharpe`, `crown_clears_dsr`, `min_btl_years`). Populated by
     /// `build_forward_plan` when the caller provides a `ForwardRunConfig` with
-    /// `confidence: Some(..)`. `None` when no scorecard was computed.
+    /// `confidence: Some(..)`. `None` for a promoted plan (bug-log #213) or no scorecard.
     ///
     /// The `ui` adapter mirrors this to a `ConfidenceSummaryView` (plain
     /// `f64`/`bool`/`usize`) — zero new `ui` dep edge (same discipline as

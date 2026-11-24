@@ -285,6 +285,11 @@ a forecast*:
   `<family>` config (`<params>`). It survived resampling on `<window>` — that is
   **not a guarantee**, and **not advice**. Paper-trading your €200 in `<coin>`."*
   `<coin>` is the coin the tuned grid was swept on.
+- If you got here by **accepting the crowned pick**, a **"How much to trust this
+  pick"** block with the bake-off's four numbers: strategies tried, deflated
+  confidence, beats holding?, and minimum history needed. A **promoted** plan
+  does not show it, because those numbers score the bake-off's crowned pick, not
+  your tuned config.
 - The standing disclaimers: *"This is a conditional, rule-based plan — not a
   price prediction…"* and *"Not financial advice. The €200 is a simulated paper
   budget… no real orders are placed."*

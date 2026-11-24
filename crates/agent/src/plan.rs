@@ -170,8 +170,8 @@ pub fn build_forward_plan(
         projected_units,
         sizing_capped,
         horizon_days,
-        // P0-3: thread the scorecard summary from the ForwardRunConfig (populated
-        // by cockpit_live.rs at launch time from the completed bake-off report).
+        // P0-3: thread the scorecard summary from the ForwardRunConfig (a crowned
+        // launch's own bake-off scorecard; `None` for a promotion, bug-log #213).
         confidence: cfg.confidence,
     }
 }

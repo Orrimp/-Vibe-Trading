@@ -58,6 +58,13 @@ Land a **report-only** overfitting scorecard alongside every bake-off
 
 - The same `Scorecard` is later projected as `ScorecardSummary` and
   carried on `ForwardPlan.confidence` (P0-3, ADR-0076 sibling).
+  > **Amended 2026-11-24 (bug-log #213, ADR-0070 D11):** carried for a crowned
+  > launch only; a promoted Tune config carries none, because the scorecard's
+  > deflated Sharpe and trial count describe the bake-off's slate and crown, not
+  > the tuned config. Also corrected: "ADR-0076 sibling" was a mis-citation. ADR-0076 is
+  > the turnover and tail ADR and says nothing about confidence; P0-3 is story
+  > 4-3 `advisor-confidence-not-verdict` and has no ADR of its own. Everything
+  > else in this bullet stands.
 
 ### Anchor safety
 

@@ -1772,6 +1772,111 @@ pub fn update_and_dispatch_explain(
     ExplainDispatch::Refused(refusal)
 }
 
+// ── Forward launch configs (ADR-0060 D6, ADR-0070 D4/D11, bug-log #213) ─────
+//
+// The two `agent::ForwardRunConfig`s the live binary sends as
+// `ForwardCommand::Launch`: one when a bake-off crowns a row, one when "Use this
+// config" promotes a tuned Tune config. They were built inline in
+// `cockpit_live.rs`, which no integration test can link, so nothing could pin
+// which scorecard each carried (bug-log #213). `crates/ui/tests/forward_launch_config.rs`
+// pins both, and its source guard keeps the binary from building one of its own.
+
+/// The bake-off's scorecard projected as a plan's confidence check (P0-3,
+/// ADR-0075): the four facts of the mirror's `ScorecardView` as the
+/// `backtest::bakeoff::ScorecardSummary` the agent copies into
+/// `ForwardPlan.confidence`. `None` when the bake-off computed no scorecard.
+fn bakeoff_confidence(
+    mirror: &crate::leaderboard::BakeoffReportMirror,
+) -> Option<backtest::bakeoff::ScorecardSummary> {
+    mirror
+        .scorecard
+        .map(|sc| backtest::bakeoff::ScorecardSummary {
+            n_candidates: sc.n_candidates,
+            deflated_sharpe: sc.deflated_sharpe,
+            crown_clears_dsr: sc.crown_clears_dsr,
+            min_btl_years: sc.min_btl_years,
+        })
+}
+
+/// The launch config for a bake-off that crowned a row (F5-LAUNCH, ADR-0060 § D6):
+/// the crowned strategy on the bake-off's coin, `budget` (the F7 EUR→USDT
+/// conversion), real-time only (`lookback: None`), the crowned params from
+/// `Config` or disk (`param_override: None`, anchor-safe), and that bake-off's own
+/// scorecard as the plan's confidence check. `None` when nothing was crowned.
+///
+/// The binary passes the mirror the `BakeoffRunCompleted(Ok(mirror))` message
+/// carries, so the coin, the crown and the scorecard all come from one run.
+#[must_use]
+pub fn crowned_forward_run_config(
+    mirror: &crate::leaderboard::BakeoffReportMirror,
+    budget: trading_core::Money<trading_core::Usdt>,
+) -> Option<agent::ForwardRunConfig> {
+    let row = mirror.crowned_row()?;
+    Some(agent::ForwardRunConfig {
+        strategy: trading_core::StrategyId::new(row.strategy.as_str()),
+        symbol: trading_core::Symbol::new(mirror.coin.as_str()),
+        budget,
+        lookback: None,
+        param_override: None,
+        confidence: bakeoff_confidence(mirror),
+    })
+}
+
+/// The launch config for a promoted Tune config (ADR-0070 § D4): the promotion's
+/// strategy on the promotion's coin (the landed grid's, § D10), `budget`,
+/// real-time only, and the tuned params as the override. `None` when nothing is
+/// promoted. It reads only `cockpit.pending_forward_promotion`, and does not take
+/// it: the forward plan's provenance strip reads it too (§ D6).
+///
+/// `confidence` is `None` whatever bake-off is on the leaderboard (bug-log #213,
+/// ADR-0070 § D11). That scorecard's deflated Sharpe and trial count describe
+/// the bake-off's slate and crown: the slate's best Sharpe, deflated by the
+/// slate's search, with the crown's return shape. A tuned config is not that
+/// crown, even on the same coin and family, and its sweep cells are not counted.
+#[must_use]
+pub fn promoted_forward_run_config(
+    cockpit: &crate::state::Cockpit,
+    budget: trading_core::Money<trading_core::Usdt>,
+) -> Option<agent::ForwardRunConfig> {
+    let promotion = cockpit.pending_forward_promotion.as_ref()?;
+    Some(agent::ForwardRunConfig {
+        strategy: promotion.strategy_id.clone(),
+        symbol: promotion.coin.clone(),
+        budget,
+        lookback: None,
+        param_override: Some(promote_params_to_override(&promotion.params)),
+        confidence: None,
+    })
+}
+
+/// The single UI→agent params map (ADR-0070 § D4): the UI-owned
+/// [`PromoteParams`](crate::tune::PromoteParams) to the agent-owned
+/// `agent::ForwardParamOverride`, the same numbers in the same fields. `k_tenths`
+/// carries through verbatim; the agent converts tenths to `Decimal` where it builds
+/// the in-memory TOML. It moved here from `cockpit_live.rs` with the launch configs
+/// (bug-log #213); this module is `live`-only and already names `agent`, so
+/// `cargo tree -p ui` is unchanged (ADR-0070 § D9).
+#[must_use]
+pub fn promote_params_to_override(
+    params: &crate::tune::PromoteParams,
+) -> agent::ForwardParamOverride {
+    use crate::tune::PromoteParams;
+    match *params {
+        PromoteParams::Sma { fast_len, slow_len } => {
+            agent::ForwardParamOverride::Sma { fast_len, slow_len }
+        }
+        PromoteParams::Macd { fast, slow, signal } => {
+            agent::ForwardParamOverride::Macd { fast, slow, signal }
+        }
+        PromoteParams::Rsi { period, oversold } => {
+            agent::ForwardParamOverride::Rsi { period, oversold }
+        }
+        PromoteParams::Bollinger { period, k_tenths } => {
+            agent::ForwardParamOverride::Bollinger { period, k_tenths }
+        }
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

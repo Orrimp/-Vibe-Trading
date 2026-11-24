@@ -116,7 +116,7 @@ const SQRT_HPY: f64 = 92.601_295_098_46;
 // ── Public types ──────────────────────────────────────────────────────────────
 
 /// A thin 4-field projection of [`Scorecard`] for the forward-plan confidence
-/// check (P0-3 / advisor-confidence-not-verdict, ADR-0076).
+/// check (P0-3 / advisor-confidence-not-verdict, ADR-0075).
 ///
 /// "Summary" means the four facts the operator needs at the forward-plan
 /// surface; the implementation-detail fields (`n_eff`, `pbo`) are excluded.

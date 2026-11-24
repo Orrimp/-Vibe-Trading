@@ -1014,30 +1014,6 @@ fn join_with_deadline(handle: std::thread::JoinHandle<()>, deadline: Duration) -
     false
 }
 
-/// advisor-param-promotion (ADR-0070 § D4) — the single UI→agent map (binary
-/// side, where `agent` is already imported): the UI-owned `PromoteParams` →
-/// the agent-owned `ForwardParamOverride`. One boundary, crossed exactly once.
-/// `k_tenths` carries through verbatim (the agent converts tenths → `Decimal`
-/// where it builds the in-memory TOML).
-#[cfg(feature = "live")]
-fn promote_params_to_override(params: &ui::tune::PromoteParams) -> agent::ForwardParamOverride {
-    use ui::tune::PromoteParams;
-    match *params {
-        PromoteParams::Sma { fast_len, slow_len } => {
-            agent::ForwardParamOverride::Sma { fast_len, slow_len }
-        }
-        PromoteParams::Macd { fast, slow, signal } => {
-            agent::ForwardParamOverride::Macd { fast, slow, signal }
-        }
-        PromoteParams::Rsi { period, oversold } => {
-            agent::ForwardParamOverride::Rsi { period, oversold }
-        }
-        PromoteParams::Bollinger { period, k_tenths } => {
-            agent::ForwardParamOverride::Bollinger { period, k_tenths }
-        }
-    }
-}
-
 // ── iced Application state ────────────────────────────────────────────────────
 
 /// iced application state. Mirrors `cockpit.rs::App` but carries real
@@ -1624,45 +1600,18 @@ impl AppState {
                 let budget: trading_core::Money<trading_core::Usdt> = conversion.usdt();
                 let fx_note = Some(conversion.fx_note());
 
-                // Build ForwardRunConfig from core types only (StrategyId/Symbol/Money)
+                // The crowned launch config comes from `ui::live` (bug-log #213):
+                // the crowned strategy on this bake-off's coin, real-time only,
+                // params from Config/disk (anchor-safe), and THIS bake-off's own
+                // scorecard as the plan's P0-3 confidence check. Core types only,
                 // so cargo tree -p ui stays unchanged — no ui → strategy edge.
-                if let Some(row) = mirror.crowned_row() {
-                    let strategy_id = trading_core::StrategyId::new(row.strategy.as_str());
-                    let symbol = trading_core::Symbol::new(mirror.coin.as_str());
-                    // P0-3: extract the scorecard summary from the completed
-                    // bake-off report and pass it to the ForwardPlan so the
-                    // plan screen can show "confidence check, not verdict".
-                    // `backtest` is already a `ui` dep — no new edge.
-                    // P0-3: extract the scorecard summary from the completed
-                    // bake-off report and pass it to the ForwardPlan so the
-                    // plan screen can show "confidence check, not verdict".
-                    // `backtest` is already a `ui` dep — no new edge.
-                    // Re-project from the leaderboard's ScorecardView into
-                    // the backtest ScorecardSummary (both carry the same four
-                    // fields; the ScorecardView was already projected at the
-                    // from_report boundary).
-                    let confidence =
-                        mirror
-                            .scorecard
-                            .map(|sc| backtest::bakeoff::ScorecardSummary {
-                                n_candidates: sc.n_candidates,
-                                deflated_sharpe: sc.deflated_sharpe,
-                                crown_clears_dsr: sc.crown_clears_dsr,
-                                min_btl_years: sc.min_btl_years,
-                            });
-                    let fwd_cfg = agent::ForwardRunConfig {
-                        strategy: strategy_id,
-                        symbol,
-                        budget,
-                        lookback: None, // real-time-only (MVP; replay preview = v0.2)
-                        param_override: None, // crowned-pick path: params from Config/disk (anchor-safe)
-                        confidence, // P0-3: scorecard summary for confidence check framing
-                    };
+                if let Some(fwd_cfg) = ui::live::crowned_forward_run_config(mirror, budget) {
+                    let strategy = fwd_cfg.strategy.clone();
                     if let Some(ref tx) = self.forward_tx {
                         match tx.try_send(agent::ForwardCommand::Launch(fwd_cfg)) {
                             Ok(()) => {
                                 info!(
-                                    strategy = %row.strategy,
+                                    strategy = %strategy.0,
                                     coin = %mirror.coin,
                                     budget_eur = %budget_eur,
                                     budget_usdt = %budget.amount(),
@@ -1866,17 +1815,16 @@ impl AppState {
         // The pure `Message::PromoteSweptConfig` arm (in `ui::state::update`,
         // already run above) set `cockpit.pending_forward_promotion` + navigated
         // to the forward plan. Here — the binary layer, gated on the one-shot
-        // `promote_requested` (the press) — we fire the SAME `ForwardCommand::Launch`
-        // the crowned-pick path fires, the ONLY delta being `param_override:
-        // Some(promote_params_to_override(params))` (the tuned config) instead of
-        // `None`. We reuse the F7/ADR-0065 €200→USDT conversion verbatim, then
-        // emit `ForwardPaperTradeStarted` to paint the Live P/L frame — identical
-        // lifecycle to the crowned path. We READ (do NOT take) the promotion so it
-        // persists for the forward-plan provenance header (§ D6); the one-shot
-        // `promote_requested` gate makes a single press launch exactly once.
+        // `promote_requested` (the press) — we fire the `ForwardCommand::Launch`
+        // that `ui::live::promoted_forward_run_config` builds: the crowned path's
+        // lifecycle with the tuned override, and with NO bake-off scorecard (the
+        // leaderboard's scores its own crown, not this config: bug-log #213,
+        // ADR-0070 § D11). We reuse the F7/ADR-0065 €200→USDT conversion verbatim,
+        // then emit `ForwardPaperTradeStarted` to paint the Live P/L frame. The
+        // builder READS (does NOT take) the promotion so it persists for the
+        // forward-plan provenance header (§ D6); one press launches exactly once.
         #[cfg(feature = "live")]
-        if promote_requested && let Some(promotion) = self.cockpit.pending_forward_promotion.clone()
-        {
+        if promote_requested && self.cockpit.pending_forward_promotion.is_some() {
             use rust_decimal_macros::dec;
 
             // The operator's budget — the SAME source the crowned path reads.
@@ -1896,48 +1844,29 @@ impl AppState {
             let budget: trading_core::Money<trading_core::Usdt> = conversion.usdt();
             let fx_note = Some(conversion.fx_note());
 
-            // Build ForwardRunConfig from core types + the tuned override (the
-            // single UI→agent map, binary-side where `agent` is already imported).
-            // P0-3: promoted plans inherit the existing leaderboard scorecard
-            // (same bake-off, same crown — the confidence check framing applies).
-            let promote_confidence = if let ui::state::PanelState::Ready(ref mirror) =
-                self.cockpit.leaderboard_screen_state.result
-            {
-                mirror
-                    .scorecard
-                    .map(|sc| backtest::bakeoff::ScorecardSummary {
-                        n_candidates: sc.n_candidates,
-                        deflated_sharpe: sc.deflated_sharpe,
-                        crown_clears_dsr: sc.crown_clears_dsr,
-                        min_btl_years: sc.min_btl_years,
-                    })
-            } else {
-                None
-            };
-            let fwd_cfg = agent::ForwardRunConfig {
-                strategy: promotion.strategy_id.clone(),
-                symbol: promotion.coin.clone(),
-                budget,
-                lookback: None, // real-time-only (the crowned-pick MVP behaviour)
-                param_override: Some(promote_params_to_override(&promotion.params)),
-                confidence: promote_confidence, // P0-3
-            };
-            if let Some(ref tx) = self.forward_tx {
-                match tx.try_send(agent::ForwardCommand::Launch(fwd_cfg)) {
-                    Ok(()) => info!(
-                        strategy = %promotion.strategy_id.0,
-                        coin = %promotion.coin.0,
-                        budget_eur = %budget_eur,
-                        budget_usdt = %budget.amount(),
-                        "PROMOTE-LAUNCH: ForwardCommand::Launch sent (tuned override)"
-                    ),
-                    Err(e) => warn!(
-                        error = %e,
-                        "PROMOTE-LAUNCH: ForwardCommand channel full — launch deferred"
-                    ),
+            // The promoted launch config comes from `ui::live` (bug-log #213): the
+            // promotion's strategy on the promotion's coin, real-time only, the
+            // tuned params as the override (the single UI→agent map), and no
+            // bake-off scorecard, whatever bake-off is on the leaderboard.
+            if let Some(fwd_cfg) = ui::live::promoted_forward_run_config(&self.cockpit, budget) {
+                let (strategy, coin) = (fwd_cfg.strategy.clone(), fwd_cfg.symbol.clone());
+                if let Some(ref tx) = self.forward_tx {
+                    match tx.try_send(agent::ForwardCommand::Launch(fwd_cfg)) {
+                        Ok(()) => info!(
+                            strategy = %strategy.0,
+                            coin = %coin.0,
+                            budget_eur = %budget_eur,
+                            budget_usdt = %budget.amount(),
+                            "PROMOTE-LAUNCH: ForwardCommand::Launch sent (tuned override)"
+                        ),
+                        Err(e) => warn!(
+                            error = %e,
+                            "PROMOTE-LAUNCH: ForwardCommand channel full — launch deferred"
+                        ),
+                    }
+                } else {
+                    warn!("PROMOTE-LAUNCH: forward_tx is None — supervisor not wired (non-fatal)");
                 }
-            } else {
-                warn!("PROMOTE-LAUNCH: forward_tx is None — supervisor not wired (non-fatal)");
             }
 
             // Paint the Live P/L frame (identical lifecycle to the crowned path).

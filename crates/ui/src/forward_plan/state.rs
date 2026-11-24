@@ -244,7 +244,7 @@ impl PlanRuleView {
 
 /// The 4-field confidence summary mirrored from
 /// `backtest::bakeoff::ScorecardSummary` into a pure-`ui` shape (P0-3 /
-/// advisor-confidence-not-verdict, ADR-0076).
+/// advisor-confidence-not-verdict, ADR-0075).
 ///
 /// **Plain fields only — NO `backtest::ScorecardSummary` crosses into the
 /// widgets.** Every field is a `usize` / `f64` / `bool` (same value-only
@@ -322,13 +322,13 @@ pub struct ForwardPlanView {
     /// forbids inline date formatting in the render layer). Renders as
     /// "planned through <date>" (R4).
     pub horizon_through_label: SmolStr,
-    /// P0-3 — confidence-check summary from the crowning bake-off (ADR-0076).
+    /// P0-3 — confidence-check summary from the crowning bake-off (ADR-0075).
     ///
     /// A 4-field projection of the bake-off `Scorecard` — the same four facts
     /// the leaderboard's "show your work" block surfaces, carried here so the
     /// forward-plan screen can frame the run as "a confidence check on the
-    /// crowned pick" rather than a fresh verdict. `None` when no scorecard was
-    /// computed (degenerate bake-off or older launches).
+    /// crowned pick" rather than a fresh verdict. `None` for a promoted plan
+    /// (bug-log #213) and when no scorecard was computed (degenerate bake-off).
     ///
     /// **REPORT-ONLY** — informational only; does NOT change the crown or gate.
     pub confidence: Option<ConfidenceSummaryView>,

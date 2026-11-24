@@ -355,10 +355,10 @@ fn ready_pane<'a>(
         .push(sizing_block(plan, fx_note, mode))
         .push(horizon_block(plan, mode));
 
-    // P0-3: confidence-check summary block — appears after the horizon block
-    // when a scorecard summary is available. Frames the forward run as a
-    // "confidence check on the crowned pick, not a fresh verdict" with the
-    // four facts (candidates / DSR / beats holding? / min history).
+    // P0-3: confidence-check summary block — after the horizon block, on crowned
+    // plans only (a promoted plan carries no scorecard, bug-log #213). Frames the
+    // run as a "confidence check on the crowned pick, not a fresh verdict" with
+    // the four facts (candidates / DSR / beats holding? / min history).
     if let Some(ref confidence) = plan.confidence {
         stack = stack.push(confidence_block(confidence, mode));
     }
@@ -989,7 +989,7 @@ fn horizon_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> 
     )
 }
 
-// ── P0-3 Confidence-check block (advisor-confidence-not-verdict, ADR-0076) ────
+// ── P0-3 Confidence-check block (advisor-confidence-not-verdict, ADR-0075) ────
 
 /// The confidence-check summary block — a titled panel showing the four facts
 /// the operator needs to assess how much to trust the crowned pick:

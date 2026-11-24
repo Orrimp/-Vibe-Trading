@@ -5,7 +5,7 @@ status: accepted
 date: 2026-06-25
 supersedes: none
 superseded-by: none
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # ADR-0070: Promotion wiring — carry a robust Tune config into the forward paper-trade
@@ -117,7 +117,11 @@ the F7/ADR-0065 €200→USDT conversion, and `try_send`s `ForwardCommand::Launc
 **Two boundaries, each crossed once:** `SweptParams → PromoteParams` (from_report)
 and `PromoteParams → ForwardParamOverride` (binary). Carrying the closed
 `PromoteParams` in the message (not a mirror index) keeps it self-contained (the
-`Recommendation`-not-`String` discipline).
+`Recommendation`-not-`String` discipline). *(Amended 2026-11-24, bug-log `#213`: the
+`PromoteParams → ForwardParamOverride` map and both forward launch configs now live in
+`ui::live` (`promote_params_to_override`, `crowned_forward_run_config`,
+`promoted_forward_run_config`), and the binary calls them, so a test can pin what each launch
+carries. The boundary is still crossed once. See D11.)*
 
 **D5 — Only `promotable` (non-FRAGILE) configs promote; the FRAGILE lock and the
 frozen gate are untouched; Marginal stays promotable.** `promotable == !Fragile` is
@@ -162,7 +166,9 @@ promote-framing header, with the crowned-pick header as the negative control.
 `backtest` (the generators) and `strategy` (the resolvers). `PromoteParams` is
 UI-owned; the `PromoteParams → ForwardParamOverride` map lives binary-side where
 `agent` is already imported — no new `ui` edge. Single-binary / SQLite untouched;
-edition 2024; no stdlib-shadowing name.
+edition 2024; no stdlib-shadowing name. *(Amended 2026-11-24, bug-log `#213`: the map moved
+from the binary into `ui::live`. That module is `#![cfg(feature = "live")]` and already names
+`agent` types, so there is still no new edge and `cargo tree -p ui` is unchanged.)*
 
 **D10 — A promotion names the landed grid (amended 2026-11-23, bug-log `#200`).** Its
 coin, like its window and params, comes off the `Ready` mirror
@@ -172,6 +178,32 @@ when no grid is on screen. A grid stays on screen after "Tune…" on another coi
 moved; "Use this config" then paper-trades the grid's coin, which the Tune footer and the
 D6 strip name. Rejected: clearing the grid on re-open (it misses the sweep that lands
 after, and destroys a grid); disabling Promote on a mismatch (the reducer stays wrong).
+
+**D11 — A promotion carries no bake-off confidence (amended 2026-11-24, bug-log `#213`).**
+The forward plan's "How much to trust this pick" block, and the plan export's TRUST section,
+show `ForwardPlan.confidence`: the crowning bake-off's ADR-0075 scorecard, projected as
+`ScorecardSummary`. Its `n_candidates` and `min_btl_years` (from the slate's N_eff) describe
+the bake-off's slate, and its deflated Sharpe and `crown_clears_dsr` deflate the slate's best
+Sharpe by the slate's N_eff and Sharpe variance, using the crown's return skew and kurtosis.
+A promoted config is not that crown, even on the same coin and family, and the sweep cells it
+was chosen from are not in the count. So `ForwardRunConfig.confidence` is `None` for every
+promotion (`ui::live::promoted_forward_run_config`, which reads only
+`pending_forward_promotion`), and the D6 strip carries the promoted plan's honesty framing. A crowned launch
+(`ui::live::crowned_forward_run_config`) carries the scorecard of the bake-off whose
+completion crowned it, unchanged. Before this, the binary copied the scorecard of whatever
+bake-off was `Ready` on the leaderboard into the promoted launch, whatever its coin and crown
+(its comment said "same bake-off, same crown"), and with no bake-off on the leaderboard it
+copied none. Pinned by `crates/ui/tests/forward_launch_config.rs` (L1–L5; L5 keeps the binary
+from building a launch config of its own) and LR-213 in `forward_plan_confidence_render.rs`.
+Rejected: keeping the scorecard when the coin and family match (it still describes another
+search and another strategy's returns, and undercounts the trials). Rejected: scoring the
+sweep (its trial count and the tuned cell's deflated Sharpe): a new scorecard surface, the Tune slot ADR-0075 D1 reserves for
+PBO/CSCV, so a feature and not a fix. Known divergences, filed as bug-log `#222` and `#223`:
+the forward plan's headline and caption ("Confidence check", "Watching the crowned strategy …
+a confidence check on that pick") still draw over a promoted plan, which now has no confidence
+block under them (`#222`); and "Export this plan" on a promoted plan still takes its coin,
+window, verdict (including the scorecard-derived credibility line, whose "see below" hint now
+has no TRUST section to point to) and filename from the leaderboard's bake-off (`#223`).
 
 ## Alternatives considered
 
@@ -220,6 +252,14 @@ after, and destroys a grid); disabling Promote on a mismatch (the reducer stays 
 
 ## Changelog
 
+- 2026-11-24 (developer, bug-log `#213`): **D11** a promotion carries no bake-off confidence:
+  `ForwardRunConfig.confidence` is `None` for every promoted launch, so the forward plan's
+  "How much to trust this pick" block and the export's TRUST section appear for a crowned plan
+  only. **D4/D9** the `PromoteParams → ForwardParamOverride` map and both launch configs moved
+  from `cockpit_live.rs` into `ui::live` (cfg `live`; no new edge, `cargo tree -p ui`
+  unchanged). Known divergences filed as bug-log `#222` (the header copy over a promoted plan)
+  and `#223` (a promoted plan's export). D1–D3, D5–D8 and D10, the FRAGILE lock, the frozen gate and the scorecard maths
+  unchanged; anchor-neutral (119/119).
 - 2026-11-23 (developer, bug-log `#200`): **D10** a promotion's coin now comes off the
   landed grid (`TuneScreenState::landed_coin`), not `Cockpit::tune_coin`, which "Tune…"
   moves for the next sweep; the Tune footer names the same coin. **D6** the strip gains

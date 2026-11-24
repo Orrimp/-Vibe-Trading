@@ -881,10 +881,10 @@ pub struct TrailScreenState {
 ///
 /// This is the UI→binary handoff for promotion: the pure `update` arm
 /// ([`promote_swept_config`]) sets `pending_forward_promotion =
-/// Some(ForwardPromotion { .. })` + navigates to the forward plan; the binary
-/// layer (`cockpit_live.rs`) reads it the way the crowned-pick path reads
-/// `mirror.crowned_row()`, maps `PromoteParams → agent::ForwardParamOverride`,
-/// builds the `ForwardRunConfig`, fires `ForwardCommand::Launch`, then clears it.
+/// Some(ForwardPromotion { .. })` + navigates to the forward plan; on the press
+/// `cockpit_live.rs` fires the `ForwardCommand::Launch` that
+/// `ui::live::promoted_forward_run_config` builds from it (bug-log #213), reading
+/// it, not taking it. A crowned launch clears it (ADR-0070 § D6).
 /// Carries ONLY `core` + UI types — no engine type crosses into `update`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForwardPromotion {
@@ -894,7 +894,7 @@ pub struct ForwardPromotion {
     /// The coin the tuned config runs on (the landed grid's coin, bug-log #200).
     pub coin: Symbol,
     /// The structured tuned params (the UI carrier). Mapped to
-    /// `agent::ForwardParamOverride` binary-side.
+    /// `agent::ForwardParamOverride` by `ui::live::promote_params_to_override`.
     pub params: crate::tune::PromoteParams,
     /// The window label the sweep scored over (`mirror.range_label`), for the
     /// "robust on THIS window" honesty copy. Display-only — the forward run is

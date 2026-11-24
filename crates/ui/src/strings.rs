@@ -4086,7 +4086,7 @@ pub const FORWARD_PLAN_CAPTION: &str = "Watching the crowned strategy as new bar
      a confidence check on that pick, not a fresh prediction or a guarantee of future edge. \
      The same rules your simulated \u{20ac}200 paper-trade runs.";
 
-// ── P0-3 confidence-check block (advisor-confidence-not-verdict, ADR-0076) ────
+// ── P0-3 confidence-check block (advisor-confidence-not-verdict, ADR-0075) ────
 
 /// Section title for the confidence-check summary block on the forward-plan
 /// screen. Frames the scorecard as an honest "how much to trust this pick"

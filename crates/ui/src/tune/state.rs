@@ -92,8 +92,8 @@ impl SweepDistributionMirror {
 /// engine type) so it lives happily on `SweepCellRow` and in a `Message`. `k` is
 /// encoded as **tenths** (`k_tenths = 20` → 2.0σ) — the existing
 /// `PlanRuleKind::BollingerReversion` convention — so the enum stays `Clone + Eq`
-/// with no `Decimal` field, and the binary layer converts `k_tenths → Decimal`
-/// exactly where it builds the `agent::ForwardParamOverride`.
+/// with no `Decimal` field; `ui::live::promote_params_to_override` carries it
+/// verbatim, and the agent converts `k_tenths → Decimal` in its in-memory TOML.
 ///
 /// Populated at the ONE engine→UI boundary ([`cell_to_row`], from
 /// `backtest::SweptParams`) so `from_report` stays the ONLY place a
