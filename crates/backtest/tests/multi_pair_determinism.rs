@@ -61,6 +61,12 @@ fn run_pairs_scenario_once(scenario: &str) -> String {
         .find(|l| l.starts_with("Report written: "))
         .map(|l| l.trim_start_matches("Report written: ").trim())
         .expect("'Report written:' line in output");
+    // bug-log #210 (ADR-0104 D1): a default run writes under `backtest-runs/`, never under
+    // `evidence/`. This pins the Pairs writer in `main.rs`.
+    assert!(
+        std::path::Path::new(report_rel).starts_with("backtest-runs"),
+        "{scenario}: default report {report_rel} is not under backtest-runs/ (bug-log #210)"
+    );
 
     let report_path = tmp.path().join(report_rel);
     std::fs::read_to_string(&report_path)

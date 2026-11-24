@@ -39,10 +39,13 @@ Single-command regression gate for the 119-anchor body-only SHA-256 contract.
         <(awk '/^---$/{n++; next} n>=2' evidence/<slug>/reports/<new>.md)
    ```
 
-4. On MISS (no report for a scenario) re-run the backtest first:
+4. On MISS (no report for a scenario) re-run the backtest first. A default
+   run writes the git-ignored `backtest-runs/<feature>/reports/` (ADR-0104),
+   which this gate never reads, so emitting into the corpus is explicit:
 
    ```bash
-   cargo run --release --bin backtest -- --scenario <name>
+   cargo run --release --bin backtest -- --scenario <name> \
+     --reports-dir evidence/<container>/<feature>/reports
    ```
 
    Then re-verify.
@@ -112,10 +115,13 @@ Architect approves the new scenario; tester locks it once it is byte-
 identical across two sequential `--release` runs at the same seed:
 
 ```bash
-cargo run --release --bin backtest -- --scenario <name>  # run 1
-cargo run --release --bin backtest -- --scenario <name>  # run 2
-scripts/hash_report.py evidence/<feature>/reports/backtest-*-<name>.md  # compare two bodies
-# If hashes match -> append to evidence/anchors.toml under the new version.
+cargo run --release --bin backtest -- --scenario <name>  # run 1 -> backtest-runs/
+cargo run --release --bin backtest -- --scenario <name>  # run 2 -> backtest-runs/
+scripts/hash_report.py backtest-runs/<feature>/reports/backtest-*-<name>.md  # compare two bodies
+# If hashes match -> append to evidence/anchors.toml under the new version, then emit
+# the locked body into the corpus explicitly (ADR-0104 D2):
+cargo run --release --bin backtest -- --scenario <name> \
+  --reports-dir evidence/<container>/<feature>/reports
 ```
 
 ## What this skill does NOT do

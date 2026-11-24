@@ -15,6 +15,15 @@
 # git-ignored ⇒ outside every `evidence/**` anchor glob ⇒ the 119 anchored bodies
 # are byte-immutable BY CONSTRUCTION, not by anyone remembering.
 /advisor-runs/
+# bug-log #210 / ADR-0104 — the `backtest` bin's default report output
+# (`backtest-runs/<feature>/reports/`). Same ADR-0055 lab-runs precedent:
+# git-ignored ⇒ outside every `evidence/**` anchor glob ⇒ a re-run can never plant
+# a body the gate compares. Emitting INTO evidence/ takes an explicit --reports-dir.
+# The root is relative to the working directory, so the rule is unanchored (a run from
+# `crates/backtest/` is ignored too), EXCEPT under evidence/: a run started from inside
+# the corpus lands where `verify_anchors.sh` looks, and must stay visible in git status.
+backtest-runs/
+!/evidence/**/backtest-runs/
 
 # Runtime state — not source
 # `/data/` excluded except for `data/yahoo/REVISION.toml` (revision-pin manifest

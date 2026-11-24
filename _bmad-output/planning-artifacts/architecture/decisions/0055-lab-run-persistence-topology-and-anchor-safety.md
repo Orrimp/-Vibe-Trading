@@ -246,6 +246,9 @@ equal `generated:` stamp for one tuple, inside one root; between distinct filena
 newer `generated:` still wins at either container depth. On such a tie container depth 0 wins:
 - It is where the one-level walk looked, so on such a tie the pick stays the report that walk
   would have found (for example a backtest-CLI twin at `evidence/<feature>/reports/`).
+  *(2026-11-24, bug-log `#210`: since ADR-0104 a default backtest-CLI run writes the
+  git-ignored `backtest-runs/`, so it no longer creates that twin; one left by a pre-fix run,
+  or made by an explicit `--reports-dir evidence/<feature>/reports`, still can.)*
 - The winner no longer depends on whether a slug's name sorts before its container's name:
   `"v1" < "v1-cross-sectional-momentum"`, but `"v0-paper-sma" < "v1"`, so full-path order would
   pick container depth 1 for one slug and container depth 0 for another.
@@ -278,6 +281,17 @@ newer `generated:` still wins at either container depth. On such a tie container
   cannot walk this module (bug-log `#210`). Because D8 reads container depth 0 under `evidence/`, a
   CLI run's report there is listed by the Reports picker and wins an equal-score, same-tier Lab tie
   against the committed container-depth-1 report.
+  - *Amended 2026-11-24 (bug-log `#210` fix, ADR-0104).* The CLI no longer writes under
+    `evidence/`: its default is the git-ignored `backtest-runs/<feature>/reports/`
+    (`backtest::cli_paths::report_dir_for_scenario`), and `--reports-dir` is the deliberate way to
+    emit into the corpus. Its baseline lookup (`cli_paths::resolve_baseline`) reads the committed
+    corpus at container depth ≤ `cli_paths::CORPUS_MAX_CONTAINER_DEPTH`, which a `ui` lib test
+    (LY-210) pins equal to `layout::MAX_CONTAINER_DEPTH`, and refuses the run on a miss. A
+    default run of the fixed CLI no longer creates such a twin. One left by a pre-fix run, or made
+    by an explicit `--reports-dir evidence/<feature>/reports`, still has the "listed by the
+    Reports picker / wins a Lab tie" effects above. The fixed CLI detects only a `v0-paper-sma`
+    twin (`TwoCorpusHomes` on its four baseline scenarios); a twin of any other feature is not
+    detected. No D8 decision changes.
 - **The anchor gate:** `scripts/verify_anchors.sh` is not a `ui` reader. It `find`s
   `*/reports/backtest-*-<scenario>.md` at any depth under `evidence/`, and D8 does not bind it.
 
@@ -365,6 +379,14 @@ prints `ANCHORS PASS  (119 / 119)`, and
 
 ## Changelog
 
+- 2026-11-24 (orchestrator, bug-log `#210` fix): **the backtest CLI leaves D8's subject.** The
+  "readers outside D8" entry for the backtest CLI and the order rule's backtest-CLI-twin example
+  gain dated notes: since ADR-0104 a default CLI run writes the git-ignored `backtest-runs/`, so it
+  no longer creates a container-depth-0 twin (a pre-fix leftover or an explicit `--reports-dir`
+  into `evidence/` still can, and the CLI detects only a `v0-paper-sma` twin), and the CLI reads
+  its baselines at container depth ≤ 1 through `backtest::cli_paths` (the bound pinned equal to
+  `layout::MAX_CONTAINER_DEPTH` by LY-210). No decision changes.
+  Anchor-neutral, 119/119.
 - 2026-11-24 (orchestrator, bug-log `#211` fix): **an overlay draws only its in-window samples,
   and a series with fewer than two of them is no overlay** (`widgets::chart::MIN_DRAWN_SAMPLES`
   = 2, one gate in `drawn_samples` for the range and the stroke). The stroke used to clamp every

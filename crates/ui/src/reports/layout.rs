@@ -578,4 +578,40 @@ mod tests {
             vec![root.join("alias/s/reports"), root.join("c/s/reports")]
         );
     }
+
+    /// LY-210 — bug-log #210 / ADR-0104 D6: the `backtest` CLI's baseline lookup
+    /// (`backtest::cli_paths::corpus_reports_dir`) re-implements D8's bound,
+    /// because `backtest` cannot depend on `ui`. A copied value drifts unless
+    /// something compares it (bug-log #178/#180), so this pins the copy: the
+    /// two bounds are equal, and on each one-home fixture both readers agree.
+    /// The expected column is D8's contract (container depth ≤ 1, `reports` is
+    /// never a container), so each side is two-sided: found at depths 0 and 1,
+    /// not at depth 2 or under a `reports` container.
+    #[test]
+    fn backtest_cli_corpus_lookup_mirrors_d8() {
+        assert_eq!(
+            MAX_CONTAINER_DEPTH,
+            backtest::cli_paths::CORPUS_MAX_CONTAINER_DEPTH,
+            "the backtest CLI's corpus bound must equal D8's"
+        );
+        for (rel, found) in [
+            ("v1/sma/reports", true),
+            ("sma/reports", true),
+            ("a/b/sma/reports", false),
+            ("reports/sma/reports", false),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            std::fs::create_dir_all(root.join(rel)).unwrap();
+            let d8 = report_dirs_for_slug(root, "sma");
+            let cli = backtest::cli_paths::corpus_reports_dir(root, "sma");
+            if found {
+                assert_eq!(d8, vec![root.join(rel)], "{rel}: D8");
+                assert_eq!(cli.unwrap(), root.join(rel), "{rel}: backtest CLI");
+            } else {
+                assert!(d8.is_empty(), "{rel}: D8 found {d8:?}");
+                assert!(cli.is_err(), "{rel}: backtest CLI found {cli:?}");
+            }
+        }
+    }
 }

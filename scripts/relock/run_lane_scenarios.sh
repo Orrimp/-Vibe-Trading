@@ -6,10 +6,10 @@
 #
 # ── Why this exists ───────────────────────────────────────────────────────────
 #
-#   1. The DEFAULT report directory resolves INTO the anchored corpus. Every invocation here
-#      passes --reports-dir explicitly, and the script refuses an out-dir inside evidence/.
-#      That flag exists for exactly this reason ("re-running into a tempdir without touching
-#      the anchored reports under evidence/").
+#   1. The `backtest` bin's default is the git-ignored backtest-runs/ (ADR-0104; it resolved
+#      INTO the anchored corpus before bug-log #210). Every invocation here still passes
+#      --reports-dir, so the lane runs land in one diffable dir, and an out-dir inside
+#      evidence/ is refused.
 #   2. Affectedness is MEASURED, not assumed. Some of these 19 come from other producers
 #      (monte_carlo, forecast_distribution, sharpe_comparison) and may be untouched by the
 #      lane changes. A scenario whose regenerated body is byte-identical to its anchored one
@@ -56,7 +56,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$OUT" ] || { echo "--out-dir is REQUIRED (the default resolves into evidence/)" >&2; exit 2; }
+[ -n "$OUT" ] || { echo "--out-dir is REQUIRED" >&2; exit 2; }
 case "$(cd "$(dirname "$OUT")" 2>/dev/null && pwd)/$(basename "$OUT")" in
   */evidence/*) echo "REFUSING: out-dir resolves inside evidence/" >&2; exit 2 ;;
 esac

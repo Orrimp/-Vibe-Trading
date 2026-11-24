@@ -210,7 +210,7 @@ cargo run -p backtest --release --features realdata,candle --bin backtest -- \
   --scenario top10-2023-fy-momentum-realdata --seed 0xC0FFEE
 ```
 
-Backtest reports land under `evidence/<feature>/reports/backtest-<stamp>-<scenario>.md` with body-SHA-256 anchored for regression.
+Backtest reports land under the git-ignored `backtest-runs/<feature>/reports/backtest-<stamp>-<scenario>.md` (relative to the working directory; ADR-0104). The anchored corpus is `evidence/`, and a report goes there only through an explicit `--reports-dir evidence/<container>/<feature>/reports`. Run from the workspace root: a scenario that declares a baseline reads it from `./evidence` and refuses to run without it.
 
 ### Verify regression gates
 

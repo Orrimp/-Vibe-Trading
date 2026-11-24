@@ -6,9 +6,17 @@
 //!
 //! Reads Parquet via `ReplayFeed` (or generates synthetic data if absent),
 //! drives `StrategyRegistry` → `risk` → `PaperEngine` → `audit`,
-//! writes a report to `evidence/<feature>/reports/backtest-<stamp>-<scenario>.md`,
+//! writes a report to `backtest-runs/<feature>/reports/backtest-<stamp>-<scenario>.md`,
 //! where `<feature>` is resolved from the scenario name via
-//! [`scenario_to_feature`] (defined at the bottom of this file).
+//! `backtest::cli_paths::scenario_to_feature`. `backtest-runs/` is git-ignored and
+//! relative to the working directory, so a default run from anywhere outside
+//! `evidence/` never adds a file under it (bug-log #210, ADR-0104); emitting INTO the
+//! corpus takes an explicit `--reports-dir`.
+//!
+//! A scenario that declares a baseline (`cli_paths::BASELINE_DECLARATIONS`) names
+//! the newest committed `evidence/[<container>/]<feature>/reports/backtest-*-<baseline>.md`
+//! in its `baseline_report:` line, and the run is refused before any data load or
+//! write when there is none.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,6 +26,7 @@ use std::sync::Arc;
 use backtest::realdata::{RealDataBarSource, TimeSpan as RealDataTimeSpan};
 
 use anyhow::{Context, Result};
+use backtest::cli_paths::{self, report_dir_for_scenario};
 use clap::Parser;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -85,10 +94,15 @@ struct Args {
     config: PathBuf,
 
     /// Override the report output directory (default: resolved from scenario
-    /// name via `report_dir_for_scenario`).
+    /// name via `cli_paths::report_dir_for_scenario`, i.e. the git-ignored
+    /// `backtest-runs/<feature>/reports/`).
     /// When set, the report is written to `<reports_dir>/backtest-<stamp>-<scenario>.md`
-    /// instead. Useful for re-running into a tempdir without touching the
-    /// anchored reports under `evidence/`.
+    /// instead. Useful for re-running into a tempdir (`scripts/relock/run_lane_scenarios.sh`
+    /// re-runs into a scratch dir and refuses an out-dir inside `evidence/`); it is
+    /// also the one deliberate way to emit INTO the anchored corpus under `evidence/`
+    /// (the ADR-0038 § D6.b re-emission practice, e.g. `scripts/wave_b_emit.sh`). The
+    /// baseline lookup does not follow this flag: it always reads the committed corpus
+    /// (ADR-0104 D3).
     ///
     /// Strictly additive flag — default-disabled; existing behaviour unchanged.
     #[arg(long)]
@@ -1297,6 +1311,12 @@ async fn main() -> Result<()> {
 
     let data_root = PathBuf::from("data/binance");
     let mut scenario = Scenario::from_name(&args.scenario, data_root.clone())?;
+    // bug-log #210 (ADR-0104 D3/D4): a declared baseline is the newest committed
+    // report of it under `evidence/`, and a miss refuses the run HERE, before any
+    // data load or `create_dir_all`, so a refusal writes nothing.
+    scenario.baseline_report =
+        cli_paths::resolve_baseline(Path::new(cli_paths::EVIDENCE_ROOT), &args.scenario)
+            .with_context(|| format!("resolve the declared baseline of {}", args.scenario))?;
 
     // ── Determine data source ──────────────────────────────────────────────────
     // Multi-symbol (momentum + pairs) scenarios always use synthetic data.
@@ -1599,22 +1619,6 @@ async fn main() -> Result<()> {
             (bars, "synthetic (seeded RNG, v0 fallback)".to_string())
         }
     };
-
-    // ── Find baseline for comparative scenarios ────────────────────────────────
-    if args.scenario == "btc-2024-h1-sma-cross" {
-        let baseline_dir = report_dir_for_scenario("btc-2023-1m-sma-cross");
-        if let Some(b) = find_latest_report(&baseline_dir, "btc-2023-1m-sma-cross") {
-            scenario.baseline_report = Some(b);
-        }
-    } else if matches!(
-        args.scenario.as_str(),
-        "btc-2023-1m-macd-trend" | "btc-2023-1m-rsi-reversion" | "btc-2023-1m-bbands-mean-revert"
-    ) {
-        let baseline_dir = report_dir_for_scenario("btc-2023-1m-sma-baseline-refresh");
-        if let Some(b) = find_latest_report(&baseline_dir, "btc-2023-1m-sma-baseline-refresh") {
-            scenario.baseline_report = Some(b);
-        }
-    }
 
     let bar_count = bars.len();
     info!(bars = bar_count, data = %data_source, "data ready");
@@ -2487,88 +2491,4 @@ async fn main() -> Result<()> {
     println!("Ledger imbal : {}", state.ledger_imbalance_events);
 
     Ok(())
-}
-
-/// Find the filename of the most recent backtest report for a given scenario.
-fn find_latest_report(dir: &Path, scenario: &str) -> Option<String> {
-    if !dir.exists() {
-        return None;
-    }
-    let mut candidates: Vec<String> = std::fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with("backtest-") && name.contains(scenario) && name.ends_with(".md") {
-                Some(name)
-            } else {
-                None
-            }
-        })
-        .collect();
-    candidates.sort();
-    candidates.into_iter().last()
-}
-
-/// Map a backtest scenario name to the feature slug that owns its
-/// reports. Fixed mapping (each scenario was first locked into
-/// `evidence/anchors.toml` under exactly one feature). Future scenarios
-/// that don't match return `"_unknown"`, which causes
-/// [`report_dir_for_scenario`] to write under `evidence/_unknown/reports/`
-/// so orphaned reports surface immediately.
-fn scenario_to_feature(scenario: &str) -> &'static str {
-    match scenario {
-        "btc-2023-1m-sma-cross"
-        | "btc-2023-1m-sma-baseline-refresh"
-        | "btc-2024-h1-sma-cross"
-        | "eth-2024-h1-sma-cross"
-        | "sol-2024-h1-sma-cross"
-        | "bnb-2024-h1-sma-cross"
-        | "xrp-2024-h1-sma-cross"
-        | "link-2024-h1-sma-cross"
-        | "ada-2024-h1-sma-cross"
-        // Group A-ext: AVAX, DOT, DOGE 2024 full-year
-        | "avax-2024-sma-cross"
-        | "dot-2024-sma-cross"
-        | "doge-2024-sma-cross"
-        // Group A-broaduni: NEAR, OP, ARB, ATOM, SUI 2024 full-year
-        | "near-2024-sma-cross"
-        | "op-2024-sma-cross"
-        | "arb-2024-sma-cross"
-        | "atom-2024-sma-cross"
-        | "sui-2024-sma-cross" => "v0-paper-sma",
-        "btc-2023-1m-macd-trend"
-        | "btc-2023-1m-rsi-reversion"
-        | "btc-2023-1m-bbands-mean-revert" => "v05-composed-strategies",
-        "top10-2023-1h-momentum" | "top10-2024-h1-momentum" => "v1-cross-sectional-momentum",
-        "pairs-2023-zscore-mr" | "pairs-2024-h1-zscore-mr" => "v15a-mean-reversion-pairs",
-        "top10-2023-fy-tcn-overlay"
-        | "top10-2024-fy-tcn-overlay"
-        | "top10-2023-fy-tcn-overlay-weights"
-        | "top10-2024-fy-tcn-overlay-weights" => "v25-tcn-overlay",
-        // v2.6.0-realdata scenarios (ADR-0032).
-        "top10-2023-fy-tcn-overlay-realdata"
-        | "top10-2024-fy-tcn-overlay-realdata"
-        | "top10-2023-fy-tcn-overlay-weights-realdata"
-        | "top10-2024-fy-tcn-overlay-weights-realdata" => "backtest-real-binance-data",
-        // v2.5a PatchTST overlay realdata scenario (T-D-N23).
-        "top10-2023-fy-patchtst-overlay-realdata" => "v25a-patchtst-overlay",
-        // v3.0.0-volatility GARCH vol-targeting overlay realdata scenario (T-D-N24).
-        "top10-2023-fy-vol-target-overlay-realdata" => "v3-volatility-forecaster",
-        // v3.0.0-volatility-rebaseline: un-targeted v1 momentum on real Binance data.
-        "top10-2023-fy-momentum-realdata" => "v3-volatility-forecaster-rebaseline",
-        // v3.0.0-regime RegimeDispatcher scenarios (Wave E T-D-E1).
-        "top10-2023-fy-regime-dispatcher-realdata" | "top10-2024-fy-regime-dispatcher-realdata" => {
-            "v3-regime-classifier"
-        }
-        _ => "_unknown",
-    }
-}
-
-/// Resolve the per-feature `evidence/<feature>/reports/` directory for a
-/// given scenario. Caller is responsible for `create_dir_all`.
-fn report_dir_for_scenario(scenario: &str) -> PathBuf {
-    PathBuf::from("evidence")
-        .join(scenario_to_feature(scenario))
-        .join("reports")
 }

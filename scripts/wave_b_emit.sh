@@ -9,10 +9,17 @@
 #
 # NOTE: Realdata scenarios require REVISION.toml pinned parquet cache.
 # They will fail gracefully if the cache is not present.
+#
+# NOTE (bug-log #210, ADR-0104): the script cds to the workspace root, because the
+# binary reads a declared baseline (macd/rsi/bbands -> btc-2023-1m-sma-baseline-refresh)
+# from `./evidence` and REFUSES the run when it finds none (under `set -e` that would
+# abort the whole script at its first composed scenario); before the fix it wrote
+# `baseline_report: n/a` silently.
 
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$WORKSPACE"
 BINARY="$WORKSPACE/target/release/backtest"
 REPORTS_DIR="$WORKSPACE/evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports"
 SEED="0xC0FFEE"

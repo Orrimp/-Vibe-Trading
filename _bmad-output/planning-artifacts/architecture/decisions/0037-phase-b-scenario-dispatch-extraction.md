@@ -176,6 +176,10 @@ Compare matrix) follow the same shape.
   same path with the same body bytes. The `generated:` YAML
   front-matter timestamp varies as today (already excluded from
   `report_body_hash`).
+  *(2026-11-24: the path clause is superseded by
+  [ADR-0104](0104-the-backtest-cli-writes-to-a-git-ignored-root.md) — the
+  default is the git-ignored `backtest-runs/<feature>/reports/`; the
+  body-byte clause stands.)*
 
 - **Cockpit's Lab Run button reads from in-memory `RunReport` first**
   (R5.1 in feature.md), falling back to `EquityCache` for cold-start.
@@ -201,3 +205,9 @@ Compare matrix) follow the same shape.
   v0.1.0` (operator-decided Q1=A, Q2=A, Q3=A, Q4=A, Q5=A on 2026-05-19
   via "Autoapprove all"). Extends ADR-0030 with the per-scenario
   extraction pattern + module layout + cancel-poll cadence.
+- 2026-11-24 (orchestrator, bug-log `#210` fix): the "CLI behaviour
+  byte-identical" consequence's PATH clause is superseded by
+  [ADR-0104](0104-the-backtest-cli-writes-to-a-git-ignored-root.md): the CLI's
+  default output is the git-ignored `backtest-runs/<feature>/reports/`, and a
+  declared baseline is read from the committed corpus. The body-byte clause
+  stands. No other decision changes.

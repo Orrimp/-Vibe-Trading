@@ -32,8 +32,12 @@ description: Run a historical backtest for a strategy feature and emit a metrics
 5. Produce a markdown block matching the "Backtest Results" section of
    `rust-test/templates/test-report.md`. Embed it into the caller's report.
 
-6. Save raw artifacts (equity curve CSV, trade log) under
-   `evidence/<feature>/reports/artifacts/<run_id>/` so they survive for future diffs.
+6. Raw artifacts land beside the report: with no `--reports-dir` the binary
+   writes `backtest-runs/<feature>/reports/backtest-<stamp>-<scenario>.md` and its
+   equity CSV under `backtest-runs/<feature>/reports/artifacts/<report-stem>/`
+   (git-ignored, ADR-0104), never under `evidence/`. Run from the workspace root:
+   a scenario that declares a baseline reads it from `./evidence` and refuses to
+   run without it.
 
 ## Failure Modes
 
@@ -78,17 +82,26 @@ After the binary writes a report, run the regression gate:
 scripts/verify_anchors.sh
 ```
 
-- All 119 PASS → embed metrics in the test report and continue. Do NOT run
-  `scripts/prune_backtest_duplicates.sh`: it is retired because it deleted
-  committed anchored bodies (bug-log #228).
-- FAIL on a scenario you just re-ran → the body drifted. Diff the body
+A default run's report is in `backtest-runs/`, outside `evidence/`, so the
+gate never sees it (ADR-0104): a PASS here says the committed corpus is
+intact, not that the fresh run reproduces it. Compare a fresh body with
+`python3 scripts/hash_report.py <report>` against its `anchors.toml` row.
+
+- All 119 PASS → embed metrics in the test report and continue. A default
+  run added nothing under `evidence/`, so there is nothing to prune; do NOT
+  run `scripts/prune_backtest_duplicates.sh`, which is retired because it
+  deleted committed anchored bodies (bug-log #228).
+- FAIL on a scenario you just emitted into `evidence/` with `--reports-dir`
+  → the body drifted. Diff the body
   bytes against the prior locked report (commands in
   `.claude/skills/verify-anchors/SKILL.md`). Most likely cause: a
   run-varying field leaked from front-matter into the body. Do NOT
   prune on FAIL — keep the divergent file for the developer's diff.
 - MISS on a brand-new scenario the architect added → that's expected;
-  capture the SHA across two sequential runs and propose appending
-  to `evidence/anchors.toml` (architect approves).
+  run it twice into `backtest-runs/` (the default), compare the two bodies
+  with `python3 scripts/hash_report.py`, and propose appending the SHA to
+  `evidence/anchors.toml` (architect approves). Only then emit the report
+  into the corpus with `--reports-dir evidence/<container>/<feature>/reports`.
 
 ## Templates
 

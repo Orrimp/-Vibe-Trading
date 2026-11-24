@@ -276,13 +276,19 @@ fn t33_report_sha256_deterministic() {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        // The binary prints "Report written: evidence/reports/backtest-<stamp>-<scenario>.md"
+        // The binary prints "Report written: backtest-runs/<feature>/reports/backtest-<stamp>-<scenario>.md"
         let stdout = String::from_utf8_lossy(&output.stdout);
         let report_rel = stdout
             .lines()
             .find(|l| l.starts_with("Report written: "))
             .map(|l| l.trim_start_matches("Report written: ").trim())
             .expect("could not find 'Report written:' line in binary output");
+        // bug-log #210 (ADR-0104 D1): a default run writes under `backtest-runs/`, never
+        // under `evidence/`. This pins the final SMA writer in `main.rs`.
+        assert!(
+            std::path::Path::new(report_rel).starts_with("backtest-runs"),
+            "btc-2023-1m-sma-cross: default report {report_rel} is not under backtest-runs/ (bug-log #210)"
+        );
 
         let report_path = tmp.path().join(report_rel);
         std::fs::read_to_string(&report_path)
@@ -319,6 +325,30 @@ fn t33_report_sha256_deterministic() {
 
 // ── T521 — extended determinism gate for v0.5 composed-strategy scenarios ────
 
+/// bug-log #210 — the committed baselines' FILE NAMES, as empty stubs in a sandbox.
+///
+/// Since #210 the bin resolves a declared baseline (`cli_paths::BASELINE_DECLARATIONS`:
+/// macd, rsi and bbands declare `btc-2023-1m-sma-baseline-refresh`;
+/// `btc-2024-h1-sma-cross` declares `btc-2023-1m-sma-cross`) from `./evidence` and
+/// refuses the run when it finds none. These sandboxes run from a tempdir with no
+/// corpus, so they plant the two names the committed reports cite, at the committed
+/// container depth (`evidence/v1/v0-paper-sma/reports/`). The resolver reads names
+/// only, so the stubs are empty.
+///
+/// The stubs reach the `baseline_report:` FRONT-MATTER line only. Every body-SHA
+/// constant in this file is unchanged by them, which is itself the check that only
+/// front matter moved (`report_body_hash` strips the front matter).
+fn seed_baseline_stubs(sandbox: &std::path::Path) {
+    let reports = sandbox.join("evidence/v1/v0-paper-sma/reports");
+    std::fs::create_dir_all(&reports).expect("create sandbox baseline dir");
+    for name in [
+        "backtest-20260420-202621-btc-2023-1m-sma-cross.md",
+        "backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md",
+    ] {
+        std::fs::write(reports.join(name), b"").expect("write baseline stub");
+    }
+}
+
 /// Helper that runs a scenario twice and asserts byte-identical body hashes.
 fn assert_scenario_deterministic(scenario: &str) {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -354,6 +384,7 @@ fn assert_scenario_deterministic(scenario: &str) {
         let dst = config_dir.join(entry.file_name());
         std::fs::copy(entry.path(), dst).expect("copy strategy TOML");
     }
+    seed_baseline_stubs(tmp.path());
 
     let run = || -> String {
         let output = std::process::Command::new(&bin_path)
@@ -372,6 +403,11 @@ fn assert_scenario_deterministic(scenario: &str) {
             .find(|l| l.starts_with("Report written: "))
             .map(|l| l.trim_start_matches("Report written: ").trim())
             .expect("could not find 'Report written:' line");
+        // bug-log #210 (ADR-0104 D1): pins the writer of every scenario this helper runs.
+        assert!(
+            std::path::Path::new(report_rel).starts_with("backtest-runs"),
+            "{scenario}: default report {report_rel} is not under backtest-runs/ (bug-log #210)"
+        );
         let report_path = tmp.path().join(report_rel);
         std::fs::read_to_string(&report_path)
             .unwrap_or_else(|e| panic!("could not read report {report_path:?}: {e}"))
@@ -463,6 +499,7 @@ fn run_scenario_once(scenario: &str) -> String {
         let dst = config_dir.join(entry.file_name());
         std::fs::copy(entry.path(), dst).expect("copy strategy TOML");
     }
+    seed_baseline_stubs(tmp.path());
 
     let output = std::process::Command::new(&bin_path)
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
@@ -482,6 +519,14 @@ fn run_scenario_once(scenario: &str) -> String {
         .find(|l| l.starts_with("Report written: "))
         .map(|l| l.trim_start_matches("Report written: ").trim())
         .expect("could not find 'Report written:' line");
+    // bug-log #210 (ADR-0104 D1): a default run writes under `backtest-runs/`, never under
+    // `evidence/`. This pins the writer of every scenario this helper runs: the final
+    // SMA/composed writer (t622/t717 SMA, macd, rsi, bbands), Momentum (t717_top10_*) and
+    // TcnOverlay (tt1_*).
+    assert!(
+        std::path::Path::new(report_rel).starts_with("backtest-runs"),
+        "{scenario}: default report {report_rel} is not under backtest-runs/ (bug-log #210)"
+    );
 
     let report_path = tmp.path().join(report_rel);
     std::fs::read_to_string(&report_path)
@@ -884,8 +929,9 @@ fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
 ///
 /// Runs from the workspace root so that relative paths
 /// (`crates/forecast/checkpoints/anchors/`, `config/strategies/`) resolve
-/// correctly.  The report is written to `evidence/<feature>/reports/` under the
-/// workspace root (the same path the production binary uses).
+/// correctly.  The report is written to a tempdir via `--reports-dir` (bug-log
+/// #113), never into `evidence/`; the bin's own default is the git-ignored
+/// `backtest-runs/<feature>/reports/` since bug-log #210.
 ///
 /// Returns the full report text so the caller can body-hash it.
 #[cfg(feature = "candle")]

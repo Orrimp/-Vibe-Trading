@@ -17,6 +17,11 @@ pub mod progress;
 /// `config/strategies/*.toml` from any CWD, not just workspace root.
 pub mod paths;
 
+/// bug-log #210 — the `backtest` bin's report paths: the git-ignored default
+/// output root (`backtest-runs/`) and the baseline lookup in the committed
+/// corpus (ADR-0104).
+pub mod cli_paths;
+
 /// Shared metric calculators and the Monte-Carlo distribution-summary reducer.
 ///
 /// M-DEV-1: `compute_sharpe_hourly` / `compute_sortino_hourly` /
