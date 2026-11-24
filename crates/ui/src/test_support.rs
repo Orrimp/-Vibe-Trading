@@ -363,7 +363,7 @@ pub fn lab_runs_report_at(strategy_id: &str, scenario: &str, symbol: &str, level
     })
 }
 
-/// The inputs of [`lab_report`] (bug-log #212).
+/// The inputs of [`lab_report`] (bug-log #212 / #209).
 #[derive(Debug, Clone, Copy)]
 pub struct LabReportFixture<'a> {
     /// The `strategy:` block's `id:`, written unindented as the engine writes
@@ -392,8 +392,8 @@ pub struct LabReportFixture<'a> {
 /// curve, whose six `## Equity curve` samples sit at the open times of bars
 /// 0, 10, …, 50 of [`synthetic_candles`] (see [`lab_runs_report_at`]). The
 /// Lab's report lookup reads its `strategy:` `id:`, Summary `| Symbol |` row,
-/// `## Universe`, `scenario:` span token and `data_source:` (ADR-0055 D9,
-/// bug-log #212).
+/// `## Universe`, `scenario:` span token, `data_source:` and `generated:`
+/// (ADR-0055 D9, bug-log #212 / #209).
 #[must_use]
 pub fn lab_report(f: &LabReportFixture<'_>) -> String {
     use std::fmt::Write as _;

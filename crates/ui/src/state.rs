@@ -6969,9 +6969,10 @@ mod tests {
     // ── bug-log #208: every completed Lab run clears the equity cache ───────
 
     /// The first equity value of the committed report (`T_hit`, under the
-    /// temp `evidence/` root) and of the newer `lab-runs/` reports written
-    /// after the lookups were cached. `lab_runs_report_at`'s first sample is
-    /// its `level`, so the value a lookup returns names the report it read.
+    /// temp `evidence/` root) and of the `lab-runs/` reports written after the
+    /// lookups were cached (the same `generated:`; bug-log #209).
+    /// `lab_runs_report_at`'s first sample is its `level`, so the value a
+    /// lookup returns names the report it read.
     const LEVEL_COMMITTED_208: i64 = 100_000;
     const LEVEL_NEW_208: i64 = 200_000;
 
@@ -7038,9 +7039,11 @@ mod tests {
     /// The (b)/(c) scene, then `outcome` through `update`. `T_hit` = v0.sma
     /// resolves the committed report under `evidence/` (container depth 1);
     /// `T_miss` = v1.momentum has no slug dir in either root, so it misses.
-    /// Then `lab-runs/` gains a newer report for each. An unrelated message
-    /// (the control) leaves both cached outcomes in place; `outcome` drops
-    /// both, so `T_hit` reads the newer report and `T_miss` resolves.
+    /// Then `lab-runs/` gains a report for each, written later. An unrelated
+    /// message (the control) leaves both cached outcomes in place; `outcome`
+    /// drops both, so `T_hit` reads the `lab-runs/` report (the `lab-runs/`
+    /// copy of the same file name wins: it is walked first, bug-log #209) and
+    /// `T_miss` resolves.
     fn completed_run_clears_equity_cache_208(outcome: crate::lab::runner::LabRunResult) {
         let tmp = tempfile::tempdir().unwrap();
         let lab_runs = tmp.path().join("lab-runs");
@@ -7106,7 +7109,8 @@ mod tests {
         assert_eq!(
             first_level_208(overlay_208(&mut c, &t_hit).as_ref()),
             newer,
-            "a completed run clears T_hit's hit: the newer lab-runs/ report wins"
+            "a completed run clears T_hit's hit: the lab-runs/ copy of the same file name wins \
+             (it is walked first)"
         );
         assert_eq!(
             first_level_208(overlay_208(&mut c, &t_miss).as_ref()),

@@ -24,6 +24,26 @@
 //! Then the source tier: a report tagged with the tuple's `data_source:` beats
 //! an untagged legacy one, and a differently tagged one never matches.
 //!
+//! ## The pick (ADR-0055 § D5, bug-log #209)
+//!
+//! Over the union of both roots the Lab keeps the matching report with the
+//! greatest key (tier, range score, `generated:`): a tagged report beats an
+//! untagged one, an exact range beats a superset, and then the newest
+//! `generated:` wins, whichever root holds it. An identical filename keeps its
+//! first copy in walk order (`lab-runs/` before `evidence/`, container depth 0
+//! before 1): a later same-named copy is skipped before it is read, as Compare
+//! does (§ D5). An equal key goes to the root searched first (`lab-runs/`),
+//! then to the first report in D8 order. The candidates are read in that
+//! order and the first that reads wins, so a broken report falls through to
+//! the next candidate, in its own root or in the next, but never across the
+//! source tier: an untagged report is eligible only when no tagged one
+//! matches (ADR-0055 D9), so a broken tagged report leaves the tuple with no
+//! curve. Inside the tier a broken exact report does fall through to a
+//! readable superset, which the `narrowed_from` badge discloses. A report
+//! whose companion CSV is present but does not read, or holds no sample,
+//! counts as broken; one with no companion CSV reads from its `.md`. A report
+//! with no parseable `generated:` ranks below any dated one.
+//!
 //! ## Design notes (Design § 4.3 / R7)
 //!
 //! - Reads are **synchronous** (< 50 KB files, < 16 ms on a cold cache for a
@@ -51,7 +71,8 @@
 //! **Zero string literals in this module** — all user-visible copy lives in
 //! `crate::strings`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -239,19 +260,31 @@ impl EquityCache {
     ///
     /// Like [`EquityCache::get_or_load`] but searches a **fixed-order slice of
     /// roots** (production passes `[default_lab_runs_root(),
-    /// default_evidence_root()]`, lab-runs FIRST). The first root that yields a
-    /// matching report wins — so a fresh Lab run under `lab-runs/` shadows a
-    /// committed `evidence/` report for the same tuple (the collision rule:
-    /// lab-runs wins). A tuple resolves to exactly one series, so the cache
-    /// stays keyed on `tuple` alone (root-independent); the cached `Arc` is
-    /// returned on subsequent hits regardless of which root won.
+    /// default_evidence_root()]`, lab-runs FIRST), through `resolve_roots`.
+    /// Every matching report of every root is a candidate
+    /// (`matching_candidates`); over the union the greatest key (tier, range
+    /// score, `generated:`) wins, so the newest run of a tuple is shown
+    /// whichever root holds it (§ D5, bug-log #209). One filename set spans
+    /// the walk of every root, so an identical filename keeps its first copy
+    /// (`lab-runs/` before `evidence/`, container depth 0 before 1) and a
+    /// later same-named copy is skipped before it is read, whatever its
+    /// `generated:` (§ D5's identical-filename rule, as in Compare). An equal
+    /// key goes to the root searched first, then to the first report in D8
+    /// order. The candidates are read in that order and the first that reads
+    /// wins, so a broken report falls through to the next candidate of its
+    /// source tier, in the same root or in the next one. A tuple resolves to
+    /// exactly one series, so the cache stays keyed on `tuple` alone
+    /// (root-independent); the cached `Arc` is returned on subsequent hits
+    /// regardless of which root won.
     ///
     /// # Errors
     ///
     /// Returns the LAST root's `EquityLoadError` when no root yields a report
     /// (the evidence-root error is the most informative for the operator — it
-    /// is the committed tree). Empty `roots` yields a `NoReport` error. A
-    /// cached miss returns a clone of that error without touching the roots.
+    /// is the committed tree): its walk's error, or the read error of its last
+    /// candidate tried, else `NoReport` (see `resolve_roots`). Empty `roots`
+    /// yields a `NoReport` error. A cached miss returns a clone of that error
+    /// without touching the roots.
     pub fn get_or_load_roots(
         &mut self,
         tuple: &LabTuple,
@@ -260,25 +293,7 @@ impl EquityCache {
         if let Some(cached) = self.by_tuple.get(tuple) {
             return cached.clone();
         }
-        let mut last_err: Option<EquityLoadError> = None;
-        let mut found: Option<Arc<LabEquitySeries>> = None;
-        for root in roots {
-            match load_equity(tuple, root) {
-                Ok(loaded) => {
-                    found = Some(Arc::new(loaded));
-                    break;
-                }
-                Err(e) => last_err = Some(e),
-            }
-        }
-        let resolved = found.ok_or_else(|| {
-            last_err.unwrap_or_else(|| EquityLoadError::NoReport {
-                strategy: tuple.strategy.clone(),
-                symbol: tuple.symbol.clone(),
-                range: tuple.range.clone(),
-                data_source: tuple.source,
-            })
-        });
+        let resolved = resolve_roots(tuple, roots).map(Arc::new);
         self.by_tuple.insert(tuple.clone(), resolved.clone());
         resolved
     }
@@ -313,12 +328,14 @@ fn strategy_slug(id: &str) -> SmolStr {
 ///
 /// **Order = the D8 tie rule (ADR-0055 amendment).** The dirs come in
 /// (container depth, path) order and each dir's files by path; they are
-/// concatenated in that order and NEVER re-sorted by full path. So the
-/// strict-`>` "first best" in [`load_equity`] keeps a container-depth-0 report
-/// (the only place the walk looked before #205) on an equal-score tie with a
-/// container-depth-1 one, whether the container name sorts before or after the
-/// slug name. Pinned by E4b
-/// (`equal_score_tie_across_container_depths_goes_to_container_depth_0`).
+/// concatenated in that order and NEVER re-sorted by full path. So
+/// `resolve_roots`' stable sort keeps a container-depth-0 report (the only
+/// place the walk looked before #205) on an equal (tier, range score,
+/// `generated:`) tie with a container-depth-1 one, whether the container name
+/// sorts before or after the slug name (bug-log #209: between distinct
+/// filenames a strictly newer `generated:` wins at either depth; an identical
+/// filename keeps the container-depth-0 copy, F2). Pinned by E4b
+/// (`equal_generated_tie_across_container_depths_goes_to_container_depth_0`).
 fn discover_reports(report_root: &std::path::Path, slug: &str) -> Vec<PathBuf> {
     layout::report_dirs_for_slug(report_root, slug)
         .into_iter()
@@ -423,13 +440,17 @@ struct ReportMeta {
     /// "binance"), written by every engine report since commit 93845af.
     /// `None` for legacy (pre-June) reports without the field — treated as
     /// source-unknown by [`load_equity`] (review D1: they only match when no
-    /// report tagged with the requested source exists; no on-disk migration).
+    /// report tagged with the requested source matches; no on-disk migration).
     data_source: Option<String>,
     /// The coins the report covers (Summary row, else Universe, else a
     /// scenario-name ticker).
     coins: Coins,
     /// The span the `scenario:` name states.
     span: Span,
+    /// The `generated:` write time (bug-log #209), RFC 3339 as every writer
+    /// emits it. `None` when missing or unparseable: it ranks below any
+    /// parsed one.
+    generated: Option<time::OffsetDateTime>,
     /// Whether the report body contains a `## Equity curve` section.
     has_equity_section: bool,
     /// Initial capital from the Summary table.
@@ -502,6 +523,15 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
     };
     let span = scenario_span(&scenario);
 
+    // bug-log #209 — the write time, the § D5 tiebreak.
+    let generated = fm_lines
+        .iter()
+        .find_map(|l| l.strip_prefix("generated: "))
+        .and_then(|v| {
+            time::OffsetDateTime::parse(v.trim(), &time::format_description::well_known::Rfc3339)
+                .ok()
+        });
+
     let has_equity_section = body.contains("## Equity curve") || body.contains("## Equity Curve");
 
     // Parse Summary table for initial / final capital.
@@ -515,6 +545,7 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
         data_source,
         coins,
         span,
+        generated,
         has_equity_section,
         initial_capital,
         final_equity,
@@ -700,29 +731,64 @@ fn range_fit(span: Span, range: &DateRange) -> Option<RangeFit> {
 /// lab-run-save-compare Wave-2: read the companion equity CSV beside `md_path`
 /// (`backtest-<stamp>-<scenario>-equity.csv`) for full per-bar fidelity, via
 /// the existing [`reports::csv_artifacts::read_equity_csv`]. Returns `None` if
-/// the companion is absent or unparseable — the caller then falls back to the
-/// sparkline / start-end path (older committed reports have no companion).
+/// the companion is absent, unparseable or empty — the caller then has no
+/// per-bar series from it (older committed reports have no companion).
 ///
 /// `pub(crate)` so the Compare cold-boot cache scanner
 /// (`compare::cache::scan_one_root`, lab-compare-equity-overlay T1) hydrates a
-/// `CachedCell`'s timestamped equity series through the IDENTICAL companion-CSV
-/// resolution the Lab cold path uses — one source of truth for "find the
-/// per-bar series beside this report".
+/// `CachedCell`'s timestamped equity series through the same companion-CSV
+/// lookup the Lab cold path uses — one source of truth for "find the per-bar
+/// series beside this report": this is the lenient form of
+/// [`read_companion_equity_csv`], which the Lab reads strictly (bug-log #209):
+/// the same series when the CSV reads; a cut or empty CSV gives Compare an
+/// empty series, while the Lab treats the report as broken.
 #[must_use]
 pub(crate) fn load_companion_equity_csv(md_path: &std::path::Path) -> Option<Vec<(i64, Decimal)>> {
-    let name = md_path.file_name()?.to_str()?;
-    let stem = name.strip_suffix(".md")?;
+    read_companion_equity_csv(md_path).ok().flatten()
+}
+
+/// The companion equity CSV beside `md_path`, read strictly for the Lab
+/// (bug-log #209): `Ok(None)` when there is none (older committed reports, or
+/// a `md_path` with no `.md` name), the per-bar series when it reads.
+///
+/// # Errors
+///
+/// `ParseError` naming the CSV when one is present but does not read, and
+/// `EmptySeries` when it holds no sample: the engine writes the `.md` first
+/// and the CSV second, so a run cut short on disk (ENOSPC while the CSV was
+/// written) leaves a complete `.md` beside a truncated CSV, and the Lab must
+/// not draw that run as a start/end pair.
+fn read_companion_equity_csv(
+    md_path: &std::path::Path,
+) -> Result<Option<Vec<(i64, Decimal)>>, EquityLoadError> {
+    let Some(stem) = md_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_suffix(".md"))
+    else {
+        return Ok(None);
+    };
     let csv = md_path.with_file_name(format!("{stem}-equity.csv"));
-    let samples = reports::csv_artifacts::read_equity_csv(&csv).ok()?;
-    if samples.is_empty() {
-        return None;
+    let unreadable = |msg: String| EquityLoadError::ParseError {
+        path: csv.display().to_string(),
+        msg,
+    };
+    if !csv.try_exists().map_err(|e| unreadable(e.to_string()))? {
+        return Ok(None);
     }
-    Some(
+    let samples =
+        reports::csv_artifacts::read_equity_csv(&csv).map_err(|e| unreadable(e.to_string()))?;
+    if samples.is_empty() {
+        return Err(EquityLoadError::EmptySeries {
+            path: csv.display().to_string(),
+        });
+    }
+    Ok(Some(
         samples
             .into_iter()
             .map(|s| (s.ts.unix_millis(), s.equity_total))
             .collect(),
-    )
+    ))
 }
 
 /// Parse the `## Equity curve` section from a report body.
@@ -771,21 +837,63 @@ fn parse_equity_section(body: &str) -> Vec<(i64, Decimal)> {
 
 // ── Main load function ────────────────────────────────────────────────────────
 
-/// Load an equity series for `tuple` from a report-root directory tree
-/// (production roots: `evidence/` or `lab-runs/`).
-/// Synchronous; call from the iced thread on first cache miss.
+/// A report's source tier (ADR-0055 D9 item 4): a report tagged with the
+/// tuple's `data_source:` beats an untagged legacy one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Tier {
+    /// No `data_source:` (pre-93845af): source-unknown.
+    Untagged,
+    /// `data_source:` names the tuple's source.
+    Tagged,
+}
+
+/// The order of two candidate reports (bug-log #209): the field order is the
+/// comparison order (the derived `Ord`), so the tier decides first, then the
+/// range score, then `generated:` (`None` lowest).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct CandidateKey {
+    tier: Tier,
+    range_score: u32,
+    generated: Option<time::OffsetDateTime>,
+}
+
+/// A matching report of one root for a tuple (bug-log #209), not yet read for
+/// its series; [`resolve_roots`] orders them by [`CandidateKey`].
+#[derive(Debug, Clone)]
+struct Candidate {
+    tier: Tier,
+    fit: RangeFit,
+    generated: Option<time::OffsetDateTime>,
+    path: PathBuf,
+}
+
+impl Candidate {
+    fn key(&self) -> CandidateKey {
+        CandidateKey {
+            tier: self.tier,
+            range_score: self.fit.score(),
+            generated: self.generated,
+        }
+    }
+}
+
+/// Every matching report under `report_root` for `tuple`, in D8 walk order
+/// (bug-log #209). A file whose name is already in `seen` (an earlier root or
+/// container held a report of that name) is skipped before it is read, and
+/// every name walked is added, matching or not: § D5's identical-filename
+/// rule, as Compare's `seen_filenames`. The order is kept so that
+/// [`resolve_roots`]' stable sort gives an equal key to the first report in
+/// D8 order (the rule Compare uses, bug-log #206).
 ///
 /// # Errors
 ///
-/// Returns `EquityLoadError::ReportDirNotFound` when the slug has no
-/// `backtest-*.md` under the root at all (its message names the slug, the root,
-/// the container depth bound and which empty it is);
-/// `EquityLoadError::NoReport` when no matching report is found;
-/// `EquityLoadError::ParseError` when the best candidate cannot be parsed.
-pub fn load_equity(
+/// `ReportDirNotFound` when the slug has no `backtest-*.md` under the root;
+/// `NoReport` when none of them matches.
+fn matching_candidates(
     tuple: &LabTuple,
     report_root: &std::path::Path,
-) -> Result<LabEquitySeries, EquityLoadError> {
+    seen: &mut HashSet<OsString>,
+) -> Result<Vec<Candidate>, EquityLoadError> {
     let slug = strategy_slug(&tuple.strategy);
     let reports = discover_reports(report_root, &slug);
 
@@ -799,59 +907,127 @@ pub fn load_equity(
         )));
     }
 
-    // Find the best matching report — source-aware since the review D1 fix.
-    //
-    // Two tiers:
+    // Source-aware since the review D1 fix. Two tiers:
     //   1. Reports whose frontmatter `data_source:` matches `tuple.source`
     //      (the honest tier — a Binance tuple resolves a binance report).
     //   2. Legacy reports WITHOUT the field (pre-93845af) — source-unknown;
-    //      they are eligible ONLY when tier 1 is empty (no on-disk migration).
+    //      they are eligible ONLY when no tier-1 report matches, in any root
+    //      ([`resolve_roots`] reads no candidate below the top tier; no
+    //      on-disk migration).
     // Reports tagged with a DIFFERENT source never match — that is the
-    // shadowing bug this fix removes (a Synthetic run no longer hijacks a
-    // Binance tuple's resolution and vice versa).
-    let mut best_tagged: Option<(RangeFit, PathBuf)> = None;
-    let mut best_untagged: Option<(RangeFit, PathBuf)> = None;
+    // shadowing bug the D1 fix removed.
+    let mut out: Vec<Candidate> = Vec::new();
     for path in &reports {
+        if !path.file_name().is_some_and(|n| seen.insert(n.to_owned())) {
+            continue; // an earlier copy of this filename was walked first
+        }
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
         };
         let Some(meta) = parse_report_meta(&content) else {
             continue;
         };
-        let quality = report_matches(&meta, tuple);
-        if let MatchQuality::Match { fit } = quality {
-            let slot = match meta.data_source.as_deref() {
-                Some(ds) if source_tag_matches(ds, tuple.source) => &mut best_tagged,
-                Some(_) => continue, // tagged with a different source — excluded
-                None => &mut best_untagged, // legacy-unknown (tier 2)
-            };
-            let is_better = slot.as_ref().is_none_or(|(s, _)| fit.score() > s.score());
-            if is_better {
-                *slot = Some((fit, path.clone()));
-            }
-        }
+        let MatchQuality::Match { fit } = report_matches(&meta, tuple) else {
+            continue;
+        };
+        let tier = match meta.data_source.as_deref() {
+            Some(ds) if source_tag_matches(ds, tuple.source) => Tier::Tagged,
+            Some(_) => continue,    // tagged with a different source — excluded
+            None => Tier::Untagged, // legacy-unknown (tier 2)
+        };
+        out.push(Candidate {
+            tier,
+            fit,
+            generated: meta.generated,
+            path: path.clone(),
+        });
     }
 
-    let Some((best_fit, best_path)) = best_tagged.or(best_untagged) else {
-        return Err(EquityLoadError::NoReport {
-            strategy: tuple.strategy.clone(),
-            symbol: tuple.symbol.clone(),
-            range: tuple.range.clone(),
-            data_source: tuple.source,
-        });
-    };
+    if out.is_empty() {
+        return Err(no_report_error(tuple));
+    }
+    Ok(out)
+}
 
-    let content = std::fs::read_to_string(&best_path).map_err(|e| EquityLoadError::ParseError {
-        path: best_path.display().to_string(),
+/// The `NoReport` error for `tuple`.
+fn no_report_error(tuple: &LabTuple) -> EquityLoadError {
+    EquityLoadError::NoReport {
+        strategy: tuple.strategy.clone(),
+        symbol: tuple.symbol.clone(),
+        range: tuple.range.clone(),
+        data_source: tuple.source,
+    }
+}
+
+/// Resolve `tuple` over `roots`, searched in order (bug-log #209, ADR-0055 §
+/// D5): every root's matching candidates are concatenated in root order
+/// (each root's in D8 walk order), with one filename set over the whole walk;
+/// a stable sort puts the greatest [`CandidateKey`] first, so an equal key
+/// keeps root order, then D8 order; the candidates are read in that order and
+/// the first that reads wins, so a broken report falls through to the next
+/// candidate, in its own root or in the next. The reads stop at the source
+/// tier of the first candidate (D9: an untagged report is eligible only when
+/// no tagged one matches), so a broken tagged report never yields to an
+/// untagged one. Inside the tier a broken exact report yields to a readable
+/// superset, drawn with its `narrowed_from` badge. [`load_equity`] is this
+/// over one root, [`EquityCache::get_or_load_roots`] this behind its cache.
+///
+/// # Errors
+///
+/// The LAST root's error when nothing reads: its walk's error, or the read
+/// error of its last candidate tried. A root whose candidates all sit below
+/// the tier boundary records none, so when it is the last root the result is
+/// `NoReport` (none of its reports is eligible). Empty `roots` yields
+/// `NoReport`.
+fn resolve_roots(tuple: &LabTuple, roots: &[PathBuf]) -> Result<LabEquitySeries, EquityLoadError> {
+    let mut errs: Vec<Option<EquityLoadError>> = vec![None; roots.len()];
+    let mut cands: Vec<(usize, Candidate)> = Vec::new();
+    let mut seen: HashSet<OsString> = HashSet::new();
+    for (i, root) in roots.iter().enumerate() {
+        match matching_candidates(tuple, root, &mut seen) {
+            Ok(found) => cands.extend(found.into_iter().map(|c| (i, c))),
+            Err(e) => errs[i] = Some(e),
+        }
+    }
+    // Greatest key first; the sort is stable, so an equal key keeps root
+    // order (lab-runs/ first), then D8 order inside a root.
+    cands.sort_by(|a, b| b.1.key().cmp(&a.1.key()));
+    // D9 item 4: no read below the top candidate's source tier.
+    let top_tier = cands.first().map(|(_, c)| c.tier);
+    for (i, c) in cands.iter().take_while(|(_, c)| Some(c.tier) == top_tier) {
+        match materialize(c) {
+            Ok(loaded) => return Ok(loaded),
+            Err(e) => errs[*i] = Some(e),
+        }
+    }
+    Err(errs
+        .pop()
+        .flatten()
+        .unwrap_or_else(|| no_report_error(tuple)))
+}
+
+/// Read the candidate's equity series: the companion CSV, else the `##
+/// Equity curve` table, else the Summary's start/end pair.
+///
+/// # Errors
+///
+/// `ParseError` when the report cannot be read or parsed, or when its
+/// companion CSV is present but does not read (bug-log #209); `EmptySeries`
+/// when it yields no sample.
+fn materialize(cand: &Candidate) -> Result<LabEquitySeries, EquityLoadError> {
+    let cand_path = &cand.path;
+    let cand_fit = cand.fit;
+    let content = std::fs::read_to_string(cand_path).map_err(|e| EquityLoadError::ParseError {
+        path: cand_path.display().to_string(),
         msg: e.to_string(),
     })?;
 
     let meta = parse_report_meta(&content).ok_or_else(|| EquityLoadError::ParseError {
-        path: best_path.display().to_string(),
+        path: cand_path.display().to_string(),
         msg: "failed to parse report frontmatter".to_string(),
     })?;
 
-    let report_name = best_path
+    let report_name = cand_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("unknown")
@@ -860,7 +1036,7 @@ pub fn load_equity(
     // narrowed_from: the report's span is a superset of the requested range
     // (the same fit that scored it, so the badge and the score cannot drift).
     let narrowed_from: Option<SmolStr> =
-        (best_fit == RangeFit::Superset).then(|| SmolStr::new(&report_name));
+        (cand_fit == RangeFit::Superset).then(|| SmolStr::new(&report_name));
 
     // Extract equity body.
     let body_start = find_body_start(&content);
@@ -871,8 +1047,10 @@ pub fn load_equity(
     // persist it, so a saved run hydrates a REAL curve instead of the sparkline
     // start-end 2-point fallback (the `.md`'s `## Equity curve` is only a
     // visual sparkline, not machine-parseable). Older committed `evidence/`
-    // reports without a companion stay at their existing fidelity.
-    let (samples, fidelity) = if let Some(csv_pts) = load_companion_equity_csv(&best_path) {
+    // reports without a companion stay at their existing fidelity. A present
+    // companion that does not read makes the report unreadable (bug-log #209).
+    let companion = read_companion_equity_csv(cand_path)?;
+    let (samples, fidelity) = if let Some(csv_pts) = companion {
         (csv_pts, Fidelity::PerBar)
     } else if meta.has_equity_section {
         let pts = parse_equity_section(body);
@@ -894,7 +1072,7 @@ pub fn load_equity(
 
     if samples.is_empty() {
         return Err(EquityLoadError::EmptySeries {
-            path: best_path.display().to_string(),
+            path: cand_path.display().to_string(),
         });
     }
 
@@ -904,6 +1082,29 @@ pub fn load_equity(
         fidelity,
         narrowed_from,
     })
+}
+
+/// Load an equity series for `tuple` from ONE report-root directory tree
+/// (production roots: `evidence/` or `lab-runs/`): `resolve_roots` over that
+/// root, so its matching reports are read greatest `CandidateKey` first
+/// and the first that reads wins. Synchronous; call from the iced thread on
+/// first cache miss.
+///
+/// # Errors
+///
+/// Returns `EquityLoadError::ReportDirNotFound` when the slug has no
+/// `backtest-*.md` under the root at all (its message names the slug, the root,
+/// the container depth bound and which empty it is);
+/// `EquityLoadError::NoReport` when no matching report is found;
+/// `EquityLoadError::ParseError` or `EquityLoadError::EmptySeries` when no
+/// matching candidate of the top source tier can be read: the error of the
+/// last one tried (a report that does not parse, a companion CSV that does not
+/// read, or one that holds no sample).
+pub fn load_equity(
+    tuple: &LabTuple,
+    report_root: &std::path::Path,
+) -> Result<LabEquitySeries, EquityLoadError> {
+    resolve_roots(tuple, &[report_root.to_path_buf()])
 }
 
 /// Build a two-point equity series from start/end capital values.
@@ -996,10 +1197,13 @@ pub fn default_lab_runs_root() -> PathBuf {
 }
 
 /// The production Lab/Compare read-root union (Q4 / ADR-0055 § D5):
-/// `[lab-runs/, evidence/]` — **lab-runs FIRST**. Persisted Lab runs shadow
-/// committed `evidence/` reports on a tuple collision (lab-runs wins).
-/// Exposed so the Lab screen and the Compare cold-boot wire pass the
-/// identical ordered roots.
+/// `[lab-runs/, evidence/]` — **lab-runs FIRST**. On a tuple collision the
+/// newest `generated:` wins in either reader (in the Lab after the source
+/// tier and the range score, bug-log #209), except on an identical filename,
+/// where both readers keep the copy walked first (`lab-runs/`) and skip the
+/// later one; the root order also settles an equal `generated:`. Exposed so
+/// the Lab screen and the Compare cold-boot wire pass the identical ordered
+/// roots.
 #[must_use]
 pub fn default_report_roots() -> Vec<PathBuf> {
     vec![default_lab_runs_root(), default_evidence_root()]
@@ -1016,8 +1220,10 @@ pub fn default_report_roots() -> Vec<PathBuf> {
 ///    `equity_series` (no I/O). The `narrowed_from` field is `None` (exact
 ///    match by construction — R5.3 suppresses the narrowed-from badge).
 /// 2. Otherwise fall through to the cold disk path — the two-root union
-///    (`EquityCache::get_or_load_roots`, lab-runs FIRST then evidence/ —
-///    lab-run-save-compare T4 / R4 / Q4). After a Lab run persists its report
+///    (`EquityCache::get_or_load_roots`: the greatest (tier, range score,
+///    `generated:`) over `lab-runs/` and `evidence/`, an identical filename
+///    or an equal key to lab-runs — lab-run-save-compare T4 / R4 / Q4, bug-log
+///    #209). After a Lab run persists its report
 ///    under `lab-runs/`, the curve repaints from disk on the next boot /
 ///    tuple-select even with the in-memory mirror cleared (AC4). If the cache
 ///    miss returns an error, returns `None` so the chart renders with no
@@ -1157,6 +1363,25 @@ id: top10_momentum_h1
 
 - lab-runs collision fixture
 "#;
+
+    /// The `generated:` of [`FIXTURE_REPORT_WITH_EQUITY`].
+    const FIXTURE_GENERATED: &str = "2026-04-29T19:52:43Z";
+
+    /// `content` with its `generated:` frontmatter value replaced by
+    /// `generated` (bug-log #209: the root-order pins need an equal
+    /// `generated:` on both sides).
+    fn with_generated(content: &str, generated: &str) -> String {
+        let line = content
+            .lines()
+            .find(|l| l.starts_with("generated: "))
+            .expect("the fixture has a generated: line");
+        let out = content.replacen(line, &format!("generated: {generated}"), 1);
+        assert!(
+            out.lines().any(|l| l == format!("generated: {generated}")),
+            "the fixture now carries generated: {generated}"
+        );
+        out
+    }
 
     /// A start/end-only sma report for the `Last90d` tuple of
     /// `load_equity_start_end_fallback` (bug-log #212: a `btc-2023-1m-…` name
@@ -1646,7 +1871,8 @@ id: sma_crossover
     }
 
     /// bug-log #208 (d) — a cached HIT is stale until the clear, then the
-    /// newer `lab-runs/` report wins (lab-runs is searched first). A committed
+    /// newer `lab-runs/` report wins (its `generated:` is newer, bug-log
+    /// #209). A committed
     /// report of `COMMITTED` points under `evidence/` (container depth 1) is
     /// cached as the tuple's hit; a `lab-runs/` report of `NEWER` points
     /// written afterwards is not seen by the same cache (the same `Arc` comes
@@ -1665,7 +1891,12 @@ id: sma_crossover
             &evidence,
             "v1/v0-paper-sma/reports",
             "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
-            &sma_2024_h1_report(Some("synthetic"), COMMITTED),
+            &sma_report(
+                "btc-2024-h1-sma-cross",
+                Some("synthetic"),
+                COMMITTED,
+                "2026-01-01T00:00:00Z",
+            ),
         );
 
         let mut cache = EquityCache::new();
@@ -1678,7 +1909,12 @@ id: sma_crossover
             &lab_runs,
             "v0-paper-sma/reports",
             "backtest-20260601-120000-btc-2024-h1-sma-cross.md",
-            &sma_2024_h1_report(Some("synthetic"), NEWER),
+            &sma_report(
+                "btc-2024-h1-sma-cross",
+                Some("synthetic"),
+                NEWER,
+                "2026-06-01T12:00:00Z",
+            ),
         );
 
         let second = cache
@@ -1832,10 +2068,12 @@ id: sma_crossover
     }
 
     /// lab-run-save-compare T2 — the two-root union resolves a report placed
-    /// in EITHER a `lab-runs/` root OR a `spec/` root, AND **lab-runs wins on a
-    /// tuple collision** (Q4 / ADR-0055 § D5: lab-runs searched FIRST). Builds
-    /// the SAME tuple in both roots with DISTINGUISHABLE equity tails, then
-    /// asserts the union picks the lab-runs copy.
+    /// in EITHER a `lab-runs/` root OR a `spec/` root, AND **lab-runs wins a
+    /// tuple collision with an equal key** (Q4 / ADR-0055 § D5: lab-runs
+    /// searched FIRST). Builds the SAME tuple in both roots with
+    /// DISTINGUISHABLE equity tails and ONE `generated:` (bug-log #209: a
+    /// strictly newer `generated:` wins in either root, X1/X2), then asserts
+    /// the union picks the lab-runs copy.
     #[test]
     fn route_overlay_two_root_union_lab_runs_wins_collision() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1858,7 +2096,7 @@ id: sma_crossover
         write_fixture_report(
             &lr_slug,
             "backtest-20260601-120000-top10-2024-h1-momentum.md",
-            LAB_RUNS_REPORT_TWO_POINT,
+            &with_generated(LAB_RUNS_REPORT_TWO_POINT, FIXTURE_GENERATED),
         );
 
         let tuple = LabTuple {
@@ -1979,7 +2217,9 @@ id: sma_crossover
     }
 
     /// Lab-runs (container depth 0, 2 points) + committed evidence (container
-    /// depth 1, 4 points) for the SAME tuple. Returns `(lab_runs, evidence)`.
+    /// depth 1, 4 points) for the SAME tuple and ONE `generated:`, so the key
+    /// is equal and only the root order decides (bug-log #209). Returns
+    /// `(lab_runs, evidence)`.
     fn depth_precedence_scene(tmp: &tempfile::TempDir) -> (PathBuf, PathBuf) {
         let lab_runs = tmp.path().join("lab-runs");
         let evidence = tmp.path().join("evidence");
@@ -1987,7 +2227,7 @@ id: sma_crossover
             &lab_runs,
             "v1-cross-sectional-momentum/reports",
             "backtest-20260601-120000-top10-2024-h1-momentum.md",
-            LAB_RUNS_REPORT_TWO_POINT,
+            &with_generated(LAB_RUNS_REPORT_TWO_POINT, FIXTURE_GENERATED),
         );
         write_at(
             &evidence,
@@ -1998,8 +2238,9 @@ id: sma_crossover
         (lab_runs, evidence)
     }
 
-    /// E2 — D5 precedence holds with a container-depth-1 evidence report:
-    /// lab-runs, searched first, shadows it.
+    /// E2 — D5 precedence holds with a container-depth-1 evidence report: on
+    /// an equal key (tier, range score, `generated:`) lab-runs, searched
+    /// first, shadows it.
     #[test]
     fn lab_runs_shadows_a_container_depth_1_evidence_report() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2019,9 +2260,10 @@ id: sma_crossover
         );
     }
 
-    /// E2b — E2's pair: the container-depth-1 evidence report wins when its
-    /// root is searched first. Without it, E2 passes under #205 (evidence
-    /// unread).
+    /// E2b — E2's pair: on the same equal key the container-depth-1 evidence
+    /// report wins when its root is searched first. Without it, E2 passes
+    /// under #205 (evidence unread) and under a rule that ignores the root
+    /// order on a tie (bug-log #209).
     #[test]
     fn container_depth_1_evidence_report_wins_when_searched_first() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2041,41 +2283,37 @@ id: sma_crossover
     }
 
     /// E4 — the within-root tie rule at ONE container depth (ADR-0055 D8):
-    /// equal-score reports of one slug under TWO container-depth-1 dirs resolve
-    /// to the first dir in path order — not to the newest stamp, not to the
-    /// smallest file name, and not to the newest `generated:` (the min-path
-    /// fixture carries the OLDEST `generated:`). The winning dir holds ONE
-    /// report, so E4 does not pin the order inside one dir: the layout's file
-    /// order is LY4's, and the Lab's within-dir pick is bug-log #209's. The
+    /// reports of one slug with an equal key (score AND `generated:`, bug-log
+    /// #209) under TWO container-depth-1 dirs resolve to the first dir in path
+    /// order — not to the newest stamp and not to the smallest file name. The
+    /// winning dir holds ONE report, so E4 does not pin the order inside one
+    /// dir: the layout's file order is LY4's, the Lab's in-dir tie N2's. The
     /// expected report is derived from the fixture table.
     #[test]
-    fn equal_score_tie_at_one_container_depth_goes_to_the_first_dir() {
+    fn equal_score_and_generated_tie_at_one_container_depth_goes_to_the_first_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let evidence = tmp.path().join("evidence");
-        // (reports dir, file name, generated:, equity points): v1 holds the
-        // MIDDLE stamp and the OLDEST `generated:`; v2 the oldest stamp, the
-        // newest stamp and the newest `generated:`.
-        let table: [(&str, &str, &str, usize); 3] = [
+        // (reports dir, file name, equity points): v1 holds the MIDDLE stamp;
+        // v2 the oldest stamp and the newest stamp. One `generated:`.
+        let generated = "2026-05-01T00:00:00Z";
+        let table: [(&str, &str, usize); 3] = [
             (
                 "v1/v0-paper-sma/reports",
                 "backtest-20260301-000000-btc-2024-h1-sma-cross.md",
-                "2026-01-01T00:00:00Z",
                 4,
             ),
             (
                 "v2/v0-paper-sma/reports",
                 "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
-                "2026-05-01T00:00:00Z",
                 3,
             ),
             (
                 "v2/v0-paper-sma/reports",
                 "backtest-20260601-000000-btc-2024-h1-sma-cross.md",
-                "2026-09-01T00:00:00Z",
                 5,
             ),
         ];
-        for (rel, name, generated, n) in table {
+        for (rel, name, n) in table {
             write_at(
                 &evidence,
                 rel,
@@ -2085,14 +2323,13 @@ id: sma_crossover
         }
         let expected = table
             .iter()
-            .min_by_key(|(rel, name, _, _)| (container_depth_of(rel), evidence.join(rel), *name))
-            .map(|r| r.3)
+            .min_by_key(|(rel, name, _)| (container_depth_of(rel), evidence.join(rel), *name))
+            .map(|r| r.2)
             .unwrap();
-        let newest_stamp = table.iter().max_by_key(|r| r.1).unwrap().3;
-        let first_name = table.iter().min_by_key(|r| r.1).unwrap().3;
-        let newest_generated = table.iter().max_by_key(|r| r.2).unwrap().3;
+        let newest_stamp = table.iter().max_by_key(|r| r.1).unwrap().2;
+        let first_name = table.iter().min_by_key(|r| r.1).unwrap().2;
         assert!(
-            expected != newest_stamp && expected != first_name && expected != newest_generated,
+            expected != newest_stamp && expected != first_name,
             "the fixture must make every alternative rule pick another report"
         );
         let series = load_equity(&sma_tuple(LabDataSource::Synthetic), &evidence)
@@ -2100,39 +2337,93 @@ id: sma_crossover
         assert_eq!(
             series.samples.len(),
             expected,
-            "an equal-score tie must go to the first dir in path order ({expected} points), not the newest stamp ({newest_stamp}), the smallest file name \
-             ({first_name}) or the newest generated: ({newest_generated})"
+            "an equal-key tie must go to the first dir in path order ({expected} points), not \
+             the newest stamp ({newest_stamp}) or the smallest file name ({first_name})"
         );
     }
 
-    /// E4b — the D8 tie rule ACROSS container depths, two-sided. In each of
-    /// two roots the slug sits at container depth 0 AND 1 with EQUAL scores.
-    /// In root `a0` the container name sorts BEFORE the slug name, in root `zz`
-    /// AFTER it, and the stamps and `generated:` values are arranged so that
-    /// full-path order, the newest stamp, the oldest stamp and the newest
-    /// `generated:` each pick the container-depth-1 report in at least one
-    /// root (asserted on the table). Of those four rules and "(container depth,
-    /// path), first best", only the last picks container depth 0 in both —
-    /// where HEAD looked before #205. Any rule that tries container depth 0
-    /// first passes E4b; E4 pins the dir order within one container depth.
+    /// E4b — the D8 tie rule ACROSS container depths, two-sided, on an equal
+    /// key (score AND `generated:`, bug-log #209). In each of two roots the
+    /// slug sits at container depth 0 AND 1. In root `a0` the container name
+    /// sorts BEFORE the slug name, in root `zz` AFTER it, and the stamps are
+    /// arranged so that full-path order, the newest stamp and the oldest stamp
+    /// each pick the container-depth-1 report in at least one root (asserted
+    /// on the table). Of those rules and "(container depth, path), first
+    /// best", only the last picks container depth 0 in both — where HEAD looked
+    /// before #205. Compare's #206 pin is the same shape. E4b's companion
+    /// [`a_strictly_newer_generated_at_container_depth_1_wins`] puts a
+    /// strictly newer `generated:` at container depth 1.
     #[test]
-    fn equal_score_tie_across_container_depths_goes_to_container_depth_0() {
-        // (reports dir, file name, generated:, equity points)
-        type Fx = (&'static str, &'static str, &'static str, usize);
-        let roots: [(&str, [Fx; 2]); 2] = [
+    fn equal_generated_tie_across_container_depths_goes_to_container_depth_0() {
+        let tmp = tempfile::tempdir().unwrap();
+        let generated = "2026-03-01T00:00:00Z";
+        let mut d0_points = Vec::new();
+        let mut full_path = Vec::new();
+        let mut newest_stamp = Vec::new();
+        let mut oldest_stamp = Vec::new();
+        for (root_name, fx) in &depth_tie_roots() {
+            let root = tmp.path().join(root_name);
+            for (rel, name, n) in fx {
+                write_at(
+                    &root,
+                    rel,
+                    name,
+                    &sma_report("btc-2024-h1-sma-cross", Some("synthetic"), *n, generated),
+                );
+            }
+            d0_points.push(fx.iter().find(|r| container_depth_of(r.0) == 0).unwrap().2);
+            full_path.push(
+                fx.iter()
+                    .min_by_key(|r| root.join(r.0).join(r.1))
+                    .unwrap()
+                    .2,
+            );
+            newest_stamp.push(fx.iter().max_by_key(|r| r.1).unwrap().2);
+            oldest_stamp.push(fx.iter().min_by_key(|r| r.1).unwrap().2);
+        }
+        for (rule, picks) in [
+            ("full-path order", &full_path),
+            ("newest stamp", &newest_stamp),
+            ("oldest stamp", &oldest_stamp),
+        ] {
+            assert_ne!(
+                picks, &d0_points,
+                "the fixture must make `{rule}` miss container depth 0 in at least one root"
+            );
+        }
+        for ((root_name, _), want) in depth_tie_roots().iter().zip(&d0_points) {
+            let series = load_equity(
+                &sma_tuple(LabDataSource::Synthetic),
+                &tmp.path().join(root_name),
+            )
+            .expect("the slug resolves in both roots");
+            assert_eq!(
+                series.samples.len(),
+                *want,
+                "{root_name}: an equal-key tie across container depths must go to the \
+                 container-depth-0 report ({want} points) — ADR-0055 D8 tie rule (#205)"
+            );
+        }
+    }
+
+    /// One report of E4b's table: (reports dir, file name, equity points).
+    type DepthTieFx = (&'static str, &'static str, usize);
+
+    /// The two roots of E4b and its companion: per root, the slug's report at
+    /// container depth 0 and at 1.
+    fn depth_tie_roots() -> [(&'static str, [DepthTieFx; 2]); 2] {
+        [
             (
                 "root-a0",
                 [
                     (
                         "v0-paper-sma/reports",
                         "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
-                        "2026-01-01T00:00:00Z",
                         3,
                     ),
                     (
                         "a0/v0-paper-sma/reports",
                         "backtest-20260601-000000-btc-2024-h1-sma-cross.md",
-                        "2026-06-01T00:00:00Z",
                         5,
                     ),
                 ],
@@ -2143,28 +2434,33 @@ id: sma_crossover
                     (
                         "v0-paper-sma/reports",
                         "backtest-20260601-000000-btc-2024-h1-sma-cross.md",
-                        "2026-01-01T00:00:00Z",
                         3,
                     ),
                     (
                         "zz/v0-paper-sma/reports",
                         "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
-                        "2026-06-01T00:00:00Z",
                         5,
                     ),
                 ],
             ),
-        ];
+        ]
+    }
+
+    /// E4b's companion (bug-log #209): in both of E4b's roots the
+    /// container-depth-1 report carries a strictly newer `generated:`, so it
+    /// wins at either container depth; the D8 order settles only an equal key
+    /// or an identical filename (F2).
+    #[test]
+    fn a_strictly_newer_generated_at_container_depth_1_wins() {
         let tmp = tempfile::tempdir().unwrap();
-        // Per root: the points each candidate rule picks.
-        let mut d0_points = Vec::new();
-        let mut full_path = Vec::new();
-        let mut newest_stamp = Vec::new();
-        let mut oldest_stamp = Vec::new();
-        let mut newest_generated = Vec::new();
-        for (root_name, fx) in &roots {
+        for (root_name, fx) in &depth_tie_roots() {
             let root = tmp.path().join(root_name);
-            for (rel, name, generated, n) in fx {
+            for (rel, name, n) in fx {
+                let generated = if container_depth_of(rel) == 1 {
+                    "2026-09-01T00:00:00Z"
+                } else {
+                    "2026-03-01T00:00:00Z"
+                };
                 write_at(
                     &root,
                     rel,
@@ -2172,44 +2468,13 @@ id: sma_crossover
                     &sma_report("btc-2024-h1-sma-cross", Some("synthetic"), *n, generated),
                 );
             }
-            let d0 = fx.iter().find(|r| container_depth_of(r.0) == 0).unwrap();
-            assert!(
-                fx.iter().any(|r| container_depth_of(r.0) == 1),
-                "each root holds the slug at container depth 0 AND 1"
-            );
-            d0_points.push(d0.3);
-            full_path.push(
-                fx.iter()
-                    .min_by_key(|r| root.join(r.0).join(r.1))
-                    .unwrap()
-                    .3,
-            );
-            newest_stamp.push(fx.iter().max_by_key(|r| r.1).unwrap().3);
-            oldest_stamp.push(fx.iter().min_by_key(|r| r.1).unwrap().3);
-            newest_generated.push(fx.iter().max_by_key(|r| r.2).unwrap().3);
-        }
-        for (rule, picks) in [
-            ("full-path order", &full_path),
-            ("newest stamp", &newest_stamp),
-            ("oldest stamp", &oldest_stamp),
-            ("newest generated:", &newest_generated),
-        ] {
-            assert_ne!(
-                picks, &d0_points,
-                "the fixture must make `{rule}` miss container depth 0 in at least one root"
-            );
-        }
-        for ((root_name, _), want) in roots.iter().zip(&d0_points) {
-            let series = load_equity(
-                &sma_tuple(LabDataSource::Synthetic),
-                &tmp.path().join(root_name),
-            )
-            .expect("the slug resolves in both roots");
+            let want = fx.iter().find(|r| container_depth_of(r.0) == 1).unwrap().2;
+            let series = load_equity(&sma_tuple(LabDataSource::Synthetic), &root)
+                .expect("the slug resolves");
             assert_eq!(
                 series.samples.len(),
-                *want,
-                "{root_name}: an equal-score tie across container depths must go to the \
-                 container-depth-0 report ({want} points) — ADR-0055 D8 tie rule (#205)"
+                want,
+                "{root_name}: the strictly newer container-depth-1 report must win"
             );
         }
     }
@@ -2293,6 +2558,911 @@ id: sma_crossover
             Some(first_dir.1),
             "a whole-year 2024 report answers H1_2024 as a narrowed superset"
         );
+    }
+
+    // ── bug-log #209: the newest generated: wins over the union (§ D5) ─────
+
+    /// One `H1_2024` sma report for the tuple of [`sma_tuple`]: `(root, reports
+    /// dir, file name, scenario, data_source:, generated:, equity points)`.
+    type Fx209 = (
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        Option<&'static str>,
+        Option<&'static str>,
+        usize,
+    );
+
+    /// Write each `Fx209` row under `<tmp>/<root>`; a row without
+    /// `generated:` drops the line. Returns `[<tmp>/lab-runs, <tmp>/evidence]`.
+    fn write_209(tmp: &tempfile::TempDir, rows: &[Fx209]) -> [PathBuf; 2] {
+        for (root, rel, name, scenario, ds, generated, n) in rows {
+            let text = sma_report(scenario, *ds, *n, generated.unwrap_or("DROP"));
+            let text = if generated.is_none() {
+                text.replacen("generated: DROP\n", "", 1)
+            } else {
+                text
+            };
+            assert_eq!(
+                text.contains("generated: "),
+                generated.is_some(),
+                "fixture {name}: generated: line present iff declared"
+            );
+            write_at(&tmp.path().join(root), rel, name, &text);
+        }
+        [tmp.path().join("lab-runs"), tmp.path().join("evidence")]
+    }
+
+    /// The points of the row the union must pick, DERIVED from the table by
+    /// § D5 as amended (bug-log #209). The walk order is (root: `lab-runs`
+    /// then `evidence`; container depth; dir; file name); a file name met a
+    /// second time in that order is dropped (the identical-filename rule).
+    /// Of the rest the greatest (tier, range score, `generated:`) wins, an
+    /// equal key going to the earliest in walk order. Tier: tagged
+    /// `synthetic` > untagged; score: a `-2024-h1-` scenario 20, a whole-year
+    /// `-2024-` 10.
+    fn expected_209(rows: &[Fx209]) -> usize {
+        let key = |r: &Fx209| {
+            let tier = u8::from(r.4.is_some());
+            let score = if r.3.contains("2024-h1") { 20 } else { 10 };
+            (tier, score, r.5)
+        };
+        let walk = |r: &Fx209| {
+            (
+                usize::from(r.0 != "lab-runs"),
+                container_depth_of(r.1),
+                r.1,
+                r.2,
+            )
+        };
+        let mut walked: Vec<&Fx209> = rows.iter().collect();
+        walked.sort_by_key(|r| walk(r));
+        let mut kept: Vec<&Fx209> = Vec::new();
+        for r in walked {
+            if !kept.iter().any(|k| k.2 == r.2) {
+                kept.push(r);
+            }
+        }
+        kept.into_iter()
+            .max_by(|a, b| key(a).cmp(&key(b)).then_with(|| walk(b).cmp(&walk(a))))
+            .unwrap()
+            .6
+    }
+
+    /// Resolve the [`sma_tuple`] over the union and assert the derived pick;
+    /// `why` names the rule under test.
+    fn assert_union_picks(rows: &[Fx209], why: &str) {
+        let tmp = tempfile::tempdir().unwrap();
+        let roots = write_209(&tmp, rows);
+        let want = expected_209(rows);
+        let got = EquityCache::new()
+            .get_or_load_roots(&sma_tuple(LabDataSource::Synthetic), &roots)
+            .expect("the union resolves");
+        assert_eq!(got.samples.len(), want, "{why} (rows {rows:?})");
+    }
+
+    const H1: &str = "btc-2024-h1-sma-cross";
+    const Y2024: &str = "btc-2024-sma-cross";
+    const LR: &str = "v0-paper-sma/reports";
+    const EV: &str = "v1/v0-paper-sma/reports";
+    /// Container depth 0 under `evidence/` (bug-log #209's identical-filename
+    /// pin inside one root).
+    const EV0: &str = "v0-paper-sma/reports";
+    const SYN: Option<&str> = Some("synthetic");
+
+    /// N1-A — one dir, equal score: the newer `generated:` sits in the LARGER
+    /// path and wins. Every fixture's `generated:` differs from its filename
+    /// stamp.
+    #[test]
+    fn a_newer_generated_in_the_larger_path_wins() {
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260101-000000-a.md",
+                H1,
+                SYN,
+                Some("2026-02-01T00:00:00Z"),
+                3,
+            ),
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260102-000000-b.md",
+                H1,
+                SYN,
+                Some("2026-03-01T00:00:00Z"),
+                5,
+            ),
+        ];
+        assert_eq!(
+            expected_209(&rows),
+            5,
+            "the table's newer run is the larger path"
+        );
+        assert_union_picks(&rows, "N1-A: the newer generated: wins");
+    }
+
+    /// N1-B — the newer `generated:` sits in the SMALLER path and still wins:
+    /// it tells "newest `generated:`" from "last path / newest stamp".
+    #[test]
+    fn a_newer_generated_in_the_smaller_path_wins() {
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260101-000000-a.md",
+                H1,
+                SYN,
+                Some("2026-03-01T00:00:00Z"),
+                3,
+            ),
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260102-000000-b.md",
+                H1,
+                SYN,
+                Some("2026-02-01T00:00:00Z"),
+                5,
+            ),
+        ];
+        assert_eq!(
+            expected_209(&rows),
+            3,
+            "the table's newer run is the smaller path"
+        );
+        assert_union_picks(&rows, "N1-B: the newer generated: wins over the last path");
+    }
+
+    /// N2 — one dir, equal score and equal `generated:` (two runs in one
+    /// second): the first report in D8 order, the smaller path (Compare's
+    /// #206 rule; the deliberate same-second residual).
+    #[test]
+    fn equal_score_and_generated_inside_one_dir_goes_to_the_first_path() {
+        let g = Some("2026-02-01T00:00:00Z");
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260101-000000-a.md",
+                H1,
+                SYN,
+                g,
+                3,
+            ),
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260101-000000-b.md",
+                H1,
+                SYN,
+                g,
+                5,
+            ),
+        ];
+        assert_eq!(expected_209(&rows), 3);
+        assert_union_picks(&rows, "N2: an equal key goes to the first path");
+    }
+
+    /// N3 — an exact-range report beats a newer whole-year superset: the
+    /// range score outranks `generated:`.
+    #[test]
+    fn an_exact_range_beats_a_newer_superset() {
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260101-000000-a.md",
+                Y2024,
+                SYN,
+                Some("2026-09-01T00:00:00Z"),
+                3,
+            ),
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260102-000000-b.md",
+                H1,
+                SYN,
+                Some("2026-02-01T00:00:00Z"),
+                5,
+            ),
+        ];
+        assert_eq!(expected_209(&rows), 5);
+        assert_union_picks(&rows, "N3: exact beats a newer superset");
+    }
+
+    /// N4 — a report with no `generated:` ranks below any dated one, though it
+    /// sits at the smaller path.
+    #[test]
+    fn a_report_without_generated_ranks_oldest() {
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260101-000000-a.md",
+                H1,
+                SYN,
+                None,
+                3,
+            ),
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260102-000000-b.md",
+                H1,
+                SYN,
+                Some("2020-01-01T00:00:00Z"),
+                5,
+            ),
+        ];
+        assert_eq!(expected_209(&rows), 5);
+        assert_union_picks(&rows, "N4: no generated: ranks oldest");
+    }
+
+    /// X1 — across roots the newer `generated:` wins: `evidence/` holds a
+    /// newer run than `lab-runs/` (searched first).
+    #[test]
+    fn a_newer_evidence_report_beats_an_older_lab_runs_one() {
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260601-000000-a.md",
+                H1,
+                SYN,
+                Some("2026-02-01T00:00:00Z"),
+                3,
+            ),
+            (
+                "evidence",
+                EV,
+                "backtest-20260101-000000-b.md",
+                H1,
+                SYN,
+                Some("2026-03-01T00:00:00Z"),
+                5,
+            ),
+        ];
+        assert_eq!(expected_209(&rows), 5);
+        assert_union_picks(&rows, "X1: the newer evidence report wins");
+    }
+
+    /// X2 — an equal `generated:` across roots goes to `lab-runs/`, the root
+    /// searched first (§ D5's identical-filename rule extends to an equal key).
+    #[test]
+    fn an_equal_generated_across_roots_goes_to_lab_runs() {
+        let g = Some("2026-02-01T00:00:00Z");
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260601-000000-a.md",
+                H1,
+                SYN,
+                g,
+                3,
+            ),
+            (
+                "evidence",
+                EV,
+                "backtest-20260101-000000-b.md",
+                H1,
+                SYN,
+                g,
+                5,
+            ),
+        ];
+        assert_eq!(expected_209(&rows), 3);
+        assert_union_picks(&rows, "X2: an equal key goes to lab-runs");
+    }
+
+    /// X3 — the tier outranks `generated:` across roots: a tagged older
+    /// `evidence/` report beats an untagged newer `lab-runs/` one.
+    #[test]
+    fn a_tagged_older_evidence_report_beats_an_untagged_newer_lab_runs_one() {
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260601-000000-a.md",
+                H1,
+                None,
+                Some("2026-09-01T00:00:00Z"),
+                3,
+            ),
+            (
+                "evidence",
+                EV,
+                "backtest-20260101-000000-b.md",
+                H1,
+                SYN,
+                Some("2026-02-01T00:00:00Z"),
+                5,
+            ),
+        ];
+        assert_eq!(expected_209(&rows), 5);
+        assert_union_picks(&rows, "X3: tagged beats a newer untagged");
+    }
+
+    /// X4 — the range score outranks `generated:` across roots: an exact
+    /// `evidence/` report beats a newer `lab-runs/` superset.
+    #[test]
+    fn an_exact_evidence_report_beats_a_newer_lab_runs_superset() {
+        let rows: [Fx209; 2] = [
+            (
+                "lab-runs",
+                LR,
+                "backtest-20260601-000000-a.md",
+                Y2024,
+                SYN,
+                Some("2026-09-01T00:00:00Z"),
+                3,
+            ),
+            (
+                "evidence",
+                EV,
+                "backtest-20260101-000000-b.md",
+                H1,
+                SYN,
+                Some("2026-02-01T00:00:00Z"),
+                5,
+            ),
+        ];
+        assert_eq!(expected_209(&rows), 5);
+        assert_union_picks(&rows, "X4: exact beats a newer superset across roots");
+    }
+
+    /// F1 — § D5's identical-filename rule across roots, as Compare's
+    /// `scan_report_roots_identical_filename_lab_runs_wins`: the SAME file
+    /// name in `lab-runs/` (older `generated:`) and in `evidence/` (newer)
+    /// resolves the `lab-runs/` copy, which is walked first; the later copy is
+    /// skipped before it is read. Pair: with different names the newer
+    /// `evidence/` report wins (X1's rule).
+    #[test]
+    fn an_identical_filename_across_roots_goes_to_lab_runs() {
+        let same = "backtest-20260601-000000-btc-2024-h1-sma-cross.md";
+        let older = Some("2026-02-01T00:00:00Z");
+        let newer = Some("2026-03-01T00:00:00Z");
+        let rows: [Fx209; 2] = [
+            ("lab-runs", LR, same, H1, SYN, older, 3),
+            ("evidence", EV, same, H1, SYN, newer, 5),
+        ];
+        assert_eq!(
+            expected_209(&rows),
+            3,
+            "the table's first copy is lab-runs'"
+        );
+        assert_union_picks(&rows, "F1: an identical filename keeps the lab-runs copy");
+        let pair: [Fx209; 2] = [
+            ("lab-runs", LR, same, H1, SYN, older, 3),
+            (
+                "evidence",
+                EV,
+                "backtest-20260101-000000-b.md",
+                H1,
+                SYN,
+                newer,
+                5,
+            ),
+        ];
+        assert_eq!(expected_209(&pair), 5, "distinct names: the newer report");
+        assert_union_picks(
+            &pair,
+            "F1 pair: distinct names, the newer evidence report wins",
+        );
+    }
+
+    /// F2 — the same rule inside one root, as Compare's
+    /// `duplicate_filename_inside_a_root_goes_to_container_depth_0`: the SAME
+    /// file name at container depth 0 (older `generated:`) and 1 (newer)
+    /// resolves the container-depth-0 copy, through the union and through
+    /// `load_equity` alone. Two-sided in the container's sort position, as
+    /// E4b and Compare's `CONTAINERS_206`: once with a container that sorts
+    /// before the slug (`a0`), once after it (`zz`), so plain full-path order
+    /// would pick the depth-1 copy in one of them. Pair: with different names
+    /// the newer container-depth-1 report wins, in both.
+    #[test]
+    fn an_identical_filename_inside_a_root_goes_to_container_depth_0() {
+        let same = "backtest-20260601-000000-btc-2024-h1-sma-cross.md";
+        let older = Some("2026-02-01T00:00:00Z");
+        let newer = Some("2026-03-01T00:00:00Z");
+        for depth1 in ["a0/v0-paper-sma/reports", "zz/v0-paper-sma/reports"] {
+            assert_eq!(container_depth_of(depth1), 1);
+            let rows: [Fx209; 2] = [
+                ("evidence", EV0, same, H1, SYN, older, 3),
+                ("evidence", depth1, same, H1, SYN, newer, 5),
+            ];
+            let want = expected_209(&rows);
+            assert_eq!(
+                want, 3,
+                "{depth1}: the table's first copy is container depth 0"
+            );
+            assert_union_picks(
+                &rows,
+                "F2: an identical filename keeps the container-depth-0 copy",
+            );
+            let tmp = tempfile::tempdir().unwrap();
+            let [_, evidence] = write_209(&tmp, &rows);
+            let alone = load_equity(&sma_tuple(LabDataSource::Synthetic), &evidence)
+                .expect("the root resolves");
+            assert_eq!(
+                alone.samples.len(),
+                want,
+                "{depth1}: F2 through load_equity alone"
+            );
+            let pair: [Fx209; 2] = [
+                ("evidence", EV0, same, H1, SYN, older, 3),
+                (
+                    "evidence",
+                    depth1,
+                    "backtest-20260101-000000-b.md",
+                    H1,
+                    SYN,
+                    newer,
+                    5,
+                ),
+            ];
+            assert_eq!(
+                expected_209(&pair),
+                5,
+                "{depth1}: distinct names, the newer report"
+            );
+            assert_union_picks(
+                &pair,
+                "F2 pair: distinct names, the newer depth-1 report wins",
+            );
+        }
+        assert!(
+            "a0" < "v0-paper-sma" && "zz" > "v0-paper-sma",
+            "the two containers straddle the slug name"
+        );
+    }
+
+    /// F4 — a file name is claimed when it is walked, ahead of every check
+    /// that can reject it (read, parse, match, source), as Compare's
+    /// `seen_filenames` claims it before it reads: the FIRST copy of name N, in
+    /// `lab-runs/`, is not a candidate for the Synthetic `H1_2024` tuple; the
+    /// same name N in `evidence/` is valid and matches, but it is the later
+    /// copy and is skipped, so the union misses (Compare drops the later copy
+    /// too). Four variants of the first copy, one per check, each asserted to
+    /// be rejected by that check: non-UTF-8 bytes (the read), no `scenario:`
+    /// line (`parse_report_meta`), a `btc-2023-1m-…` range (`report_matches`)
+    /// and `data_source: binance` (the source tier). Pair: with different
+    /// names the `evidence/` report resolves. Every variant is run, and the
+    /// test names each that fails.
+    #[test]
+    fn a_non_matching_first_copy_still_claims_its_file_name() {
+        let same = "backtest-20260601-000000-btc-2024-h1-sma-cross.md";
+        let older = "2026-02-01T00:00:00Z";
+        let later = sma_report(H1, SYN, 5, "2026-03-01T00:00:00Z");
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        let mut not_utf8 = sma_report(H1, SYN, 3, older).into_bytes();
+        not_utf8.extend_from_slice(b"- \xFF\xFE\n");
+        let no_scenario =
+            sma_report(H1, SYN, 3, older).replacen(&format!("scenario: {H1}\n"), "", 1);
+        // The check that rejects `bytes` for `tuple`, asked in the order
+        // `matching_candidates` asks them.
+        let rejected_by = |bytes: &[u8]| -> &'static str {
+            let Ok(text) = std::str::from_utf8(bytes) else {
+                return "read";
+            };
+            let Some(meta) = parse_report_meta(text) else {
+                return "parse";
+            };
+            let MatchQuality::Match { .. } = report_matches(&meta, &tuple) else {
+                return "match";
+            };
+            match meta.data_source.as_deref() {
+                Some(ds) if !source_tag_matches(ds, tuple.source) => "source",
+                _ => "none",
+            }
+        };
+        let firsts: [(&str, Vec<u8>); 4] = [
+            ("read", not_utf8),
+            ("parse", no_scenario.into_bytes()),
+            (
+                "match",
+                sma_report("btc-2023-1m-sma-cross", SYN, 3, older).into_bytes(),
+            ),
+            (
+                "source",
+                sma_report(H1, Some("binance"), 3, older).into_bytes(),
+            ),
+        ];
+        let write = |root: &std::path::Path, rel: &str, name: &str, bytes: &[u8]| {
+            let dir = root.join(rel);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(name), bytes).unwrap();
+        };
+        let mut fails: Vec<String> = Vec::new();
+        for (why, first) in &firsts {
+            assert_eq!(
+                rejected_by(first),
+                *why,
+                "precondition: the {why} variant is rejected by the {why} check"
+            );
+            for (name, want_hit) in [(same, false), ("backtest-20260101-000000-b.md", true)] {
+                let tmp = tempfile::tempdir().unwrap();
+                let (lab_runs, evidence) =
+                    (tmp.path().join("lab-runs"), tmp.path().join("evidence"));
+                write(&lab_runs, LR, same, first);
+                write(&evidence, EV, name, later.as_bytes());
+                let got = EquityCache::new().get_or_load_roots(&tuple, &[lab_runs, evidence]);
+                let hit = got.as_ref().ok().map(|s| s.samples.len());
+                if hit != want_hit.then_some(5) {
+                    fails.push(format!(
+                        "{why} variant, {}: got {got:?}",
+                        if want_hit {
+                            "pair (distinct names): the evidence report must resolve"
+                        } else {
+                            "the later same-named copy must be skipped"
+                        }
+                    ));
+                }
+            }
+        }
+        assert!(fails.is_empty(), "F4: {fails:#?}");
+    }
+
+    /// A matching `H1_2024` sma report that cannot be read for a series: no
+    /// `## Equity curve`, no companion CSV and no `Initial capital` row, so
+    /// `make_start_end_series` returns `ParseError`.
+    fn broken_h1_report(generated: &str) -> String {
+        format!(
+            "---\nscenario: btc-2024-h1-sma-cross\nseed: 0xC0FFEE\ngenerated: {generated}\n\
+             wall_clock_s: 0.1\ndata_source: synthetic\nstrategy:\nid: sma_crossover\n---\n\n\
+             # Backtest Report — btc-2024-h1-sma-cross\n\n## Summary\n\n\
+             | Metric       | Value           |\n|--------------|-----------------|\n\
+             | Final equity | $103000.00 USDT |\n\n## Universe\n\n- BTCUSDT\n"
+        )
+    }
+
+    /// F3 — a candidate that wins the key but cannot be read falls through to
+    /// the next one: `evidence/` holds the NEWER matching report, broken
+    /// (precondition: alone it is a `ParseError`); `lab-runs/` an older valid
+    /// one, which the union resolves. Pair: with the `evidence/` report valid,
+    /// it wins.
+    #[test]
+    fn a_broken_newer_report_falls_through_to_the_next_candidate() {
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        for broken in [true, false] {
+            let tmp = tempfile::tempdir().unwrap();
+            let (lab_runs, evidence) = (tmp.path().join("lab-runs"), tmp.path().join("evidence"));
+            write_at(
+                &lab_runs,
+                LR,
+                "backtest-20260601-000000-a.md",
+                &sma_report(H1, SYN, 3, "2026-02-01T00:00:00Z"),
+            );
+            let newer = "2026-03-01T00:00:00Z";
+            let text = if broken {
+                broken_h1_report(newer)
+            } else {
+                sma_report(H1, SYN, 5, newer)
+            };
+            write_at(&evidence, EV, "backtest-20260101-000000-b.md", &text);
+            let alone = load_equity(&tuple, &evidence);
+            assert_eq!(
+                matches!(alone, Err(EquityLoadError::ParseError { .. })),
+                broken,
+                "precondition: the evidence report matches and is broken iff declared; got \
+                 {alone:?}"
+            );
+            let want = if broken { 3 } else { 5 };
+            let got = EquityCache::new()
+                .get_or_load_roots(&tuple, &[lab_runs, evidence])
+                .expect("the union resolves");
+            assert_eq!(
+                got.samples.len(),
+                want,
+                "broken = {broken}: a newer report that cannot be read must fall through"
+            );
+        }
+    }
+
+    /// F5 — the fall-through inside ONE root: `lab-runs/` holds an older
+    /// valid report `a` (3 points) and a NEWER broken one `b` (no equity
+    /// table, no companion CSV, no `Initial capital` row; precondition: alone
+    /// it is a `ParseError`). `b` wins the key but cannot be read, so `a`
+    /// resolves, through the union and through `load_equity` alone. Pair: with
+    /// `b` made valid (5 points) it wins. The expected values are the
+    /// declared fixture point counts.
+    #[test]
+    fn a_broken_newest_report_falls_through_to_an_older_one_in_its_root() {
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        for broken in [true, false] {
+            let tmp = tempfile::tempdir().unwrap();
+            let (lab_runs, evidence) = (tmp.path().join("lab-runs"), tmp.path().join("evidence"));
+            write_at(
+                &lab_runs,
+                LR,
+                "backtest-20260101-000000-a.md",
+                &sma_report(H1, SYN, 3, "2026-02-01T00:00:00Z"),
+            );
+            let newer = "2026-03-01T00:00:00Z";
+            let text = if broken {
+                broken_h1_report(newer)
+            } else {
+                sma_report(H1, SYN, 5, newer)
+            };
+            write_at(&lab_runs, LR, "backtest-20260102-000000-b.md", &text);
+            let b_only = tmp.path().join("b-only");
+            write_at(&b_only, LR, "backtest-20260102-000000-b.md", &text);
+            let b_alone = load_equity(&tuple, &b_only);
+            assert_eq!(
+                matches!(b_alone, Err(EquityLoadError::ParseError { .. })),
+                broken,
+                "precondition: b matches and is broken iff declared; got {b_alone:?}"
+            );
+            let want = if broken { 3 } else { 5 };
+            let union = EquityCache::new()
+                .get_or_load_roots(&tuple, &[lab_runs.clone(), evidence])
+                .expect("the union resolves");
+            assert_eq!(
+                union.samples.len(),
+                want,
+                "broken = {broken}: a newest report that cannot be read must yield to the older \
+                 one in its own root"
+            );
+            let alone = load_equity(&tuple, &lab_runs).expect("the root resolves");
+            assert_eq!(
+                alone.samples.len(),
+                want,
+                "broken = {broken}: through load_equity alone"
+            );
+        }
+    }
+
+    /// The variant name of a lookup's error, `"hit"` for a series.
+    fn outcome(result: &Result<LabEquitySeries, EquityLoadError>) -> &'static str {
+        match result {
+            Ok(_) => "hit",
+            Err(EquityLoadError::ReportDirNotFound(_)) => "ReportDirNotFound",
+            Err(EquityLoadError::NoReport { .. }) => "NoReport",
+            Err(EquityLoadError::ParseError { .. }) => "ParseError",
+            Err(EquityLoadError::EmptySeries { .. }) => "EmptySeries",
+        }
+    }
+
+    /// F6 — the reads stop at the source tier (ADR-0055 D9 item 4, bug-log
+    /// #209): an untagged legacy report is eligible only when no tagged report
+    /// MATCHES, so a tagged matching report that cannot be read leaves the
+    /// tuple with no curve; a readable untagged one does not stand in. Three
+    /// placements: both in `lab-runs/`; the broken tagged report in
+    /// `lab-runs/` and the untagged one in `evidence/` (the case the `#212`
+    /// root-by-root union let through); and the reverse. The miss is the last
+    /// root's error, as `resolve_roots` documents, DERIVED from what
+    /// `evidence/` holds: nothing, `ReportDirNotFound`; the broken tagged
+    /// report, its `ParseError`; only the untagged one, `NoReport` (it records
+    /// no error: none of its reports is eligible). Pair: with no tagged
+    /// report the untagged one resolves (3 points). Every placement is run,
+    /// and the test names each that fails.
+    #[test]
+    fn a_broken_tagged_report_never_yields_to_an_untagged_one() {
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        let tagged = "backtest-20260101-000000-b.md";
+        let untagged = "backtest-20260102-000000-a.md";
+        let broken = broken_h1_report("2026-02-01T00:00:00Z");
+        // The untagged report is the NEWER one: only the tier ranks it lower.
+        let legacy = sma_report(H1, None, 3, "2026-03-01T00:00:00Z");
+        let tmp = tempfile::tempdir().unwrap();
+        write_at(tmp.path(), LR, tagged, &broken);
+        assert_eq!(
+            outcome(&load_equity(&tuple, tmp.path())),
+            "ParseError",
+            "precondition: the tagged report matches and cannot be read"
+        );
+        let mut fails: Vec<String> = Vec::new();
+        for (placement, tagged_root, untagged_root) in [
+            ("one root", "lab-runs", "lab-runs"),
+            ("cross-root", "lab-runs", "evidence"),
+            ("reverse cross-root", "evidence", "lab-runs"),
+        ] {
+            for with_tagged in [true, false] {
+                let tmp = tempfile::tempdir().unwrap();
+                let rel = |root: &str| if root == "lab-runs" { LR } else { EV };
+                if with_tagged {
+                    write_at(
+                        &tmp.path().join(tagged_root),
+                        rel(tagged_root),
+                        tagged,
+                        &broken,
+                    );
+                }
+                write_at(
+                    &tmp.path().join(untagged_root),
+                    rel(untagged_root),
+                    untagged,
+                    &legacy,
+                );
+                let roots = [tmp.path().join("lab-runs"), tmp.path().join("evidence")];
+                let want = match (with_tagged, tagged_root, untagged_root) {
+                    (false, _, _) => "hit",
+                    (true, "evidence", _) => "ParseError",
+                    (true, _, "evidence") => "NoReport",
+                    (true, _, _) => "ReportDirNotFound",
+                };
+                let got = EquityCache::new()
+                    .get_or_load_roots(&tuple, &roots)
+                    .map(|s| (*s).clone());
+                let points = got.as_ref().ok().map(|s| s.samples.len());
+                if outcome(&got) != want || (want == "hit" && points != Some(3)) {
+                    fails.push(format!(
+                        "{placement}, tagged report {}: want {want}, got {got:?}",
+                        if with_tagged { "present" } else { "absent" }
+                    ));
+                }
+                if placement == "one root" {
+                    let alone = load_equity(&tuple, &roots[0]);
+                    let want_alone = if with_tagged { "ParseError" } else { "hit" };
+                    if outcome(&alone) != want_alone {
+                        fails.push(format!(
+                            "{placement} through load_equity, tagged report {}: want \
+                             {want_alone}, got {alone:?}",
+                            if with_tagged { "present" } else { "absent" }
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(fails.is_empty(), "F6: {fails:#?}");
+    }
+
+    /// F7 — inside the tier the reads DO fall through the range score: an
+    /// exact `H1_2024` report that cannot be read yields to a readable
+    /// whole-year `2024` superset, drawn with its `narrowed_from` badge, which
+    /// discloses the narrowing (bug-log #209). Pair: with the exact report
+    /// readable it wins, with no badge. The superset is the NEWER report, so
+    /// only the range score ranks it lower. Precondition: alone, the exact
+    /// report matches and is a `ParseError` iff it is the broken one.
+    #[test]
+    fn a_broken_exact_report_falls_through_to_a_superset_with_its_badge() {
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        let exact = "backtest-20260101-000000-b.md";
+        let superset = "backtest-20260102-000000-a.md";
+        for broken in [true, false] {
+            let tmp = tempfile::tempdir().unwrap();
+            let lab_runs = tmp.path().join("lab-runs");
+            let exact_text = if broken {
+                broken_h1_report("2026-02-01T00:00:00Z")
+            } else {
+                sma_report(H1, SYN, 5, "2026-02-01T00:00:00Z")
+            };
+            write_at(&lab_runs, LR, exact, &exact_text);
+            let exact_only = tmp.path().join("exact-only");
+            write_at(&exact_only, LR, exact, &exact_text);
+            let alone = load_equity(&tuple, &exact_only);
+            assert_eq!(
+                matches!(alone, Err(EquityLoadError::ParseError { .. })),
+                broken,
+                "precondition: the exact report matches and is broken iff declared; got {alone:?}"
+            );
+            write_at(
+                &lab_runs,
+                LR,
+                superset,
+                &sma_report(Y2024, SYN, 3, "2026-03-01T00:00:00Z"),
+            );
+            let got = EquityCache::new()
+                .get_or_load_roots(&tuple, &[lab_runs, tmp.path().join("evidence")])
+                .expect("the union resolves");
+            let (want_name, want_points, want_badge) = if broken {
+                (superset, 3, Some(superset))
+            } else {
+                (exact, 5, None)
+            };
+            assert_eq!(
+                (
+                    got.source_report.as_str(),
+                    got.samples.len(),
+                    got.narrowed_from.as_deref()
+                ),
+                (want_name, want_points, want_badge),
+                "broken = {broken}: a broken exact report yields to the superset, with its badge"
+            );
+        }
+    }
+
+    /// F8 — a companion CSV that is present but does not read makes its run
+    /// unreadable (bug-log #209): the engine writes the `.md` first and the
+    /// CSV second, so a disk-full write leaves a complete `.md` beside a cut
+    /// or empty CSV. In `lab-runs/`: an older complete run `a` (its `.md`
+    /// start/end-only, a 4-sample CSV) and a newer run `b` (the same `.md`
+    /// shape). With `b`'s CSV cut inside its last record, or empty, `a`
+    /// resolves from its CSV. Pair: with `b`'s CSV intact `b` resolves from it
+    /// (6 samples); with no CSV at all `b` resolves from its `.md`, a start/end
+    /// pair (an absent companion is not a broken one: older committed reports
+    /// have none). Compare's lenient `load_companion_equity_csv` reads the
+    /// cut and the empty CSV as `None`, as before. Every variant is run, and
+    /// the test names each that fails.
+    #[test]
+    fn a_run_whose_csv_is_cut_short_falls_through_to_an_older_one() {
+        use crate::test_support::write_companion_equity_csv_for_md;
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        let samples = |n: i64, base: i64| -> Vec<(i64, Decimal)> {
+            (0..n)
+                .map(|i| {
+                    (
+                        1_704_067_200_000 + i * 86_400_000,
+                        Decimal::from(base + i * 1_000),
+                    )
+                })
+                .collect()
+        };
+        let (a, b) = (
+            "backtest-20260101-000000-a.md",
+            "backtest-20260102-000000-b.md",
+        );
+        let mut fails: Vec<String> = Vec::new();
+        for csv_b in ["cut", "empty", "intact", "absent"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let lab_runs = tmp.path().join("lab-runs");
+            let dir = lab_runs.join(LR);
+            write_at(
+                &lab_runs,
+                LR,
+                a,
+                &sma_report(H1, SYN, 0, "2026-02-01T00:00:00Z"),
+            );
+            write_at(
+                &lab_runs,
+                LR,
+                b,
+                &sma_report(H1, SYN, 0, "2026-03-01T00:00:00Z"),
+            );
+            write_companion_equity_csv_for_md(&dir.join(a), &samples(4, 100_000)).unwrap();
+            let b_csv = dir.join("backtest-20260102-000000-b-equity.csv");
+            if csv_b != "absent" {
+                write_companion_equity_csv_for_md(&dir.join(b), &samples(6, 200_000)).unwrap();
+                let text = std::fs::read_to_string(&b_csv).unwrap();
+                let keep = match csv_b {
+                    "cut" => text.trim_end().rfind('\n').unwrap() + 1 + 15,
+                    "empty" => 0,
+                    _ => text.len(),
+                };
+                std::fs::write(&b_csv, &text[..keep]).unwrap();
+                assert_eq!(
+                    reports::csv_artifacts::read_equity_csv(&b_csv).map_or(0, |v| v.len()),
+                    if csv_b == "intact" { 6 } else { 0 },
+                    "precondition: b's {csv_b} CSV reads 6 samples iff intact"
+                );
+                assert_eq!(
+                    load_companion_equity_csv(&dir.join(b)).is_some(),
+                    csv_b == "intact",
+                    "Compare's lenient reader: b's {csv_b} CSV is None unless intact"
+                );
+            }
+            let (want_name, want_points, want_fidelity) = match csv_b {
+                "cut" | "empty" => (a, 4, Fidelity::PerBar),
+                "intact" => (b, 6, Fidelity::PerBar),
+                _ => (b, 2, Fidelity::StartEndOnly),
+            };
+            let roots = [lab_runs.clone(), tmp.path().join("evidence")];
+            for (via, got) in [
+                (
+                    "union",
+                    EquityCache::new()
+                        .get_or_load_roots(&tuple, &roots)
+                        .map(|s| (*s).clone()),
+                ),
+                ("load_equity", load_equity(&tuple, &lab_runs)),
+            ] {
+                let seen = got
+                    .as_ref()
+                    .map(|s| (s.source_report.to_string(), s.samples.len(), s.fidelity));
+                if seen.as_ref().ok() != Some(&(want_name.to_string(), want_points, want_fidelity))
+                {
+                    fails.push(format!(
+                        "b's CSV {csv_b}, via {via}: want ({want_name}, {want_points}, \
+                         {want_fidelity:?}), got {seen:?}"
+                    ));
+                }
+            }
+        }
+        assert!(fails.is_empty(), "F8: {fails:#?}");
     }
 
     // ── bug-log #212: the report match (ADR-0055 D9) ─────────────────────────

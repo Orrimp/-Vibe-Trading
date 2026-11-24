@@ -65,8 +65,12 @@ pub struct CachedCell {
     pub equity_curve_tail: Vec<f64>,
     /// lab-compare-equity-overlay R1 — full **timestamped** per-bar equity
     /// series `(timestamp_millis, equity_usdt)`, hydrated from the report's
-    /// companion equity CSV (`backtest-<stamp>-<scenario>-equity.csv`) via the
-    /// same `equity_loader::load_companion_equity_csv` the Lab cold path uses.
+    /// companion equity CSV (`backtest-<stamp>-<scenario>-equity.csv`) via
+    /// `equity_loader::load_companion_equity_csv`, the lenient form of the
+    /// strict `read_companion_equity_csv` the Lab cold path uses: the same file
+    /// beside the report and the same series when the CSV reads; a cut or
+    /// empty CSV gives Compare an empty series, while the Lab treats the report
+    /// as broken (bug-log #209).
     ///
     /// This is what feeds the two-run `chart::view` overlay — unlike
     /// `equity_curve_tail` (a bare `Vec<f64>` sparkline with no x-axis), these

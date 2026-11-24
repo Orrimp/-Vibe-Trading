@@ -184,6 +184,98 @@
 //! wider than R6, and its slug map is R8 for five chips. PNGs (with
 //! `UI_DUMP_PNG`) of the fixed tree: `/tmp/lab_212a_{both,macd,bbands,none,swap}.png`,
 //! `/tmp/lab_212b_{eth,none,btc}.png`.
+//!
+//! ## bug-log #209 — the Lab draws the newest run of its tuple
+//!
+//! The Lab's cold path kept the first root with a match (`lab-runs/` won every
+//! collision) and, inside a root, the first strictly-best score in D8 order,
+//! so the OLDEST stamp won a tie and `generated:` was never read. It now keeps
+//! the union's greatest key (tier, range score, `generated:`); an identical
+//! filename keeps its first copy (`lab-runs/`, then container depth 0) through
+//! one filename set over the walk, as Compare does, and an equal key goes to
+//! the root searched first, then to the first report in D8 order (ADR-0055
+//! § D5 as amended). A report that cannot be read falls through to the next
+//! candidate of its source tier (a broken tagged report never to an untagged
+//! one); in the Lab a companion CSV that is present but does not read, or is
+//! empty, makes its report unreadable. Tests: the `lab::equity_loader` lib tests N1-A
+//! `a_newer_generated_in_the_larger_path_wins`, N1-B
+//! `a_newer_generated_in_the_smaller_path_wins`, N2
+//! `equal_score_and_generated_inside_one_dir_goes_to_the_first_path`, N3
+//! `an_exact_range_beats_a_newer_superset`, N4
+//! `a_report_without_generated_ranks_oldest`, X1
+//! `a_newer_evidence_report_beats_an_older_lab_runs_one`, X2
+//! `an_equal_generated_across_roots_goes_to_lab_runs`, X3
+//! `a_tagged_older_evidence_report_beats_an_untagged_newer_lab_runs_one`, X4
+//! `an_exact_evidence_report_beats_a_newer_lab_runs_superset`; re-derived on an
+//! equal `generated:` E2, E2b, `route_overlay_two_root_union_lab_runs_wins_collision`,
+//! E4 `equal_score_and_generated_tie_at_one_container_depth_goes_to_the_first_dir`,
+//! E4b `equal_generated_tie_across_container_depths_goes_to_container_depth_0`
+//! (+ `a_strictly_newer_generated_at_container_depth_1_wins`); the
+//! identical-filename pins, mirroring Compare's, F1
+//! `an_identical_filename_across_roots_goes_to_lab_runs` and F2
+//! `an_identical_filename_inside_a_root_goes_to_container_depth_0` (two-sided:
+//! `a0/` and `zz/` straddle the slug), and F4
+//! `a_non_matching_first_copy_still_claims_its_file_name` (four first copies,
+//! one per check that can reject it: read, parse, match, source); the
+//! fall-through F3 `a_broken_newer_report_falls_through_to_the_next_candidate`
+//! (across roots), F5
+//! `a_broken_newest_report_falls_through_to_an_older_one_in_its_root` (inside
+//! one root), F7 `a_broken_exact_report_falls_through_to_a_superset_with_its_badge`
+//! (inside the tier, with the `narrowed_from` badge) and F8
+//! `a_run_whose_csv_is_cut_short_falls_through_to_an_older_one` (a cut or empty
+//! companion CSV); the tier boundary F6
+//! `a_broken_tagged_report_never_yields_to_an_untagged_one`; and **LR-209**
+//! [`lab_draws_the_newest_run_of_its_tuple`] (below).
+//!
+//! ### T-T4 probe table (bug-log #209)
+//!
+//! The #212 protocol above, on `ui/lab/equity_loader.rs`; each probe ran
+//! `cargo test -p ui --lib` (743) and `--no-fail-fast --test lab_run_engine
+//! --test lab_buy_sell_overlay_render --test live_equity_render --test
+//! lab_binance_persist_compare` (2, 10, 31, 2). Measured 2026-11-24, every
+//! probe again on the final code after review round 3 (the tier boundary, the
+//! strict companion-CSV read, F4's four variants, F6-F8). F1-F8 "pair" = the
+//! test's two-sided half (distinct names, a readable report, no tagged report,
+//! an intact or absent CSV); F4, F6 and F8 run every variant and name each
+//! that fails.
+//!
+//! | Probe | `ui/lab/equity_loader.rs` symbol | OLD → NEW | RED (measured) |
+//! |---|---|---|---|
+//! | S1 drop `generated:` | `Candidate::key` | `            generated: self.generated,` → `            generated: None,` | X1, N1-A, N4, `a_strictly_newer_generated_at_container_depth_1_wins`, F1, F2, F3, F5 (each at its pair), F8 (its intact and absent halves: the older `a` comes first in D8 order), LR-209 (F_both vs F_new 4,338 px: it draws the older run) |
+//! | S2 oldest `generated:` wins | `Candidate::key` | the same OLD → `generated: self.generated.map(\|t\| time::OffsetDateTime::UNIX_EPOCH - (t - time::OffsetDateTime::UNIX_EPOCH)),` (mirrored about the epoch) | X1, N1-A, N1-B, `a_strictly_newer_generated_at_container_depth_1_wins`, `clear_replaces_a_stale_committed_hit_with_the_newer_lab_runs_report`, F1, F2, F3, F5 (each at its pair), F8 (its intact and absent halves), LR-209 (4,338 px) |
+//! | S3a last of equals in a root | `matching_candidates` | `        out.push(Candidate {` → `        out.insert(0, Candidate {` (a root's candidates in reverse D8 order) | E4, E4b, N2 |
+//! | S3b equal key to the later candidate | `resolve_roots` | `    cands.sort_by(\|a, b\| b.1.key().cmp(&a.1.key()));` → `    cands.sort_by(\|a, b\| a.1.key().cmp(&b.1.key()));` + `    cands.reverse();` | X2, E2, E2b, `route_overlay_two_root_union_lab_runs_wins_collision`, and, since the sort also orders a root's own candidates, E4, E4b, N2. (The #208 `state::tests::lab_run_completed_{ok,err}_…` stay green: their two reports share one file name, so the set skips the `evidence/` copy before any sort.) |
+//! | S4 the first root wins again | `resolve_roots` | `            Ok(found) => cands.extend(found.into_iter().map(\|c\| (i, c))),` → the same plus `break;` | X1, X3, X4, F1 and F3 (each at its pair), F6 (one root: `NoReport`, not `ReportDirNotFound`, because `evidence/` is never walked; reverse cross-root: the untagged `lab-runs/` report is drawn) |
+//! | S5 no tier | `Candidate::key` | `            tier: self.tier,` → `            tier: Tier::Tagged,` | X3, `legacy_untagged_report_only_matches_when_no_tagged_exists`, F6 (all four broken cells: the newer untagged report sorts first and is drawn) |
+//! | S6 `generated:` before the range | `CandidateKey` (field order) | `    range_score: u32,` + `    generated: Option<time::OffsetDateTime>,` → the two lines swapped | N3, X4, F7 (its pair: the newer superset beats the readable exact report) |
+//! | S7 an undated report is "now" | `parse_report_meta` | `        .and_then(\|v\| {` (before the RFC 3339 parse) → `        .map_or(Some(time::OffsetDateTime::now_utc()), \|v\| {` | N4 |
+//! | S8 (P6′) roots reversed | `resolve_roots` | `    for (i, root) in roots.iter().enumerate() {` → `    for (i, root) in roots.iter().enumerate().rev() {` | X2, E2, E2b, `route_overlay_two_root_union_lab_runs_wins_collision`, F1, F4 (all four variants), and the #208 `state::tests::lab_run_completed_{ok,err}_…` (with the roots reversed the `evidence/` copy of a shared file name is walked first) |
+//! | S9 no filename set | `matching_candidates` | the three lines `        if !path.file_name().is_some_and(\|n\| seen.insert(n.to_owned())) {` … `        }` → nothing | F1, F2, F4 (all four variants) |
+//! | S10 one set per root | `resolve_roots` | `        match matching_candidates(tuple, root, &mut seen) {` → `… &mut HashSet::new()) {` | F1, F4 (all four variants); F2, inside one root, stays green |
+//! | S11 no fall-through | `resolve_roots` | `    for (i, c) in cands.iter().take_while(\|(_, c)\| Some(c.tier) == top_tier) {` → `    for (i, c) in cands.iter().take(1) {` | F3, F5, F7 and F8 (each at its broken half; F8 at its cut and empty halves). F3's union returns the broken report's `ParseError`; F5's, F7's and F8's return the absent `evidence/` root's `ReportDirNotFound`, the last root's error, which masks the read error of `lab-runs/` (`ParseError`; for F8's empty CSV `EmptySeries`) |
+//! | S12 a name claimed only after `report_matches` | `matching_candidates` | the three-line check moved from above the read to just below `let MatchQuality::Match { fit } = report_matches(…) else { continue; };` | F4 (its read, parse and match variants) |
+//! | S12b a name claimed only by a candidate | `matching_candidates` | the three-line check moved to just above `out.push(Candidate {`, below the source check | F4 (all four variants) |
+//! | S12c a name claimed only after the parse | `matching_candidates` | the three-line check moved to just below `let Some(meta) = parse_report_meta(&content) else { continue; };` | F4 (its read and parse variants) |
+//! | S12d a name claimed only after the read | `matching_candidates` | the three-line check moved to just below `let Ok(content) = std::fs::read_to_string(path) else { continue; };` | F4 (its read variant) |
+//! | S13 one candidate per root | `resolve_roots` | `            Ok(found) => cands.extend(found.into_iter().map(\|c\| (i, c))),` → `… found.into_iter().rev().max_by(\|a, b\| a.key().cmp(&b.key())).map(…)` (the first best of each root, the round-1 form) | F5, F7, F8 (each at its broken half; F8 at its cut and empty halves); F3, across roots, stays green |
+//! | S14 no tier boundary | `resolve_roots` | `    for (i, c) in cands.iter().take_while(\|(_, c)\| Some(c.tier) == top_tier) {` → `    for (i, c) in &cands {` | F6 (all four broken cells: the untagged report is drawn) |
+//! | S15 the reads stop at the range score too | `resolve_roots` | the same OLD → `    for (i, c) in cands.iter().take_while(\|(_, c)\| Some(c.tier) == top_tier && c.fit == cands[0].1.fit) {` | F7 (its broken half: a miss, not the superset) |
+//! | S16 the CSV error ignored | `materialize` | `    let companion = read_companion_equity_csv(cand_path)?;` → `    let companion = read_companion_equity_csv(cand_path).unwrap_or(None);` | F8 (its cut and empty halves: the newer run is drawn as a start/end pair) |
+//! | S17 an absent CSV is an error | `read_companion_equity_csv` | `        return Ok(None);` in the `try_exists` branch → `        return Err(unreadable(String::new()));` | F8 (its absent half) and every test whose report has no companion CSV: lib 46 of 743 (44 in `lab::equity_loader`, E3 `integration_load_real_v1_report` among them, and the two #208 `state` tests), this file 8 of 10 (LR-212a, LR-212b and LR-209 among them), `live_equity_render.rs` 13 of 31 |
+//!
+//! Every probe but S17 left `lab_run_engine.rs` (2), `live_equity_render.rs`
+//! (31) and `lab_binance_persist_compare.rs` (2) green, and LR-212a/LR-212b
+//! with them; S17 left `lab_run_engine.rs` and
+//! `lab_binance_persist_compare.rs` green. S3b replaces the design's
+//! "non-stable sort" form, which cannot reorder two equal keys. HEAD's rule is
+//! S1 + S9 + S13 with a first-root-that-reads cross-root rule (S4 differs only
+//! in stopping before the read): no `generated:`, no filename set, one
+//! first-best candidate per root; it also lets a broken tagged report yield
+//! to an untagged one in the next root and ignores an unreadable companion
+//! CSV. Red-first is REASONED per probe. The `#205` P6 rows in
+//! `live_equity_render.rs` and `reports_populated_curve_render.rs` gain a P6′
+//! row (S8), because P6's OLD is gone. PNGs (with `UI_DUMP_PNG`):
+//! `/tmp/lab_209_{both,new,old,none}.png`.
 
 #![cfg(target_os = "macos")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
@@ -1139,8 +1231,8 @@ fn h1_run<'a>(
 /// curves for one tuple (rising vs falling) must differ, so a 0-px identity
 /// against one of them cannot pass by drawing the other, and by which a frame
 /// that draws a run must differ from the no-overlay frame. Measured
-/// 2026-11-24: LR-212a's controls differ by far more (printed as `#212 pixel
-/// margin …`).
+/// 2026-11-24: LR-212a's and LR-209's controls differ by far more (printed as
+/// `#212 pixel margin …` / `#209 pixel margin …`).
 const CURVE_SWAP_MIN_PX: usize = 1_000;
 
 /// The v05-composed-strategies pair of LR-212a: (file name, writer id,
@@ -1327,5 +1419,101 @@ fn lab_draws_no_report_of_another_coin() {
         differ, 0,
         "#212: an ETH run answers no BTCUSDT tuple, so the Lab must draw nothing, but {differ} \
          px differ from the no-overlay frame"
+    );
+}
+
+// ── bug-log #209 — the Lab draws the newest run of its tuple ───────────────
+
+/// The two runs of LR-209, both of `(v0.sma, BTCUSDT, H1_2024, Synthetic)`
+/// in `lab-runs/v0-paper-sma/reports/`: (file name, `generated:`, falling).
+/// The OLDER run (falling) sits at the smaller stamp, so a first-in-path-order
+/// reader draws it.
+const LR209_RUNS: [(&str, &str, bool); 2] = [
+    (
+        "backtest-20260601-120000000-btcusdt-2024-h1-sma-cross-synthetic.md",
+        "2026-06-01T12:00:00Z",
+        true,
+    ),
+    (
+        "backtest-20260602-120000000-btcusdt-2024-h1-sma-cross-synthetic.md",
+        "2026-06-02T12:00:00Z",
+        false,
+    ),
+];
+
+/// **LR-209 — the Lab draws the newest run of its tuple (bug-log #209,
+/// ADR-0055 § D5).** Tuple `(v0.sma, BTCUSDT, H1_2024, Synthetic)`; two runs
+/// of it in `lab-runs/v0-paper-sma/reports/` (`LR209_RUNS`): the older one
+/// falling, at the smaller stamp, the newer one rising.
+///   F_both  — both runs: must equal F_new byte for byte.
+///   F_new   — the newer run alone.
+///   F_old   — the older run alone: the control. It must differ from F_new by
+///             ≥ `CURVE_SWAP_MIN_PX`, so the identity cannot pass by drawing
+///             the older curve.
+///   F_none  — an empty root: no overlay. F_new must differ from it by
+///             ≥ `CURVE_SWAP_MIN_PX`: the newer run does draw (#187), so the
+///             identity cannot pass with F_both and F_new both blank.
+/// PNGs (with `UI_DUMP_PNG`): `/tmp/lab_209_{both,new,old,none}.png`.
+#[test]
+fn lab_draws_the_newest_run_of_its_tuple() {
+    assert!(
+        LR209_RUNS[0].0 < LR209_RUNS[1].0 && LR209_RUNS[0].1 < LR209_RUNS[1].1,
+        "precondition: the older run has the smaller stamp"
+    );
+    let slug = backtest::engine::strategy_dir_slug("v0.sma");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let scenes: [(&str, &[usize]); 4] = [
+        ("both", &[0, 1]),
+        ("new", &[1]),
+        ("old", &[0]),
+        ("none", &[]),
+    ];
+    let frames: Vec<Vec<u8>> = scenes
+        .iter()
+        .map(|(k, idx)| {
+            let root = tmp.path().join(k);
+            for &i in *idx {
+                let (name, generated, falling) = LR209_RUNS[i];
+                write_lab_run(
+                    &root,
+                    slug,
+                    name,
+                    &h1_run(
+                        "sma_crossover",
+                        "btcusdt-2024-h1-sma-cross-synthetic",
+                        "BTCUSDT",
+                        generated,
+                        falling,
+                    ),
+                );
+            }
+            let (w, rgba) = render(lab_reading("v0.sma", &root));
+            assert_eq!(w, VIEW_W, "{k}: frame width");
+            dump_png(w, &rgba, &format!("/tmp/lab_209_{k}.png"));
+            rgba
+        })
+        .collect();
+    let differ_both = differing_pixels(&frames[0], &frames[1]);
+    let differ_old = differing_pixels(&frames[2], &frames[1]);
+    let differ_new_none = differing_pixels(&frames[1], &frames[3]);
+    eprintln!(
+        "#209 pixel margin LR-209: F_both vs F_new {differ_both} px (threshold == 0); control \
+         F_old vs F_new {differ_old} px (threshold >= {CURVE_SWAP_MIN_PX}); control F_new vs \
+         F_none {differ_new_none} px (threshold >= {CURVE_SWAP_MIN_PX})"
+    );
+    assert!(
+        differ_old >= CURVE_SWAP_MIN_PX,
+        "control: the older curve must look different from the newer one, but only \
+         {differ_old} px differ"
+    );
+    assert!(
+        differ_new_none >= CURVE_SWAP_MIN_PX,
+        "control: the newer run must draw, but only {differ_new_none} px differ from the \
+         no-overlay frame"
+    );
+    assert_eq!(
+        differ_both, 0,
+        "#209: with two runs of the tuple the Lab must draw the newer one, but {differ_both} px \
+         differ"
     );
 }

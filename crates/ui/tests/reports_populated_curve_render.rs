@@ -98,8 +98,12 @@
 //! `container_depth_1_evidence_report_wins_when_searched_first`, E3
 //! `integration_load_real_v1_report`, E3b
 //! `integration_real_v1_report_binance_tuple_is_no_report`, E4
-//! `equal_score_tie_at_one_container_depth_goes_to_the_first_dir`,
-//! E4b `equal_score_tie_across_container_depths_goes_to_container_depth_0`,
+//! `equal_score_and_generated_tie_at_one_container_depth_goes_to_the_first_dir`
+//! (`equal_score_tie_at_one_container_depth_goes_to_the_first_dir` until the
+//! bug-log #209 fix), E4b
+//! `equal_generated_tie_across_container_depths_goes_to_container_depth_0`
+//! (`equal_score_tie_across_container_depths_goes_to_container_depth_0` until
+//! #209),
 //! E4c `a_strictly_better_report_in_the_second_report_dir_wins`, E5
 //! `report_dir_not_found_names_slug_root_bound_and_which_empty`); `R1-R5` =
 //! the five converted live tests in this file (R1
@@ -129,6 +133,7 @@
 //! | P4 Lab leg only | `lab/equity_loader.rs` `discover_reports` | `        .flat_map(\|d\| layout::backtest_files(&d))` → `        .filter(\|d\| d.parent().and_then(\|p\| p.parent()) == Some(report_root)).flat_map(\|d\| layout::backtest_files(&d))` | E1, E2b (2 ≠ 4), E3, E3b (`ReportDirNotFound`, not `NoReport`), E4, E4c, LR1, LR3 | LY*, K2, D*, OR*, R*, E1b, E2, E4b (container depth 0 still wins), E5 (the error path counts the unfiltered dirs), LR2, container-depth-0 Lab tests | measured (E4b/E4c/E5 cells REASONED) |
 //! | P5 `reports` is never a container | `reports/layout.rs` `child_dirs` | `        .filter(\|p\| p.is_dir() && p.file_name() != Some(OsStr::new(REPORTS_DIR)))` → `        .filter(\|p\| p.is_dir())` | LY1, LY3 (`inner` resolves, the TREE says not), D1 (`inner` listed) | LY2, LY4, LY5, K2, D2-D5, OR*, E*, R*, LR* (no `evidence/reports` dir) | measured before LY3 compared against the TREE; that cell REASONED |
 //! | P6 lab-runs precedence | `lab/equity_loader.rs` `EquityCache::get_or_load_roots` | `    for root in roots {` → `    for root in roots.iter().rev() {` | `route_overlay_two_root_union_lab_runs_wins_collision`, E2 (4 ≠ 2), E2b (2 ≠ 4) | E1, E1b, E3, E3b, E4, E4b, E4c, E5, LR1-LR3, single-root tests | measured (E4b/E4c/E5 cells REASONED) |
+//! | P6′ (bug-log #209: P6's OLD is gone; this row supersedes it) | `lab/equity_loader.rs` `resolve_roots` | `    for (i, root) in roots.iter().enumerate() {` → `    for (i, root) in roots.iter().enumerate().rev() {` | X2, E2 (4 ≠ 2), E2b (2 ≠ 4), `route_overlay_two_root_union_lab_runs_wins_collision` (4 ≠ 2), and the #208 `state::tests::lab_run_completed_ok_clears_equity_cache_hits_and_misses` / `lab_run_completed_err_clears_equity_cache_too` at their fresh-cache control (100,000 ≠ 200,000): every pin whose two roots tie on the key, plus F1 `an_identical_filename_across_roots_goes_to_lab_runs` and F4 `a_non_matching_first_copy_still_claims_its_file_name`, all four variants (the `evidence/` copy of a shared file name is walked first) (`lab::equity_loader` probe S8, the same OLD/NEW) | the rest | measured 2026-11-24, again after review rounds 1, 2 and 3 (lib 735 of 743; `live_equity_render.rs` 31 of 31, `lab_buy_sell_overlay_render.rs` 10 of 10) |
 //! | P7 the oracle is not narrowed | `test_support.rs` `evidence_oracle::git_listed_files` | `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence"])` → `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence/v5-latency-slippage-sim-v0.2.0-anchor-migration"])` | D2 ("≥1 container-depth-1 report"), D3 ("≥1 derived companion"), D5 (control "must be git-listed"), OR1 (the fixture's `evidence/v1/…` rows fall outside), OR2 (indexed reports missing), E3 (0 momentum reports), R6 (no companion stem) | everything else | REASONED (this OLD moved here from `reports/loader.rs` tests in this change) |
 //! | P8 the sort key | `reports/loader.rs` `discover_reports_in` | `            .then_with(\|\| a.file_stem.cmp(&b.file_stem))` → `            .then_with(\|\| std::cmp::Ordering::Equal)` | D1 (the `sma` rows come out in path order) | the rest | measured |
 //! | P9 slug = the leaf dir | `reports/loader.rs` `discover_reports_in` | `                slug: rd.slug.clone(),` → `                slug: smol_str::SmolStr::new(rd.dir.to_string_lossy()),` | D1 (slug column), R7a (its slug assertion: left `<tmp>/v9/demo/reports`, right `"demo"`) | D2, D3, R1-R6, R7b (they look up by stem and path) | measured (the earlier table listed R7a as green; the falsifier measured it red) |

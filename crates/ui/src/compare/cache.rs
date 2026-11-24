@@ -279,8 +279,11 @@ fn extract_kpis_from_body(
         // lab-compare-equity-overlay T1: the full timestamped per-bar series
         // from the report's companion equity CSV (empty for start-end-only
         // cells — older committed reports have no companion). Resolved by the
-        // caller via `equity_loader::load_companion_equity_csv` so the Compare
-        // overlay reads the EXACT series the Lab cold path does.
+        // caller via `equity_loader::load_companion_equity_csv`, the lenient
+        // form of the strict `read_companion_equity_csv` the Lab cold path
+        // uses: the same series when the CSV reads; a cut or empty CSV gives
+        // Compare an empty series, while the Lab treats the report as broken
+        // (bug-log #209).
         equity_series_ts,
         source_report_path: SmolStr::new(source_path),
         generated_at,
@@ -512,11 +515,15 @@ fn scan_one_root(
 
             // lab-compare-equity-overlay T1: hydrate the cell's timestamped
             // per-bar series from the companion equity CSV beside this report
-            // (`backtest-<stamp>-<scenario>-equity.csv`), via the SAME loader
-            // the Lab cold path uses. Graceful fallback: a missing/unparseable
-            // companion yields an empty series — the overlay simply has nothing
-            // to draw for this cell (no fake curve, no panic). Older committed
-            // `spec/` reports without a companion CSV stay overlay-blank.
+            // (`backtest-<stamp>-<scenario>-equity.csv`), via
+            // `load_companion_equity_csv`, the lenient form of the strict
+            // `read_companion_equity_csv` the Lab cold path uses: the same file
+            // and the same series when the CSV reads. Graceful fallback: a
+            // missing, unparseable or empty companion yields an empty series —
+            // the overlay simply has nothing to draw for this cell (no fake
+            // curve, no panic), while the Lab treats a cut or empty one as a
+            // broken report (bug-log #209). Older committed `spec/` reports
+            // without a companion CSV stay overlay-blank.
             let equity_series_ts =
                 crate::lab::equity_loader::load_companion_equity_csv(&report_path)
                     .unwrap_or_default();

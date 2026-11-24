@@ -188,6 +188,7 @@ which moved the tree with its container depths unchanged.
 2. **§ D5, third sentence** ("the existing most-recent-wins tiebreaker (`generated:` frontmatter)
    decides the Lab hot-path pick"): the Lab has never done this. Recorded under "The Lab's
    precedence" and handed off to bug-log `#209` (AD-18), where either the code or § D5 moves.
+   *(2026-11-24: closed by the bug-log `#209` amendment below: the code moved, § D5 stands.)*
 3. **§ D1, third sentence** ("The `<strategy-slug>` matches `equity_loader::strategy_slug`"): the
    engine's `strategy_dir_slug` maps ids that `strategy_slug` does not. Handed off to bug-log
    `#212`; D8 does not depend on it. *(2026-11-24: closed by the bug-log `#212` amendment below:
@@ -242,7 +243,10 @@ premise now holds for all three `ui` readers.
 **The order rule, and why.** The order matters only to a reader that keeps the FIRST of equal
 candidates. For the Lab that is an equal-score tie inside one tier: a report tagged with the
 tuple's data source still beats an untagged one, and a strictly better range score still wins, at
-either container depth. For Compare (since bug-log `#206`) it is an identical filename, or an
+either container depth. *(2026-11-24, bug-log `#209`: for the Lab it is now, as for Compare, an
+identical filename (the copy walked first is kept and a later same-named copy is skipped before it
+is read) or an equal (tier, range score, `generated:`) tie inside one root; between distinct
+filenames a strictly newer `generated:` wins at either container depth.)* For Compare (since bug-log `#206`) it is an identical filename, or an
 equal `generated:` stamp for one tuple, inside one root; between distinct filenames a strictly
 newer `generated:` still wins at either container depth. On such a tie container depth 0 wins:
 - It is where the one-level walk looked, so on such a tie the pick stays the report that walk
@@ -296,7 +300,9 @@ newer `generated:` still wins at either container depth. On such a tie container
 - **The anchor gate:** `scripts/verify_anchors.sh` is not a `ui` reader. It `find`s
   `*/reports/backtest-*-<scenario>.md` at any depth under `evidence/`, and D8 does not bind it.
 
-**The Lab's precedence (what the code does; it diverges from § D5).** The hot path is unchanged:
+**The Lab's precedence (what the code does; it diverges from § D5).** *(2026-11-24: items 1–3
+describe the code before the bug-log `#209` fix, and item 2's quoted line before `#212` (since then
+`fit.score() > s.score()`); its amendment below supersedes them.)* The hot path is unchanged:
 the in-memory mirror of the last run wins while its tuple is on screen. The cold path:
 
 1. **Across roots, the first root with a match wins.** `get_or_load_roots` tries
@@ -327,7 +333,10 @@ container's name sorts before the slug's in one root, after it in the other):
 `equal_score_tie_across_container_depths_goes_to_container_depth_0`, with
 `equal_score_tie_at_one_container_depth_goes_to_the_first_dir` and
 `a_strictly_better_report_in_the_second_report_dir_wins`. Item 3 inside ONE dir is not pinned;
-bug-log `#209` adds that pin with its fix.
+bug-log `#209` adds that pin with its fix. *(2026-11-24: the bug-log `#209` amendment below
+renames the two order-rule pins (E4b, E4) and re-derives the item-1 pins
+`route_overlay_two_root_union_lab_runs_wins_collision`, E2 and E2b on an equal `generated:`;
+`default_roots_order_lab_runs_first` reads no report and is unchanged; its Pins list is current.)*
 
 **What the Lab draws from committed evidence.** The committed reports of the four mapped slugs, all
 under `evidence/v1/`, have no `## Equity curve` section and no sibling `-equity.csv` (the Lab's
@@ -502,8 +511,170 @@ and LR-212b `lab_draws_no_report_of_another_coin`.
   changed file; `bash scripts/verify_anchors.sh` `ANCHORS PASS  (119 / 119)` before and after,
   `--explain` byte-identical; `git status --porcelain -- evidence` empty.
 
+## Amendment 2026-11-24 (bug-log `#209`: the Lab follows § D5)
+
+**What it changes.** The Lab's cold-path pick now implements § D5's "most-recent-wins
+(`generated:`)" over the union of both roots, as Compare already did. Over every matching report
+of `[lab-runs/, evidence/]` the Lab keeps the greatest key **(tier, range score, `generated:`)**:
+a report tagged with the tuple's `data_source:` beats an untagged one, an exact range (D9) beats
+a superset, and then the newest `generated:` wins, whichever root holds it. § D5's
+identical-filename rule holds by a filename set, as in Compare (`seen_filenames`), not by the key:
+one set spans the walk of both roots, so the first copy of a filename in walk order (`lab-runs/`
+before `evidence/`, container depth 0 before 1) is kept, and a later same-named copy is skipped
+before it is read, whatever its `generated:`. An equal key goes to the root searched first
+(`lab-runs/`), then to the first report in D8 order. Code: each root offers every matching
+report in D8 walk order (`equity_loader::matching_candidates(tuple, root, seen)`, which skips a
+name already in `seen`, before reading the file, and adds every name it walks, matching or not, as
+Compare does); `equity_loader::resolve_roots` creates one `seen` set for all roots, concatenates
+the roots' candidates in root order, sorts them by key, descending and stably (an equal key keeps
+root order, then D8 order), and reads them in that order, the first that reads winning. So a
+matching report that cannot be read falls through to the next candidate of its source tier, in
+its own root as well as in the next one: a newest run that cannot be read (its `.md` cut before
+its `Initial capital` or `Final equity` row, or its companion CSV present but cut or empty, which
+is what a disk-full write leaves, because the engine writes the `.md` first and the CSV second)
+yields to an older readable run of the tuple. The reads stop at the source tier of the
+top-ranked candidate: D9 item 4's tiers are an eligibility rule (review D1: an untagged legacy
+report is eligible only when no tagged report MATCHES; eligibility by match, not by readability),
+so a tagged matching report that cannot be read leaves the tuple with no curve rather than
+handing it to an untagged one. Inside the tier a broken exact report does fall through to a
+readable superset, which the `narrowed_from` badge discloses. In the Lab a companion CSV that is
+present but does not read, or holds no sample, makes its report unreadable
+(`equity_loader::read_companion_equity_csv`); an absent one does not (older committed reports
+have none). Compare's `load_companion_equity_csv` keeps reading such a CSV as no series.
+`EquityCache::get_or_load_roots` is `resolve_roots` behind its cache, `load_equity` is
+`resolve_roots` over one root. The per-tuple cache and its clearing (bug-log `#208`) are
+unchanged.
+
+**What it supersedes and closes.**
+- The 2026-11-15 amendment's "The Lab's precedence" items 1–3 ("across roots, the first root with a
+  match wins"; "within a root … the FIRST report with the best `range_score` wins"; "within one dir
+  the OLDEST stamp wins a tie", "`generated:` is never read") describe the code before this
+  amendment. Its handoff item 2 (§ D5's third sentence) is closed: the code moved, § D5 did not.
+- D8's order rule, for the Lab, now decides only an identical filename and an equal (tier, range
+  score, `generated:`) tie inside one root, as it does for Compare (`#206`): between distinct
+  filenames a strictly newer `generated:` wins at either container depth.
+- § D5 says the tiebreaker "decides the Lab hot-path pick". The hot path is the in-memory mirror of
+  the last run, which never chooses between reports; read "cold-path pick".
+
+**Consequences and residuals.**
+- After a restart (or any chip, range or source change, which clears the mirror) the Lab shows the
+  newest retained run of a tuple, not the oldest.
+- After a `git pull`, a committed report newer than the operator's own Lab run of the same tuple
+  now wins on the cold path, as § D5 says. The in-memory mirror still shows the run just made.
+- **Same second.** `generated:` has second precision; the Lab's filename stamp has milliseconds,
+  because two runs of one tuple within a second are expected (§ D5). Two such runs tie on the key,
+  and the first in D8 order, the OLDER millisecond stamp, wins, as in Compare (`#206`). This is
+  deliberate: breaking that tie by descending filename stamp inside one dir would show the newer
+  run but make the Lab and Compare pick different reports for one tuple.
+- A missing or unparseable `generated:` ranks below any dated report in the Lab (it is parsed as
+  RFC 3339). Compare compares the raw strings; the two agree on the `…Z` form every writer emits.
+- **The tier boundary (review round 3, ruling (b)).** The fall-through stops at the top-ranked
+  candidate's source tier, so D9 item 4 stays an eligibility rule: a broken tagged report never
+  yields to an untagged one, in one root or across the two (the `#212` root-by-root union let a
+  broken tagged `lab-runs/` report yield to an untagged `evidence/` one). The alternative,
+  "untagged wins when no tagged report matches and reads", was rejected: it would draw a
+  source-unknown curve under a tuple whose honest tier holds a run. Such a miss returns the last
+  root's error, as before; a last root that holds only untagged matches records none, so the
+  lookup returns `NoReport`.
+- **The range fall-through is kept.** Inside a tier a broken exact report yields to a readable
+  superset (a whole-year `2024` report for `H1_2024`/`H2_2024`); the `narrowed_from` badge
+  discloses the narrowing, so nothing is drawn under a label it does not carry.
+- **The companion CSV, Lab only.** A present but unreadable or empty companion CSV makes the
+  Lab's candidate unreadable, so it falls through. Compare admits the same report as its cell,
+  with no overlay series, as before.
+- **Residuals.** A run whose `.md` reads (complete, or cut after its `Final equity` row) but has
+  NO companion CSV (the CSV write never started: the process stopped between the two writes, or
+  the CSV's create failed) still reads as a start/end pair and wins on `generated:`; over price
+  bars a start/end pair draws nothing (bug-log `#207`), so the tuple's older per-bar runs stay
+  hidden. A companion
+  CSV cut exactly at a record boundary reads as a shorter per-bar series: nothing in it says that
+  records are missing.
+
+**Pins.** `lab::equity_loader` lib tests N1-A `a_newer_generated_in_the_larger_path_wins`, N1-B
+`a_newer_generated_in_the_smaller_path_wins` (it tells the newest `generated:` from the last path),
+N2 `equal_score_and_generated_inside_one_dir_goes_to_the_first_path` (the 2026-11-15 amendment's
+unpinned item 3, now pinned), N3 `an_exact_range_beats_a_newer_superset`, N4
+`a_report_without_generated_ranks_oldest`, X1 `a_newer_evidence_report_beats_an_older_lab_runs_one`,
+X2 `an_equal_generated_across_roots_goes_to_lab_runs`, X3
+`a_tagged_older_evidence_report_beats_an_untagged_newer_lab_runs_one`, X4
+`an_exact_evidence_report_beats_a_newer_lab_runs_superset`; every expectation is derived from the
+fixture table by the rule above. Re-derived on an equal `generated:` (so they pin the root and D8
+order, not recency): `route_overlay_two_root_union_lab_runs_wins_collision`, E2
+`lab_runs_shadows_a_container_depth_1_evidence_report`, E2b
+`container_depth_1_evidence_report_wins_when_searched_first`, E4 (renamed from
+`equal_score_tie_at_one_container_depth_goes_to_the_first_dir`)
+`equal_score_and_generated_tie_at_one_container_depth_goes_to_the_first_dir`, E4b (renamed from
+`equal_score_tie_across_container_depths_goes_to_container_depth_0`)
+`equal_generated_tie_across_container_depths_goes_to_container_depth_0` with its companion
+`a_strictly_newer_generated_at_container_depth_1_wins`; and
+`clear_replaces_a_stale_committed_hit_with_the_newer_lab_runs_report` gives its newer report a
+newer `generated:`. The identical-filename rule, mirroring Compare's
+`scan_report_roots_identical_filename_lab_runs_wins` and
+`duplicate_filename_inside_a_root_goes_to_container_depth_0`: F1
+`an_identical_filename_across_roots_goes_to_lab_runs` (the same name in `lab-runs/`, older, and in
+`evidence/`, newer, resolves the `lab-runs/` copy; pair: distinct names, the newer wins) and F2
+`an_identical_filename_inside_a_root_goes_to_container_depth_0` (the same at container depth 0
+and 1 inside one root, through the union and through `load_equity`, two-sided in the container's
+sort position: `a0/` and `zz/` straddle the slug, as Compare's `CONTAINERS_206`), and F4
+`a_non_matching_first_copy_still_claims_its_file_name` (a first copy that is not a candidate still
+claims its name, so the matching later copy is skipped and the union misses, as Compare drops it;
+four variants, one per check that can reject the first copy: non-UTF-8 bytes (the read), no
+`scenario:` line (the parse), a `btc-2023-1m-…` range (the match), `data_source: binance` (the
+source tier); pair: distinct names, the later report resolves). The fall-through: F3
+`a_broken_newer_report_falls_through_to_the_next_candidate` (a newer matching `evidence/` report
+that cannot be read yields to an older `lab-runs/` one; pair: made readable, it wins), F5
+`a_broken_newest_report_falls_through_to_an_older_one_in_its_root` (the same inside one root,
+through the union and through `load_equity`), F7
+`a_broken_exact_report_falls_through_to_a_superset_with_its_badge` (a broken exact report yields
+to a readable superset, the newer report but ranked lower by its range, drawn with
+`narrowed_from`; pair: readable, the exact one wins with no badge) and F8 `a_run_whose_csv_is_cut_short_falls_through_to_an_older_one` (a newer run
+whose companion CSV is cut inside its last record, or empty, yields to an older complete run;
+pair: with the CSV intact the newer run resolves from it, and with no CSV at all from its `.md`,
+a start/end pair). The tier boundary: F6
+`a_broken_tagged_report_never_yields_to_an_untagged_one` (a broken tagged report and a readable
+untagged one, in one root, across the roots and the reverse: a miss with the documented error;
+pair: with no tagged report the untagged one resolves). Pixels (AD-10): LR-209
+`lab_draws_the_newest_run_of_its_tuple` in `crates/ui/tests/lab_buy_sell_overlay_render.rs`.
+
+**Verification (2026-11-24, on the `#212` + `#209` tree, after review rounds 1, 2 and 3).**
+
+- `cargo test -p ui --lib`: 743 passed (725 + N1-A, N1-B, N2, N3, N4, X1–X4, E4b's companion and
+  F1–F8); `--test lab_buy_sell_overlay_render` 10 (+ LR-209); the whole
+  `cargo test -p ui --no-fail-fast`: 124 test binaries and the doc-tests, 1527 passed, 0 failed, 32 ignored, no baseline
+  file moved; `cargo test -p backtest --lib` 264. Every changed `.rs` was touched before each run.
+- Pixel margins (macOS): LR-209 F_both vs F_new 0 px, controls F_old vs F_new 4,338 px and F_new
+  vs an empty root 19,025 px (floor 1,000 each); LR-212a and LR-212b unchanged.
+- Twenty-one probes S1–S17 (S3 in two forms, S12 in four), each applied once and restored
+  byte-identical, the red set compared by name, every one re-run on the final code after review
+  round 3; the table is in the module doc of `crates/ui/tests/lab_buy_sell_overlay_render.rs`. S8
+  (the roots reversed) replaces the `#205` tables' P6, whose OLD is gone. S9 (no filename set)
+  turns F1, F2 and F4 red, S10 (one set per root) F1 and F4, S11 (no fall-through) F3, F5, F7
+  and F8, S12/S12b/S12c/S12d (a name claimed only after `report_matches` / only by a candidate /
+  only after the parse / only after the read) F4 at three, four, two and one of its variants,
+  S13 (one candidate per root, the round-1 form) F5, F7 and F8, S14 (no tier boundary) F6 alone,
+  S15 (the reads stop at the range score too) F7 alone, S16 (the companion-CSV error ignored) F8
+  alone, S17 (an absent CSV made an error) F8 and every test whose report has no CSV.
+- `cargo clippy -p backtest -p ui --lib --bins --tests -- -D warnings` clean after touching every
+  changed file, a planted lint going red in each of the 14 changed Rust files after review round 2
+  and in each of the five that review round 3's code changes touched (the orchestrator's later
+  edit to a `#212` file, `engine.rs:769`, a doc link made a code span, followed those gates and was
+  verified by its split check: ui lib 725, clippy, fmt, anchors, spec-lint);
+  `bash scripts/verify_anchors.sh` `ANCHORS PASS  (119 / 119)`, `--explain` byte-identical;
+  `git status --porcelain -- evidence` empty.
+
 ## Changelog
 
+- 2026-11-24 (orchestrator, bug-log `#209` fix): **the Lab follows § D5.** The amendment
+  "2026-11-24 (bug-log `#209`)" above: over the union of `lab-runs/` and `evidence/` the Lab keeps
+  the greatest (tier, range score, `generated:`); an identical filename keeps its first copy
+  (`lab-runs/`, then container depth 0) through a filename set, as in Compare; an equal key goes
+  to the root searched first, then to the first report in D8 order; a broken report falls through
+  to the next candidate of its source tier (a broken tagged report never to an untagged one), and
+  in the Lab a present but unreadable or empty companion CSV makes a run broken. It supersedes the 2026-11-15 amendment's "The Lab's
+  precedence" items 1–3 and closes its handoff item 2; D8's order rule for the Lab narrows to an
+  identical filename and an equal-key tie, as for Compare; § D5's "hot-path pick" reads "cold-path pick". Two pins are
+  renamed (E4, E4b) and five re-derived on an equal `generated:`. No other decision changes; no
+  ADR added. Anchor-neutral, 119/119.
 - 2026-11-24 (orchestrator, bug-log `#212` fix): **D9, the Lab's report match; one slug map.**
   The amendment "2026-11-24 (bug-log `#212`)" above adds D9: a report answers a Lab tuple only
   through its strategy (`backtest::engine::report_strategy_id` of its `strategy:` `id:`), its coin
