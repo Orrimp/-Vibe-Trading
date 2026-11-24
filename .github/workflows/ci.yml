@@ -235,6 +235,9 @@ jobs:
           # instead of on `ModuleNotFoundError: tomllib` three commands later.
           python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version; print("governance interpreter:", sys.version.split()[0])'
           bash scripts/verify_anchors.sh | tail -1
+          # bug-log #228: the retired prune script must keep refusing. Its self-test runs a
+          # temp copy three ways and asserts exit 2 and a byte-identical tree.
+          bash scripts/prune_backtest_duplicates.sh --self-test
           python3 scripts/spec_lint.py
           python3 scripts/spec_lint.py --self-test
 

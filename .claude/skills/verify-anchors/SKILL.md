@@ -72,8 +72,8 @@ Single-command regression gate for the 119-anchor body-only SHA-256 contract.
 
 ## Routing
 
-- **All PASS** → run `scripts/prune_backtest_duplicates.sh` (see below),
-  then tester proceeds with VERDICT line. Anchors are good.
+- **All PASS** → tester proceeds with VERDICT line. Anchors are good. Do NOT
+  run `scripts/prune_backtest_duplicates.sh` (see below).
 - **FAIL** → `HANDOFF → developer` with the body diff. Most likely cause is
   a metadata field that should have been in YAML front-matter but leaked
   into the body (HF-1 / T715 pattern). The developer agent's body-vs-front-
@@ -82,27 +82,19 @@ Single-command regression gate for the 119-anchor body-only SHA-256 contract.
   developer` to run it; once stable across two runs, append to
   `evidence/anchors.toml`.
 
-## Post-PASS bookkeeping (mandatory)
+## Post-PASS bookkeeping: RETIRED (bug-log #228)
 
-After `verify_anchors.sh` exits 0, run:
+Do NOT run `scripts/prune_backtest_duplicates.sh`. It was this section's
+"mandatory" step, and it deleted committed anchored bodies: for each
+`anchors.toml` row it kept one matching report and `rm -f`'d the others,
+with no notion of namespaces, so a scenario's later rows lost the bodies
+its earlier row did not keep (simulated over the committed tree: 155
+tracked files, 31 of them bodies this gate resolves). Its `--dry-run` was
+not a faithful preview. The script now refuses every invocation (exit 2).
 
-```bash
-scripts/prune_backtest_duplicates.sh
-```
-
-For each anchored scenario this keeps exactly one report on disk — the
-oldest run whose body-SHA matches the locked anchor — and deletes every
-other matching `backtest-*-<scenario>.md`. Idempotent: a run that
-produced an identical body to the existing canonical file leaves the
-canonical file's timestamp untouched (option C semantics — the
-filename's timestamp records when the current canonical body was first
-produced, not when last verified). Stale runs from before an anchor
-update are also removed; their content lives in git history. Run with
-`--dry-run` to preview.
-
-Without this step `evidence/*/reports/` accumulates duplicate runs every time
-the tester touches strategy code; with it the directory steady-states
-at one file per anchored scenario.
+Nothing replaces it. The corpus is byte-immutable (ADR-0038 § D6), so a
+report is removed from `evidence/` only by an operator decision, by hand,
+in a commit.
 
 ## When to invoke
 

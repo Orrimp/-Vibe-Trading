@@ -327,7 +327,7 @@ above — FAILED rows older than 7 days escalate).
 | `scripts/check_presentation.sh` | Pre-tick guard: approval boxes un-ticked in a deck | tech-writer seam |
 | `scripts/capture_screenshot.sh` | Darwin `screencapture` wrapper | orchestrator, tech-writer |
 | `scripts/pre_stage_anchors.sh` | Stage candidate anchor SHAs from a backtest run | review seam (anchor refresh) |
-| `scripts/prune_backtest_duplicates.sh` | Collapse duplicate backtest reports in `evidence/*/reports/` | review seam |
+| `scripts/prune_backtest_duplicates.sh` | **RETIRED** (bug-log #228): refuses every invocation (exit 2); it deleted committed anchored bodies. Do not run it; `--self-test` pins the refusal | CI (AD-2 governance step) |
 | `scripts/check_no_secrets_in_llm_artifacts.sh` | Guard: LLM artifacts contain no secrets | review seam, regression gate |
 | `scripts/check_no_clocks_in_ui_tests.sh` | Guard: UI tests have no wall-clock dependency | review seam, regression gate |
 | `scripts/check_no_raw_asof_join.sh` | Guard: no hand-rolled as-of join outside `core::pit` (ADR-0086) | dev seam pre-test, regression gate |

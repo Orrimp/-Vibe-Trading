@@ -78,10 +78,9 @@ After the binary writes a report, run the regression gate:
 scripts/verify_anchors.sh
 ```
 
-- All 119 PASS → run `scripts/prune_backtest_duplicates.sh` to collapse
-  the just-written file into the canonical one-per-scenario set, then
-  embed metrics in the test report and continue. (See
-  `.claude/skills/verify-anchors/SKILL.md` § "Post-PASS bookkeeping".)
+- All 119 PASS → embed metrics in the test report and continue. Do NOT run
+  `scripts/prune_backtest_duplicates.sh`: it is retired because it deleted
+  committed anchored bodies (bug-log #228).
 - FAIL on a scenario you just re-ran → the body drifted. Diff the body
   bytes against the prior locked report (commands in
   `.claude/skills/verify-anchors/SKILL.md`). Most likely cause: a
