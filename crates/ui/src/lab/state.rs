@@ -224,6 +224,16 @@ pub struct LabState {
     /// lab-yahoo-empty-range-ux v0.1.0 — D-ER-3 (Q3=(a) / M-DEV.8).
     pub last_run_notice: Option<smol_str::SmolStr>,
 
+    /// The most-recent run ended on an operator Stop (bug-log `#215`): its
+    /// `LabRunCompleted(Err(_))` carried `preload_notice::CANCELLED_TAG`.
+    /// Drives `RunState::Cancelled` ("Cancelled — Run again") through
+    /// `RunState::with_cancelled`; a Stop sets neither `last_run_error` nor
+    /// `last_run_notice`. Cleared on `LabRunRequested` and on any other
+    /// completion. Same carve-out as `last_run_error`: NOT cloned
+    /// (`LabState::clone` sets `false`) and NOT serialized (schema stays
+    /// `version: 1`).
+    pub last_run_cancelled: bool,
+
     // lab-polish-round-2 R2 — SMA param overrides ────────────────────────
     /// Optional override for the fast SMA window length (`None` → 20 default).
     /// Set by the param-stepper widget when the operator picks `v0.sma`.
@@ -312,6 +322,8 @@ impl Clone for LabState {
             last_run_error: None,
             // lab-yahoo-empty-range-ux v0.1.0 — D-ER-3 (Caution #3): NOT cloned.
             last_run_notice: None,
+            // bug-log #215: NOT cloned, like the error and the notice.
+            last_run_cancelled: false,
             sma_fast_len: None,
             sma_slow_len: None,
             sma_fast_input: String::new(),
@@ -376,6 +388,7 @@ impl Default for LabState {
             prev_run_report: None,
             last_run_error: None,
             last_run_notice: None,
+            last_run_cancelled: false,
             sma_fast_len: None,
             sma_slow_len: None,
             sma_fast_input: String::new(),
@@ -417,6 +430,7 @@ impl LabState {
             prev_run_report: None,
             last_run_error: None,
             last_run_notice: None,
+            last_run_cancelled: false,
             sma_fast_len: None,
             sma_slow_len: None,
             sma_fast_input: String::new(),

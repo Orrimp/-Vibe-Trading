@@ -446,12 +446,16 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     } else {
         None
     };
+    // bug-log #215 — a Stop draws "Cancelled — Run again", not "Retry": the
+    // Stop sets neither `last_run_error` nor `last_run_notice`, so no red ⚠
+    // line is drawn below either.
     let run_state = RunState::from_cockpit_with_selection(
         model.lab_run_inflight,
         last_run_ok,
         strategy_selected,
         pair_selected,
-    );
+    )
+    .with_cancelled(model.lab_state.last_run_cancelled);
     // T-D-N13: show delta badge when both last + prev reports are present
     // and share the same tuple (same (strategy, pair, range) selection).
     let delta_badge = if let (Some(last), Some(prev)) = (

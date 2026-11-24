@@ -61,7 +61,8 @@ const MODE: ThemeMode = ThemeMode::Dark;
 #[must_use]
 pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
     // CLOCK-OK: kept out of every byte baseline by a CONDITION, re-verified
-    // 2026-11-24 (bug-log `#217`; first verified 2026-11-10, `#190`).
+    // 2026-11-24 (bug-log `#217`, then `#215`; first verified 2026-11-10,
+    // `#190`).
     // The tape's mutators are `ActivityTape::apply`, called from the
     // `ActivityEventReceived` arm of `state::update` (and from unit tests and
     // the bench), and `apply_at`, called from `apply` and from tests; `purge`
@@ -71,11 +72,20 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
     // `ActivityEvent`, so there `renderable` is empty and this function
     // returns a zero-size `Space` before `now` reaches anything drawn.
     //
-    // The one populated `program_from_cockpit` render is
-    // `tests/activity_tape_failed_hold_render.rs` (pixel counts and in-process
-    // byte equality, no stored baseline). It is deterministic only because it
-    // seeds `started_at` an hour in the FUTURE: `saturating_duration_since`
-    // below is then zero and the drawn label is always `<1s`.
+    // The populated renders are two, neither with a stored baseline:
+    // - `tests/activity_tape_failed_hold_render.rs` (`program_from_cockpit`;
+    //   pixel counts and in-process byte equality). It is deterministic only
+    //   because it seeds `started_at` an hour in the FUTURE:
+    //   `saturating_duration_since` below is then zero and the drawn label is
+    //   always `<1s`.
+    // - `tests/lab_stop_render.rs` (bug-log `#215`; `program_from_build`). It
+    //   dispatches `ActivityEventReceived`, so its rows are stamped by
+    //   `apply`'s own `Instant::now()` when `boot` runs and a failed row's
+    //   label IS wall-clock ("<1s" only because the frame renders within a
+    //   second). That is safe only because the file counts colours inside
+    //   bands and byte-compares nothing but Stop frames, whose tape is EMPTY
+    //   (a `Cancelled` row is dropped at once). Never byte-compare a frame
+    //   from that file that holds a row.
     //
     // ⚠️ THE CONDITION, NOT THE CALL, IS WHAT MAKES THIS SAFE. The label renders
     // `format_elapsed(now.saturating_duration_since(state.started_at))` INTO

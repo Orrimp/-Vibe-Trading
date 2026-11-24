@@ -201,6 +201,7 @@ async fn empty_preload_routes_to_tagged_binance_notice() {
             );
         }
         RunMessageKind::Error(e) => panic!("expected Notice, got Error({e})"),
+        RunMessageKind::Cancelled(e) => panic!("expected Notice, got Cancelled({e})"),
     }
 
     // scenario_cfg untouched on the short-circuit path.

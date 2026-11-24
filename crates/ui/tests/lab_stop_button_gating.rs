@@ -15,6 +15,7 @@
 //! LabRunCompleted(Ok)      → lab_run_inflight == false  (Stop button disappears)
 //! LabRunCompleted(Err)     → lab_run_inflight == false  (error path also clears)
 //! LabRunStopRequested      → pure state unchanged (binary side clears cancel)
+//! LabRunCompleted(Err(cancelled_message(..))) → last_run_cancelled (bug-log #215)
 //! ```
 //!
 //! Pattern: K5 shape (`cockpit_training_pressed_wiring.rs`) — construct
@@ -225,12 +226,79 @@ fn stop_requested_mid_run_leaves_inflight_true() {
          Regression C detected: Stop request incorrectly cleared inflight flag."
     );
 
-    // Engine eventually returns Err(Cancelled) → LabRunCompleted(Err).
-    let cancelled_msg = SmolStr::new("cancelled");
+    // Engine eventually returns Err(Cancelled) → LabRunCompleted(Err). This is
+    // the shape spawn_lab_run's engine join sends for RunError::Cancelled
+    // (bug-log #215). That is MEASURED by lab_runner_cancel_e2e test 6 (probe
+    // T215-P5), not here: this test builds the string with the production
+    // builder and checks only the state arm.
+    let cancelled_msg =
+        ui::lab::runner::preload_notice::cancelled_message("backtest run cancelled by operator");
     update(&mut cockpit, Message::LabRunCompleted(Err(cancelled_msg)));
     assert!(
         !cockpit.lab_run_inflight,
         "lab_run_inflight must be false after LabRunCompleted(Err(cancelled))"
+    );
+    assert!(
+        cockpit.lab_state.last_run_cancelled && cockpit.lab_state.last_run_error.is_none(),
+        "a Stop's completion must land as last_run_cancelled with no red error; got cancelled={} error={:?}",
+        cockpit.lab_state.last_run_cancelled,
+        cockpit.lab_state.last_run_error
+    );
+}
+
+// ── Test 3b — bug-log #215: a Stop's completion is Cancelled; a new run clears it ─
+
+/// Bug-log `#215` — the Stop outcome's lifecycle in pure state:
+/// `Requested → StopRequested → Completed(Err(cancelled_message(..)))` sets
+/// `last_run_cancelled` and no error; the next `LabRunRequested` clears it;
+/// and a later genuine `Completed(Err("boom"))` sets the error, not a Stop.
+///
+/// Probes (bug-log `#215`, measured): T215-P4 (`classify` never matches the
+/// tag) and T215-P6 (the `Cancelled` arm sets `false`) turn it red at "a Stop's
+/// completion must set last_run_cancelled"; T215-P9 (the `LabRunRequested`
+/// clear deleted) at "a new run clears it".
+#[test]
+fn a_stop_completion_is_cancelled_and_a_new_run_clears_it() {
+    use ui::lab::runner::preload_notice;
+
+    let mut cockpit = Cockpit::new();
+    update(&mut cockpit, Message::LabRunRequested);
+    update(&mut cockpit, Message::LabRunStopRequested);
+    update(
+        &mut cockpit,
+        Message::LabRunCompleted(Err(preload_notice::cancelled_message(
+            "operator cancelled during preload",
+        ))),
+    );
+    assert!(
+        cockpit.lab_state.last_run_cancelled,
+        "a Stop's completion must set last_run_cancelled"
+    );
+    assert!(
+        cockpit.lab_state.last_run_error.is_none() && cockpit.lab_state.last_run_notice.is_none(),
+        "a Stop's completion must set neither the error nor the notice; got {:?} / {:?}",
+        cockpit.lab_state.last_run_error,
+        cockpit.lab_state.last_run_notice
+    );
+
+    update(&mut cockpit, Message::LabRunRequested);
+    assert!(
+        !cockpit.lab_state.last_run_cancelled,
+        "a new run clears it: LabRunRequested must clear last_run_cancelled"
+    );
+
+    update(
+        &mut cockpit,
+        Message::LabRunCompleted(Err(SmolStr::new("boom"))),
+    );
+    assert!(
+        !cockpit.lab_state.last_run_cancelled,
+        "a genuine error is not a Stop: last_run_cancelled must stay false"
+    );
+    assert_eq!(
+        cockpit.lab_state.last_run_error.as_deref(),
+        Some("boom"),
+        "a genuine error must land as the red run error"
     );
 }
 

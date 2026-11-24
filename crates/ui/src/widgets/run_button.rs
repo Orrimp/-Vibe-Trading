@@ -11,9 +11,17 @@
 //! Idle        → [click] → Running
 //! Running     → [completed ok] → Completed
 //! Running     → [completed err] → Failed
+//! Running     → [Stop] → Cancelled
 //! Completed   → [click] → Running   ("Re-run")
 //! Failed      → [click] → Running   ("Retry")
+//! Cancelled   → [click] → Running   ("Cancelled — Run again")
 //! ```
+//!
+//! `Cancelled` is derived by [`RunState::with_cancelled`] from
+//! `LabState::last_run_cancelled` (bug-log `#215`; lab-end-to-end-v2
+//! Q8=(b)). It is held until the next Run, like `Completed` and `Failed`;
+//! Q8's 2 s flash back to `Idle` is not implemented, by choice (ADR-0050
+//! § Changelog 2026-11-24).
 //!
 //! ## Design § 4 — at-most-one enforcement
 //!
@@ -118,6 +126,22 @@ impl RunState {
             Some(true) => Self::Completed,
             Some(false) => Self::Failed,
             None => Self::Idle,
+        }
+    }
+
+    /// Apply the last run's Stop (bug-log `#215`): when `last_run_cancelled`,
+    /// an outcome state (`Idle`, `Completed`, `Failed`) becomes `Cancelled`.
+    /// A Stop outranks an earlier run's outcome, but never `Running` (a new
+    /// run is in flight) or `Disabled` (the selection gate).
+    ///
+    /// A combinator rather than a fourth bool on
+    /// [`RunState::from_cockpit_with_selection`], which would trip pedantic
+    /// `fn_params_excessive_bools`.
+    #[must_use]
+    pub fn with_cancelled(self, last_run_cancelled: bool) -> Self {
+        match self {
+            Self::Idle | Self::Completed | Self::Failed if last_run_cancelled => Self::Cancelled,
+            other => other,
         }
     }
 }
@@ -298,6 +322,37 @@ mod tests {
             RunState::from_cockpit_with_selection(true, None, false, false),
             RunState::Running
         );
+    }
+
+    /// bug-log `#215` — `with_cancelled` over every `RunState` × {true, false}:
+    /// a Stop turns each outcome state into `Cancelled` and leaves `Running`,
+    /// `Disabled` and `Cancelled` alone; without a Stop it is the identity.
+    /// Probes (measured): T215-P8 (guard → `if false`) is red at
+    /// `Idle.with_cancelled(true)`, T215-P12 (`| Self::Running` added) at
+    /// `Running.with_cancelled(true)`.
+    #[test]
+    fn with_cancelled_outranks_outcomes_but_not_running_or_disabled() {
+        let table = [
+            (RunState::Disabled, true, RunState::Disabled),
+            (RunState::Idle, true, RunState::Cancelled),
+            (RunState::Running, true, RunState::Running),
+            (RunState::Completed, true, RunState::Cancelled),
+            (RunState::Failed, true, RunState::Cancelled),
+            (RunState::Cancelled, true, RunState::Cancelled),
+            (RunState::Disabled, false, RunState::Disabled),
+            (RunState::Idle, false, RunState::Idle),
+            (RunState::Running, false, RunState::Running),
+            (RunState::Completed, false, RunState::Completed),
+            (RunState::Failed, false, RunState::Failed),
+            (RunState::Cancelled, false, RunState::Cancelled),
+        ];
+        for (state, cancelled, want) in table {
+            assert_eq!(
+                state.clone().with_cancelled(cancelled),
+                want,
+                "{state:?}.with_cancelled({cancelled})"
+            );
+        }
     }
 
     /// F10 — `RunState::Disabled` view renders without panic.

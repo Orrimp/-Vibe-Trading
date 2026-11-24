@@ -73,6 +73,12 @@
 //! and `lab_runner_cancel_e2e.rs`; they also turn tests here red (reasoned, not
 //! claimed).
 //!
+//! Bug-log `#215` (MEASURED 2026-11-24; the table is `lab_runner_cancel_e2e.rs`'s):
+//! T215-P1, P2 (F-P8 re-designated), P3 and P4 turn test 7 red ("cancel must end
+//! the YahooPreload activity Cancelled" for P1/P2, "… a CANCELLED_TAG-tagged
+//! error" for P3, "… classified Cancelled" for P4); T215-P11 turns tests 4 and
+//! 5 red.
+//!
 //! ## Coverage
 //!
 //! | # | test | what can fail it |
@@ -83,7 +89,7 @@
 //! | 4 | `yahoo_arm_empty_bars_returns_no_data_notice` | untagged / wrong notice; cfg written on failure; tagged activity reason |
 //! | 5 | `yahoo_arm_hard_error_passes_through_verbatim` | a tagged / rewritten hard error; cfg written on failure |
 //! | 6 | `yahoo_arm_reports_preload_activity_start_then_success_end` | wrong kind / label / outcome; missing or duplicate event |
-//! | 7 | `task_driven::spawn_lab_run_routes_the_yahoo_override_through_the_arm` | override bypassed; no cancel; activity not passed; source not aborted |
+//! | 7 | `task_driven::spawn_lab_run_routes_the_yahoo_override_through_the_arm` | override bypassed; no cancel; a Stop not tagged / not `Cancelled` (bug-log `#215`); activity not passed or not ended `Cancelled`; source not aborted |
 //! | 8 | `task_driven::spawn_lab_run_hands_preloaded_bars_and_progress_channel_to_the_engine` | engine gets other bars or another channel; a report written |
 
 #![cfg(feature = "live")]
@@ -250,6 +256,9 @@ fn yahoo_arm_empty_bars_returns_no_data_notice() {
         RunMessageKind::Notice(body) => body,
         RunMessageKind::Error(m) => {
             panic!("a tagged notice must classify as Notice; got Error({m:?})")
+        }
+        RunMessageKind::Cancelled(m) => {
+            panic!("a tagged notice must classify as Notice; got Cancelled({m:?})")
         }
     };
     let cfg = support::yahoo_cache_cfg();
@@ -426,6 +435,7 @@ mod task_driven {
     use futures::StreamExt as _;
     use iced_test::runtime::Action;
     use ui::lab::runner::LabRunResult;
+    use ui::lab::runner::preload_notice::{self, RunMessageKind};
     use ui::state::Message;
 
     use super::assert_sentinel_first;
@@ -537,9 +547,9 @@ mod task_driven {
 
     /// `spawn_lab_run` routes `yahoo_source_override` through
     /// `run_yahoo_preload_arm`: the sentinel arrives at once, Stop during the
-    /// 5 s preload completes the Task with the production cancel text, no
-    /// engine progress follows, the activity ends `Failed("operator
-    /// cancelled")`, and the source is aborted.
+    /// 5 s preload completes the Task with the production cancel text tagged
+    /// as a Stop (`CANCELLED_TAG`, bug-log `#215`), no engine progress
+    /// follows, the activity ends `Cancelled`, and the source is aborted.
     #[test]
     fn spawn_lab_run_routes_the_yahoo_override_through_the_arm() {
         let mut run = start_spawn_lab_run(Spec {
@@ -572,11 +582,19 @@ mod task_driven {
             "the Task must complete within 500 ms of Stop"
         );
         match &done.result {
-            Err(e) => assert_eq!(
-                e.as_str(),
-                "operator cancelled during preload",
-                "Stop during the preload must complete the Task with the production cancel text"
-            ),
+            Err(e) => {
+                assert!(
+                    e.starts_with(preload_notice::CANCELLED_TAG),
+                    "Stop during the preload must complete the Task with a CANCELLED_TAG-tagged error; got {e:?}"
+                );
+                assert!(
+                    matches!(
+                        preload_notice::classify(e),
+                        RunMessageKind::Cancelled(body) if body == "operator cancelled during preload"
+                    ),
+                    "Stop during the preload must complete the Task with the production cancel text, classified Cancelled; got {e:?}"
+                );
+            }
             Ok(summary) => panic!("Stop during the preload must not complete Ok; got {summary:?}"),
         }
         assert!(
@@ -597,16 +615,14 @@ mod task_driven {
             2,
             "exactly Start + End expected; got {events:?}"
         );
-        match &events[1].phase {
-            ActivityPhase::End(ActivityOutcome::Failed(reason)) => assert_eq!(
-                reason.as_str(),
-                "operator cancelled",
-                "cancel must end the YahooPreload activity Failed(\"operator cancelled\")"
+        assert!(
+            matches!(
+                events[1].phase,
+                ActivityPhase::End(ActivityOutcome::Cancelled)
             ),
-            other => panic!(
-                "cancel must end the YahooPreload activity Failed(\"operator cancelled\"); got {other:?}"
-            ),
-        }
+            "cancel must end the YahooPreload activity Cancelled; got {:?}",
+            events[1].phase
+        );
 
         assert!(
             support::becomes_true(Duration::from_millis(200), || run.probe.dropped()),

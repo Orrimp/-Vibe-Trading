@@ -91,6 +91,16 @@
 # `Instant::now()` carries its own marker: 77 files, 6 exemptions. A seed moved
 # into the past or present must now get past a reviewer reading that marker.
 #
+# RE-VERIFIED AGAIN 2026-11-24 (bug-log `#215`). A second populated-tape render
+# landed: `tests/lab_stop_render.rs` dispatches `ActivityEventReceived` through
+# `program_from_build`, so its rows are stamped by `ActivityTape::apply`'s own
+# `Instant::now()` (in `lab/activity.rs`, outside this gate's walk) and a failed
+# row's elapsed label is wall-clock. It stays out of every baseline because it
+# stores none, counts colours only inside bands, and byte-compares only Stop
+# frames, whose tape is empty (a `Cancelled` row is dropped at once). The
+# widget's marker names it and says so; the file is a NAMED_FILES entry so a
+# rename reaches this gate. It calls no clock itself: 78 files, 6 exemptions.
+#
 # Acceptance criteria (V4):
 #   - Exits 0 on the clean tree.
 #   - Exits non-zero when a `SystemTime::now()` is injected.
@@ -152,11 +162,13 @@ SCAN_DIRS=(
 )
 
 # The harness's own files, which live outside those trees. Every entry MUST
-# exist — these six are also what makes a mis-rooted run impossible to mistake
+# exist — these seven are also what makes a mis-rooted run impossible to mistake
 # for a clean one. The sixth (bug-log `#217`) is the one pixel test that bakes a
 # clock reading into rendered state: `activity_tape.rs`'s exemption rests on
 # its seed being an hour AHEAD of the clock, so its `Instant::now()` carries a
-# marker that says so, and this gate reads it.
+# marker that says so, and this gate reads it. The seventh (bug-log `#215`)
+# renders tape rows stamped by production's own clock read; the exemption
+# rests on what it compares (above), and the widget's marker names it.
 NAMED_FILES=(
   "crates/ui/src/test_support.rs"
   "crates/ui/tests/visual_snapshots.rs"
@@ -164,10 +176,12 @@ NAMED_FILES=(
   "crates/ui/tests/fixtures/mod.rs"
   "crates/ui/tests/fixtures/visual_diff.rs"
   "crates/ui/tests/activity_tape_failed_hold_render.rs"
+  "crates/ui/tests/lab_stop_render.rs"
 )
 
 # Non-vacuity floor. Measured 2026-11-10: 51 `widgets/*.rs` + 20 `screens/*.rs`
-# + 5 named = 76; since 2026-11-24 (bug-log `#217`) + 6 named = 77. The floor's job is to make "the glob returned nothing" or a
+# + 5 named = 76; since 2026-11-24 (bug-log `#217`) + 6 named = 77, then
+# (bug-log `#215`) + 7 named = 78. The floor's job is to make "the glob returned nothing" or a
 # mis-rooted walk impossible to mistake for a pass — NOT to turn every deleted
 # widget into a gate failure, which is why it sits below the measurement rather
 # than on it. A drop to 59 means something structural moved and should be read,

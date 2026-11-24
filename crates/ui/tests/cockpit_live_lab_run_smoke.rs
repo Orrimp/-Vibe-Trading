@@ -652,9 +652,21 @@ async fn smoke_cancel_mid_run() {
 
     ui::state::update(&mut cockpit, Message::LabRunRequested);
 
-    // The cancel error propagates as LabRunCompleted(Err(_)).
-    let err_msg = smol_str::SmolStr::new(format!("{}", RunError::Cancelled));
+    // The cancel error propagates as LabRunCompleted(Err(_)). This is the
+    // shape spawn_lab_run's engine join sends for RunError::Cancelled
+    // (bug-log #215). That is MEASURED by lab_runner_cancel_e2e test 6 (probe
+    // T215-P5), not here: this test builds the string with the production
+    // builder and checks only the state arm.
+    let err_msg =
+        ui::lab::runner::preload_notice::cancelled_message(&format!("{}", RunError::Cancelled));
     ui::state::update(&mut cockpit, Message::LabRunCompleted(Err(err_msg)));
+    assert!(
+        cockpit.lab_state.last_run_cancelled && cockpit.lab_state.last_run_error.is_none(),
+        "a cancelled run must land as last_run_cancelled with no red error (bug-log #215); \
+         got cancelled={} error={:?}",
+        cockpit.lab_state.last_run_cancelled,
+        cockpit.lab_state.last_run_error
+    );
 
     // Post-cancel: inflight cleared, last_run_report NOT rotated (R2.3).
     assert!(

@@ -130,3 +130,12 @@ TEMPORARY diagnostic build — revert before shipping.
   and re-run; not a Reports/feature regression.
 - The cockpit must run in `--release` (the dev `opt-level=0` tiny-skia path is ~40×
   slower → the "1–3 s per interaction" lag). See README "Run the cockpit".
+- `test_support::program_from_cockpit` boots from `cockpit.clone()`, and the manual
+  `impl Clone for LabState` resets the run-outcome fields (`last_run_error`,
+  `last_run_notice`, `last_run_cancelled`, `run_progress`, the `last_run_report` /
+  `prev_run_report` mirrors) to their cold-start values. A Lab run outcome seeded on
+  the cockpit therefore never reaches the frame: the Run row draws Idle "Run" whatever
+  you seeded, and a "no red" assert passes vacuously. Render run-outcome states with
+  `test_support::program_from_build(|| …)`, which runs the build closure inside `boot`
+  (bug-log `#215`; `tests/lab_stop_render.rs`, whose harness probe H-P1 measures the
+  trap). The activity tape derives `Clone`, so it survives either way.

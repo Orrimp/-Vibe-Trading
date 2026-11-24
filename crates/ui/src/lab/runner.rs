@@ -1244,8 +1244,11 @@ pub async fn run_binance_preload_arm(
 /// # Errors
 ///
 /// Returns the classified preload error (tagged no-data notice or hard error),
-/// a `"preload task join error: …"`, or `"operator cancelled during preload"`.
-/// `scenario_cfg` is left untouched in every error case.
+/// a `"preload task join error: …"`, or, on an operator Stop,
+/// `"operator cancelled during preload"` tagged with
+/// [`preload_notice::CANCELLED_TAG`] (bug-log `#215`; `classify` gives
+/// `RunMessageKind::Cancelled`). `scenario_cfg` is left untouched in every
+/// error case.
 #[cfg(feature = "live")]
 pub async fn run_yahoo_preload_arm(
     rt: &tokio::runtime::Handle,
@@ -1335,17 +1338,16 @@ pub async fn run_yahoo_preload_arm(
             // preload. The token resolves when the RunCancelHandle is dropped.
             // ADR-0050 § D4 + T-BUG64-RS3: the arm MUST abort the JoinHandle —
             // dropping it only DETACHES the task and the HTTP request keeps
-            // running. The activity then ends Failed("operator cancelled"),
-            // not Cancelled (pinned as current behaviour by
-            // `lab_runner_cancel_e2e.rs`; bug-log candidate, story 2-63 Wave F).
+            // running. A Stop is the operator's own action, not a failure
+            // (bug-log #215): the activity ends Cancelled (the status bar's
+            // tape drops the row at once), and the error is CANCELLED_TAG-
+            // tagged, so the Lab draws RunState::Cancelled, not a red error.
             () = cancel.cancelled() => {
                 fetch_join.abort();
                 if let Some(h) = yahoo_activity_handle {
-                    h.fail("operator cancelled");
+                    h.cancel();
                 }
-                return Err(smol_str::SmolStr::new(
-                    "operator cancelled during preload",
-                ));
+                return Err(preload_notice::cancelled_message("operator cancelled during preload"));
             }
             _ = ticker.tick() => {
                 // Clamp to u64::MAX on overflow (impossible in practice —
@@ -1651,6 +1653,22 @@ pub fn spawn_lab_run(
                                 position_curve,
                             })
                         }
+                        // bug-log #215: an operator Stop that reaches the engine
+                        // (a Synthetic run, a cached Yahoo run, or a Stop during
+                        // the Binance preload, which has no cancel arm) is a
+                        // Stop, not an error. Keyed on `RunError::Cancelled`,
+                        // not on the token, so a genuine error stays an error.
+                        // Qualification: for the momentum, pairs and tcn arms
+                        // the engine itself derives that variant from an anyhow
+                        // message containing "Cancelled" (engine.rs, the
+                        // `e.to_string().contains("Cancelled")` maps, ~1136 /
+                        // 1186 / 1242); their only such text today is their own
+                        // cancel error.
+                        Err(backtest::engine::RunError::Cancelled) => {
+                            Err(preload_notice::cancelled_message(
+                                &backtest::engine::RunError::Cancelled.to_string(),
+                            ))
+                        }
                         Err(e) => Err(SmolStr::new(format!("{e}"))),
                     }
                 });
@@ -1674,17 +1692,20 @@ pub fn spawn_lab_run(
     }
 }
 
-// ── preload_notice — sentinel-tagged no-data classifier (D-ER-1 / D-ER-3) ─────
+// ── preload_notice — sentinel-tagged run-message classifier (D-ER-1 / D-ER-3; #215) ──
 
-/// Sentinel-tagged no-data message builder and classifier.
+/// Sentinel-tagged run-message builders and classifier.
 ///
-/// lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 step 2, H2.
+/// lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 step 2, H2; bug-log `#215`.
 ///
 /// The `LabRunResult = Result<RunSummary, SmolStr>` type is kept byte-identical
 /// (94 usages; widening to a typed enum would ripple across ~7 test files).
-/// Instead, a notice-vs-error bit rides a sentinel-tagged `SmolStr` decoded by
-/// `classify`. The sentinel (`NO_DATA_TAG`) is a non-renderable control character
-/// that cannot appear in any operator-facing copy.
+/// Instead, the error string's leading tag says what kind of outcome it is —
+/// a no-data NOTICE (`NO_DATA_TAG`), an operator STOP (`CANCELLED_TAG`), or
+/// neither (a hard error) — decoded by `classify`. Both sentinels open with a
+/// non-renderable control character that cannot appear in any operator-facing
+/// copy (ADR-0040 § Changelog 2026-05-30 item (3); `CANCELLED_TAG` since
+/// bug-log `#215`).
 pub mod preload_notice {
     use smol_str::SmolStr;
 
@@ -1692,6 +1713,11 @@ pub mod preload_notice {
     /// Presence of this prefix signals a no-data NOTICE, not a hard error.
     /// Must be stripped before rendering to the operator.
     pub const NO_DATA_TAG: &str = "\u{1}NODATA\u{1}";
+
+    /// Non-renderable sentinel prefix (U+0001) marking an operator STOP: the
+    /// run ended because its `RunCancelHandle` was dropped (bug-log `#215`).
+    /// Neither a notice nor an error; must be stripped before display.
+    pub const CANCELLED_TAG: &str = "\u{1}CANCELLED\u{1}";
 
     /// Typed classification of a `LabRunResult` error string.
     pub enum RunMessageKind {
@@ -1701,6 +1727,10 @@ pub mod preload_notice {
         /// A hard error — network failure, 429, parse error, etc.
         /// Rendered red ⚠. The `SmolStr` is the verbatim error message.
         Error(SmolStr),
+        /// An operator Stop (bug-log `#215`): not an error and not a notice.
+        /// The Lab draws `RunState::Cancelled`; the `SmolStr` is the
+        /// tag-stripped body, for logs.
+        Cancelled(SmolStr),
     }
 
     impl RunMessageKind {
@@ -1708,23 +1738,36 @@ pub mod preload_notice {
         #[must_use]
         pub fn msg(&self) -> &SmolStr {
             match self {
-                Self::Notice(s) | Self::Error(s) => s,
+                Self::Notice(s) | Self::Error(s) | Self::Cancelled(s) => s,
             }
         }
     }
 
     /// Classify a raw `LabRunResult` error string.
     ///
-    /// Returns `Notice(stripped)` if `raw` starts with `NO_DATA_TAG` (tag
-    /// removed from the returned string); otherwise returns `Error(raw)`.
+    /// Returns `Cancelled(stripped)` if `raw` starts with `CANCELLED_TAG`,
+    /// `Notice(stripped)` if it starts with `NO_DATA_TAG` (the tag removed from
+    /// the returned string in both cases); otherwise `Error(raw)`.
     /// An empty string → `Error("")`.
     #[must_use]
     pub fn classify(raw: &str) -> RunMessageKind {
-        if let Some(stripped) = raw.strip_prefix(NO_DATA_TAG) {
+        if let Some(stripped) = raw.strip_prefix(CANCELLED_TAG) {
+            RunMessageKind::Cancelled(SmolStr::new(stripped))
+        } else if let Some(stripped) = raw.strip_prefix(NO_DATA_TAG) {
             RunMessageKind::Notice(SmolStr::new(stripped))
         } else {
             RunMessageKind::Error(SmolStr::new(raw))
         }
+    }
+
+    /// Tag `body` as an operator Stop (bug-log `#215`), so `classify` routes it
+    /// to `RunMessageKind::Cancelled` instead of `Error`.
+    ///
+    /// Used by `run_yahoo_preload_arm`'s cancel branch and by `spawn_lab_run`
+    /// for an engine `RunError::Cancelled`.
+    #[must_use]
+    pub fn cancelled_message(body: &str) -> SmolStr {
+        SmolStr::new(format!("{CANCELLED_TAG}{body}"))
     }
 
     /// Build a sentinel-tagged no-data notice for the operator.
@@ -1757,6 +1800,7 @@ pub mod preload_notice {
                     assert!(s.contains("BTC-USD"), "operator copy preserved");
                 }
                 RunMessageKind::Error(_) => panic!("expected Notice, got Error"),
+                RunMessageKind::Cancelled(_) => panic!("expected Notice, got Cancelled"),
             }
         }
 
@@ -1767,6 +1811,7 @@ pub mod preload_notice {
             match classify(raw) {
                 RunMessageKind::Error(s) => assert_eq!(s.as_str(), raw),
                 RunMessageKind::Notice(_) => panic!("expected Error, got Notice"),
+                RunMessageKind::Cancelled(_) => panic!("expected Error, got Cancelled"),
             }
         }
 
@@ -1776,7 +1821,56 @@ pub mod preload_notice {
             match classify("") {
                 RunMessageKind::Error(s) => assert!(s.is_empty()),
                 RunMessageKind::Notice(_) => panic!("expected Error, got Notice"),
+                RunMessageKind::Cancelled(_) => panic!("expected Error, got Cancelled"),
             }
+        }
+
+        /// bug-log `#215` — a `CANCELLED_TAG`-tagged string → `Cancelled`, with
+        /// the tag stripped and the body kept. The body and the tag are spelled
+        /// out here, not read off `cancelled_message` (bug-log `#191`).
+        #[test]
+        fn cancel_tagged_string_classifies_as_cancelled_stripped() {
+            let raw = "\u{1}CANCELLED\u{1}operator cancelled during preload";
+            match classify(raw) {
+                RunMessageKind::Cancelled(s) => {
+                    assert_eq!(
+                        s.as_str(),
+                        "operator cancelled during preload",
+                        "the tag must be stripped and the body kept"
+                    );
+                }
+                RunMessageKind::Error(s) => panic!("expected Cancelled, got Error({s:?})"),
+                RunMessageKind::Notice(s) => panic!("expected Cancelled, got Notice({s:?})"),
+            }
+        }
+
+        /// bug-log `#215` — the two-sided pair with
+        /// `untagged_string_classifies_as_error_verbatim`: the SAME body is
+        /// `Cancelled` with the tag `cancelled_message` prepends and `Error`
+        /// without it, and a Stop is never a notice. Probe T215-P4 (the
+        /// `CANCELLED_TAG` branch never matches) turns both `#215` tests here
+        /// red (measured).
+        #[test]
+        fn cancelled_message_is_tagged_and_not_a_notice() {
+            let body = "backtest run cancelled by operator";
+            let msg = cancelled_message(body);
+            assert_eq!(
+                msg.as_str(),
+                "\u{1}CANCELLED\u{1}backtest run cancelled by operator",
+                "cancelled_message must prepend the CANCELLED sentinel to the body"
+            );
+            assert!(
+                !msg.starts_with(NO_DATA_TAG),
+                "a Stop must not carry the no-data tag"
+            );
+            assert!(
+                matches!(classify(&msg), RunMessageKind::Cancelled(s) if s == body),
+                "the tagged body must classify as Cancelled(body)"
+            );
+            assert!(
+                matches!(classify(body), RunMessageKind::Error(s) if s == body),
+                "the same body untagged must classify as Error(body)"
+            );
         }
 
         /// D-ER-4 no_data_message — produces tagged, readable string.

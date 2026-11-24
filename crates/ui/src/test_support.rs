@@ -106,6 +106,32 @@ pub fn program_from_cockpit(
         .theme(TestApp::theme)
 }
 
+/// [`program_from_cockpit`]'s twin for run-OUTCOME states: `boot` calls
+/// `build()` instead of cloning a seeded `Cockpit` (bug-log `#215`).
+///
+/// **The clone trap.** [`program_from_cockpit`] boots from `cockpit.clone()`,
+/// and the manual `impl Clone for LabState` resets every run-outcome field —
+/// `last_run_error`, `last_run_notice`, `last_run_cancelled`, `run_progress`
+/// and the `last_run_report` / `prev_run_report` mirrors — to their cold-start
+/// values. So a Lab run outcome seeded on the cockpit never reaches the
+/// rendered frame through it: the Run row draws as if no run had happened.
+/// Build those states here, from a closure that runs the production
+/// `state::update` arms on a fresh cockpit, so the frame shows the fields the
+/// arms set. `boot` runs once per `iced_test::screenshot`, so `build` runs
+/// once per frame.
+#[must_use]
+pub fn program_from_build(
+    build: impl Fn() -> Cockpit + 'static,
+) -> iced::Application<impl iced::Program<State = TestApp, Message = Message, Theme = iced::Theme>>
+{
+    let boot = move || (TestApp { cockpit: build() }, iced::Task::none());
+
+    iced::application(boot, TestApp::update, TestApp::view)
+        .default_font(crate::theme::font::embedded())
+        .title(TestApp::title)
+        .theme(TestApp::theme)
+}
+
 /// Test wrapper mirroring the production `App` struct in
 /// `src/bin/cockpit.rs`. Carries the seeded `Cockpit` and routes
 /// `update` / `view` to the same code paths the real binary uses.

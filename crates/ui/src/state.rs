@@ -2312,10 +2312,13 @@ pub enum Message {
     ///
     /// Handled by the binary-side wrapper in `cockpit_live.rs::update` which
     /// drops `lab_state.run_cancel` (the Drop fires cancel at the engine's next
-    /// poll boundary). Pure state: `run_inflight` stays `true` until
-    /// `LabRunCompleted(Err("cancelled"))` arrives.
+    /// poll boundary, or at the Yahoo preload arm's cancel branch). Pure state:
+    /// `run_inflight` stays `true` until `LabRunCompleted(Err(e))` arrives,
+    /// with `e` tagged by `preload_notice::cancelled_message` (bug-log `#215`):
+    /// that completion sets `lab_state.last_run_cancelled`, and the Run button
+    /// shows `RunState::Cancelled`, not Failed.
     ///
-    /// lab-end-to-end-v2 T-D3.4 / R6.3.
+    /// lab-end-to-end-v2 T-D3.4 / R6.3 (Q8=(b)).
     LabRunStopRequested,
     /// Progress update from the in-flight backtest engine.
     ///
@@ -3513,13 +3516,21 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             model.lab_state.last_run_error = None;
             // lab-yahoo-empty-range-ux v0.1.0 — D-ER-3 (M-DEV.9a): clear stale notice.
             model.lab_state.last_run_notice = None;
+            // bug-log #215: clear a stale Stop, so Cancelled → Running cleanly.
+            model.lab_state.last_run_cancelled = false;
         }
         Message::LabRunCompleted(outcome) => {
             // 6-11 AC1 — the outcome, paired with the `RunStarted` above.
+            // bug-log #215: the detail is the classified message, so neither
+            // sentinel tag (no-data, Stop) reaches the log as U+0001 bytes.
             model.log_session(&crate::session_log::Event::RunFinished {
                 kind: "lab",
                 ok: outcome.is_ok(),
-                detail: outcome.as_ref().err().map(ToString::to_string),
+                detail: outcome.as_ref().err().map(|e| {
+                    crate::lab::runner::preload_notice::classify(e)
+                        .msg()
+                        .to_string()
+                }),
             });
             model.lab_run_inflight = false;
             // R9.3 — clear progress on run completion.
@@ -3542,10 +3553,13 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             // flat Err→last_run_error assignment with the typed classifier so that
             // a sentinel-tagged no-data message routes to last_run_notice (muted)
             // and a genuine error routes to last_run_error (red ⚠).
+            // bug-log #215: a CANCELLED_TAG-tagged message is the operator's
+            // Stop — neither, so the Lab draws RunState::Cancelled.
             match &outcome {
                 Ok(_) => {
                     model.lab_state.last_run_error = None;
                     model.lab_state.last_run_notice = None;
+                    model.lab_state.last_run_cancelled = false;
                 }
                 Err(raw) => {
                     use crate::lab::runner::preload_notice::{RunMessageKind, classify};
@@ -3553,10 +3567,17 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
                         RunMessageKind::Notice(msg) => {
                             model.lab_state.last_run_notice = Some(msg);
                             model.lab_state.last_run_error = None;
+                            model.lab_state.last_run_cancelled = false;
                         }
                         RunMessageKind::Error(msg) => {
                             model.lab_state.last_run_error = Some(msg);
                             model.lab_state.last_run_notice = None;
+                            model.lab_state.last_run_cancelled = false;
+                        }
+                        RunMessageKind::Cancelled(_) => {
+                            model.lab_state.last_run_error = None;
+                            model.lab_state.last_run_notice = None;
+                            model.lab_state.last_run_cancelled = true;
                         }
                     }
                 }

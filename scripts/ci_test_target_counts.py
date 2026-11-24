@@ -38,10 +38,12 @@ THE COUNTS ARE DECLARED, NOT MEASURED OFF THE SUBJECT. Each one was read off
 the source at the stage that ships it: the `#[test]` / `#[tokio::test]` items
 that survive the leg's cfg set. Both legs build ui's default features (`live`,
 `yahoo`, `binance`, `live-fx`); Windows adds `fixtures`, which no declared file
-has a cfg on. One declared file is OS-gated: `activity_tape_failed_hold_render`
-(bug-log `#217`) is `#![cfg(target_os = "macos")]` (ADR-0057 D2, pixels are
-macOS-canonical), so it declares 4 on macOS and 0 on Windows, and the row makes
-the macOS-only AD-10 proof's count a measurement instead of a silent zero. No
+has a cfg on. Two declared files are OS-gated: `activity_tape_failed_hold_render`
+(bug-log `#217`) is `#![cfg(target_os = "macos")]` and `lab_stop_render`
+(bug-log `#215`) is `#![cfg(all(target_os = "macos", feature = "live"))]`
+(ADR-0057 D2, pixels are macOS-canonical), so each declares 4 on macOS and 0 on
+Windows, and the rows make the macOS-only AD-10 proofs' counts a measurement
+instead of a silent zero. No
 other declared file puts a `target_os`, `unix` or `windows` cfg on a test item
 (the `cfg(unix)` / `cfg(windows)` lines left in two of them gate `use` imports
 only), so every other row carries the same number for both legs.
@@ -204,10 +206,13 @@ DECLARED: dict[str, dict] = {
                "to drive the production arm off-runtime.",
     },
     "lab_runner_cancel_e2e": {
-        "macos": 3,
-        "windows": 3,
+        "macos": 7,
+        "windows": 7,
         "why": "The 2 kept names + `stop_during_preload_aborts_preload_task` "
-               "(Wave F, 2 -> 3).",
+               "(Wave F, 2 -> 3), + tests 4-7 (bug-log #215, 3 -> 7): a preload "
+               "Stop and a failed preload landed in the Lab state, an engine "
+               "Stop and an engine error through the real `spawn_lab_run` Task. "
+               "All four are cross-platform (`live` only).",
     },
     "lab_yahoo_empty_range_classification": {
         "macos": 3,
@@ -224,11 +229,21 @@ DECLARED: dict[str, dict] = {
                "\"macos\")]` (ADR-0057 D2), so Windows lists 0 by design; a 0 "
                "on macOS is the silent zero this gate exists to catch.",
     },
+    # ── bug-log #215 (a Stop ends Cancelled; the second OS-gated row) ────────
+    "lab_stop_render": {
+        "macos": 4,
+        "windows": 0,
+        "why": "R1-R3, the AD-10 pixel proof that a Stop draws \"Cancelled — "
+               "Run again\" and no red (with the failed-preload negative control "
+               "and the jitter control), + the `#[ignore]` `measure` test, which "
+               "`--list` includes. `#![cfg(all(target_os = \"macos\", feature = "
+               "\"live\"))]` (ADR-0057 D2), so Windows lists 0 by design.",
+    },
 }
 
 # Non-vacuity floor for the declaration itself: deleting rows must be deliberate.
 # Raise it when a row is added; lowering it is a decision, not a fix.
-MIN_DECLARED = 16
+MIN_DECLARED = 17
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
 

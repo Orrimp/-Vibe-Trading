@@ -635,3 +635,8 @@ Binance / Coinbase / Kraken rows are untouched.
   anchor-mutation ADR required). Full design at
   `docs/archive/pre-bmad-spec/v1/lab-yahoo-empty-range-ux/feature.md` § D-ER-1..6. Closes M-T1 of
   `docs/archive/pre-bmad-spec/v1/lab-yahoo-empty-range-ux/tasks.md`.
+- 2026-11-24 (bug-log `#215`): item (3)'s sentinel transport gains a second
+  tag, `preload_notice::CANCELLED_TAG` → `RunMessageKind::Cancelled`, for an
+  operator Stop (neither a notice nor an error; `classify` checks it before
+  `NO_DATA_TAG`). `LabRunResult` is unchanged. Details: ADR-0050 § Changelog
+  2026-11-24.

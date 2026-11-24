@@ -5,7 +5,7 @@ status: accepted
 date: 2026-05-29
 supersedes: none
 superseded-by: none
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # ADR-0050: iced ↔ tokio runtime-context contract and cooperative cancellation primitives
@@ -344,3 +344,45 @@ invariant.
   is superseded by "the test MUST call the production arm off-runtime".
   Measured before the change (F-V1, one build): the old copies stayed green
   with the guard and `abort()` deleted and the cancel arm made never-ready.
+
+- 2026-11-24 (bug-log `#215`, this fix): **a Stop ends `Cancelled`, end to
+  end.** D2's cancel arm in `run_yahoo_preload_arm` ends its `YahooPreload`
+  activity `Cancelled` (`ActivityHandle::cancel`; it was
+  `Failed("operator cancelled")`, which the status bar drew as a red row) and
+  returns `preload_notice::cancelled_message("operator cancelled during
+  preload")`: the same body, prefixed with the new sentinel
+  `preload_notice::CANCELLED_TAG` (ADR-0040 § Changelog 2026-05-30 item (3)
+  precedent; `LabRunResult` unchanged). An engine `RunError::Cancelled`
+  reaching `spawn_lab_run`'s engine join is tagged the same way (body
+  "backtest run cancelled by operator"); that arm also covers a Stop during
+  the Binance preload, which has no cancel arm and is seen by the engine.
+  `preload_notice::classify` returns `RunMessageKind::Cancelled`, the
+  `LabRunCompleted` arm sets `LabState::last_run_cancelled` (and clears the
+  error and the notice), and `screens::lab` derives `RunState::Cancelled`
+  ("Cancelled — Run again", existing copy) through
+  `RunState::with_cancelled`. The mapping keys on `RunError::Cancelled` and
+  on the arm's own cancel branch, not on the token, so a genuine error that
+  lands at the moment of a Stop still shows red. One qualification: for the
+  momentum, pairs and tcn arms the engine itself derives `RunError::Cancelled`
+  from an anyhow message containing "Cancelled" (`backtest::engine`, the
+  `e.to_string().contains("Cancelled")` maps, ~lines 1136, 1186, 1242), so an
+  error of those arms whose text contains that word would be drawn as a Stop;
+  their only such text today is their own cancel error (the engine is out of
+  `#215`'s scope; a typed cancel error there is a follow-up). **The Lab's Stop
+  UX, decided here:** a Stop renders `RunState::Cancelled` (lab-end-to-end-v2
+  Q8=(b)) and holds it until the next Run, like Completed and Failed. Q8's 2 s
+  flash back to Idle is not implemented, by choice: Cancelled is held until
+  the next Run, like Completed and Failed (the always-on 500 ms `ToastTick`
+  that `#217` now uses for the tape could drive a flash if one is ever
+  wanted). R6.4's "→ Idle, not Failed" is superseded. Before this fix
+  `RunState::Cancelled` had no producer, although `79fceb56`'s message
+  claimed the chain. The session log's `RunFinished.detail` is now the
+  classified message, so neither tag reaches it as U+0001 bytes. D2's
+  `Err(SmolStr::new("cancelled"))` snippet is illustrative only. D3: the
+  reference test `lab_runner_cancel_e2e.rs::stop_during_preload_exits_within_500ms`
+  keeps its name and now pins the tagged result and `End(Cancelled)`; tests
+  4-7 there pin the Lab state for a preload Stop, a failed preload, an
+  engine Stop and an engine error, and `lab_stop_render.rs` is the AD-10
+  pixel proof of the drawn button and of the `YahooPreload` row (macOS). The
+  binary's own `LabRun` activity end on a Stop (`cockpit_live.rs`) stays
+  unpinned (ADR-0048 K3 #6; bug-log `#224`).

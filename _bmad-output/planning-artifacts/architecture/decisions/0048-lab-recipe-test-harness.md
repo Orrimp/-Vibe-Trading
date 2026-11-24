@@ -373,7 +373,12 @@ SHA assertion.
   built in a test (K3 #6), so its `SubscriptionCtx` literal (C1-RES1,
   C1-RES2), its receiver lifecycle and the bin-side activity producers stay
   unpinned; a cancelled Yahoo preload ends `Failed("operator cancelled")`,
-  not `Cancelled`, and `lab_runner_cancel_e2e.rs` pins it as it is;
+  not `Cancelled`, and `lab_runner_cancel_e2e.rs` pins it as it is
+  *(fixed 2026-11-24, bug-log `#215`: it ends `Cancelled` and the Lab state
+  records the Stop (`last_run_cancelled`), both pinned by
+  `lab_runner_cancel_e2e.rs`; the drawn `RunState::Cancelled` is pinned by
+  `lab_stop_render.rs` (AD-10, macOS), with `run_button`'s `with_cancelled`
+  table pinning the derivation; ADR-0050 § Changelog 2026-11-24)*;
   `lab_yahoo_empty_range_classification.rs` stays `#[tokio::test]` (its
   subject is the classification), so F-P3 would leave it green (reasoned,
   not measured: F-P3's run did not build it);
