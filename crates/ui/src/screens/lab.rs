@@ -694,12 +694,14 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         None
     };
     // lab-buy-sell-overlay-align — the chart reserves a WIDE right gutter for
-    // the equity Y-axis only when its equity axis paints: at least one sample
-    // inside the bar window (`chart::equity_axis_shown`, the gate the chart
-    // itself paints with; `compare` is always empty here). An overlay whose
-    // samples all miss the bars — a committed start/end-only report's ordinal
-    // `0`/`1` timestamps, a persisted run from another period — leaves the
-    // chart full width (bug-log #207). The volume histogram below must mirror
+    // the equity Y-axis only when its equity axis paints: at least two of the
+    // overlay's samples inside the bar window (`chart::equity_axis_shown`, the
+    // gate the chart itself paints with; `compare` is always empty here). An
+    // overlay whose samples all miss the bars — a committed start/end-only
+    // report's ordinal `0`/`1` timestamps, a persisted run from another
+    // period — leaves the chart full width (bug-log #207), and so does one
+    // with a single in-window sample, such as an hourly run over the seeded
+    // one-minute-bar hour (bug-log #211). The volume histogram below must mirror
     // that choice so its plot area stays horizontally aligned with the
     // chart's — i.e. each per-bar volume bar sits directly beneath its
     // buy/sell triangle. It asks the helper with exactly what the chart is

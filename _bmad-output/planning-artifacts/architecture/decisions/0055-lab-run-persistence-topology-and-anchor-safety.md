@@ -5,7 +5,7 @@ status: accepted
 date: 2026-06-12
 supersedes: none
 superseded-by: none
-updated: 2026-11-22
+updated: 2026-11-24
 ---
 
 # ADR-0055: Lab run persistence topology & anchor-safety
@@ -365,6 +365,24 @@ prints `ANCHORS PASS  (119 / 119)`, and
 
 ## Changelog
 
+- 2026-11-24 (orchestrator, bug-log `#211` fix): **an overlay draws only its in-window samples,
+  and a series with fewer than two of them is no overlay** (`widgets::chart::MIN_DRAWN_SAMPLES`
+  = 2, one gate in `drawn_samples` for the range and the stroke). The stroke used to clamp every
+  out-of-window sample onto the plot's left or right edge, at y values the range never saw, while
+  one in-window sample was enough to scale the axis and reserve the gutter. Now such a series
+  neither scales the axis nor reserves the gutter; the volume histogram follows through
+  `equity_axis_shown`, and without bars (Compare, Lab F9) a one-sample series draws nothing
+  (alone, the chart shows "No data"). So a persisted `lab-runs/` run repaints over the seeded
+  bars only where two or more of its samples fall inside the bar window: an `H1_2024` run over
+  the `cockpit` bin's seeded hour has one (12:00) and draws nothing. Every Lab run of v1.momentum,
+  pairs and tcn, and of the minute-bar SMA arms, changes too: the engine stamps one hour per
+  equity entry, one entry per merged or minute bar (`engine.rs` `synthetic_timestamps` at
+  :510/:557/:593/:634), so about 90 % (top-10), 50 % (pairs) or 98 % (SMA, minute bars) of their
+  samples fall after the bar window. Before the fix those samples were the right-edge smear;
+  after it the chart draws only the in-window prefix, the first 1/k of the run, across the full
+  window (bug-log `#226`, the engine's stamping, open). No edge point is interpolated: the curve
+  starts and ends at a recorded sample. The committed-evidence outcome in the 2026-11-15
+  amendment is unchanged (0 in-window samples). No decision changes. Anchor-neutral, 119/119.
 - 2026-11-22 (orchestrator, bug-log `#206` fix): **Compare's scan walks D8.**
   `compare::cache::scan_one_root` walked only `<root>/<x>/reports/`, so on `evidence/` it
   considered 108 of the 197 in-contract reports git lists; it now walks `layout::report_dirs` and

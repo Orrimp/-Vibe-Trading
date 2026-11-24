@@ -171,9 +171,11 @@
 //! - **C1-C10** — `widgets::chart` lib tests: C1
 //!   `equity_axis_hidden_when_no_sample_in_bar_window`, C2
 //!   `equity_axis_shown_when_a_sample_is_in_bar_window` (its `one_inside`
-//!   half pins TODAY's at-least-one-in-window-sample gate, which bug-log
-//!   #211's fix raises to two), C3
-//!   `equity_axis_shown_without_bars_for_any_sample`, C4
+//!   half pinned #207's at-least-one-in-window-sample gate; bug-log #211's
+//!   fix raised the gate to two, flipped that half and renamed the test
+//!   `equity_axis_shown_when_two_samples_are_in_bar_window`), C3
+//!   `equity_axis_shown_without_bars_for_any_sample` (renamed by #211
+//!   `equity_axis_shown_without_bars_for_a_two_sample_series`), C4
 //!   `equity_axis_hidden_without_any_series`, C5
 //!   `equity_axis_follows_the_window_for_compare_only_series` (C5a: an
 //!   in-window compare series shows the axis; C5b: an out-of-window one does
@@ -188,7 +190,8 @@
 //!   slot 0 unresolved: no bars, compare only → the axis; negative half: no
 //!   series → none), C9 `bar_window_is_first_open_to_last_close_inclusive` (a
 //!   lone sample at the last close / first open → shown, at close + 1 ms /
-//!   open − 1 ms → hidden, on bars that span a minute), C10
+//!   open − 1 ms → hidden, on bars that span a minute; since #211 each probe
+//!   is paired with an anchor sample inside the window), C10
 //!   `equity_range_spans_only_in_window_samples` (a mixed series' range equals
 //!   the range derived from its in-window values and `RANGE_PAD_FRACTION`;
 //!   the extreme moved INTO the window reaches the top).
@@ -212,16 +215,24 @@
 //! every test; it has no line left to mutate now (Pass 5 reads the range
 //! `draw` computed once), and P7-8 is its analogue.
 //!
+//! **Re-measured 2026-11-24 for bug-log #211** (every row, on the fixed tree,
+//! with the final #211 tests in place): "lib" = 717 tests, this file = 31,
+//! `lab_buy_sell_overlay_render.rs` = 7. Each row's "#211:" clause gives what
+//! that run found for the rewritten C2/C3/C9, the new C11-C14 and LR-211a-d,
+//! and for tests added since the row was first measured; the rest of the row
+//! is the 2026-11-16 record. The #211 fix also made Pass 5's stroke read
+//! `bar_window_ms`, so P7-7 now moves the stroke's window as well as the gate.
+//!
 //! | Probe | File / symbol | OLD → NEW | RED | GREEN | Measured |
 //! |---|---|---|---|---|---|
-//! | P7-1 draw leg | `widgets/chart.rs` `ChartProgram::draw` | `        let has_equity = equity_range.is_some();` → `        let has_equity = self.equity.is_some() \|\| !self.compare.is_empty();` | pixel: LR-207a and LR3 (25,778 px differ from the bars-only frame: the empty gutter), LR-207d (scene A's alignment: the chart reserves the gutter, the histogram does not) | lib 686 of 686 (C1-C10 test the gate and the range, not `draw`); LR-207b, LR-207c and the other 20 of 22 in this file, the other 3 of 4 in `lab_buy_sell_overlay_render.rs` | lib measured; pixel measured on the earlier OLD |
-//! | P7-2 the shared window | `widgets/chart.rs` `bar_window_equity_range` | `    compute_equity_range(equity, compare, start, end)` → `    compute_equity_range(equity, compare, None, None)` (two unused-variable warnings, `start` and `end`) | lib: C1, C5 (C5b), C6 (its out-of-window half), C7 (C7b), C9 (its close + 1 ms half), C10; pixel: LR-207a, LR3, LR-207d (shift 0) | lib 680 of 686 (C2, C3, C4, C8); LR-207b, LR-207c, LR-207d's alignment (the histogram asks the same range) | lib measured; pixel measured on the earlier OLD |
-//! | P7-3 hit-test leg | `widgets/chart.rs` `ChartProgram::plot_rect` | `        if self.equity_axis_shown() {` → `        if self.equity.is_some() \|\| !self.compare.is_empty() {` | lib: C6 (its out-of-window half), C7 (C7b: the plot rect) | lib 684 of 686; every pixel test (`draw` keeps its own rule) | lib measured; pixel measured (falsifier) |
-//! | P7-4 histogram leg | `screens/lab.rs` `view` | `        active.is_some() && chart::equity_axis_shown(&bars, equity_overlay.as_ref(), &[]);` → `        equity_overlay.is_some();` | pixel: LR-207d only (scene A: `SELL[1]` volume bar x=1022 vs its triangle x=1042, residual 20 px > `ALIGN_TOL_PX` 16; the histogram reserves the gutter, the chart does not). Its derived histogram shift A − B is then 0 for every fill, 8.1 to 32.5 px off (REASONED; asserted after the alignment) | lib (682 of 682 measured before C7-C10 existed; REASONED 686 of 686 now: no lib test reaches `lab::view`'s histogram flag); this file (22 of 22); the other 3 of 4 in `lab_buy_sell_overlay_render.rs` | measured on the earlier OLD |
-//! | P7-5 the window is live | `widgets/chart.rs` `bar_window_equity_range` | `    let (start, end) = bar_window_ms(bars);` → `    let (start, end) = (Some(i64::MAX), Some(i64::MAX));` (an unused-variable warning, `bars`) | lib: C2, C3, C5 (C5a), C6 (its in-window half), C7 (C7a), C8, C9 (its last-close half), C10 (no range at all); pixel: LR-207b (shift 0), LR-207c (the bar-less segment is gone), LR-207d (shift 0), LR1, T7(a) `lab_curve_hydrated_from_lab_runs_report_renders`, T7(b) `compare_two_run_overlay_renders_both_series`, `compare_screen_two_run_overlay_renders_both_series`, `compare_screen_single_run_overlay_draws_no_accent2` (the primary ACCENT curve is gone: 0 px < 120); REASONED, added since: LR-207a (its in-window negative control changes 0 px) | lib 678 of 686 (C1, C4); LR3, LR-207d's alignment | lib measured; pixel measured (falsifier, LR-207a REASONED) |
-//! | P7-6 compare reaches the chart's range | `widgets/chart.rs` `ChartProgram::equity_range` | `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &self.compare)` → `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &[])` | lib: C7 (C7a), C8; pixel: LR-207e (the compare-only curve is gone), T7(b) `compare_two_run_overlay_renders_both_series` and `compare_screen_two_run_overlay_renders_both_series` (the second curve is scaled to the primary's range alone and leaves the plot) | lib 684 of 686 (C1-C6, C9, C10 pass a primary or call the free helper); every other pixel test in this file and `lab_buy_sell_overlay_render.rs` | measured (orchestrator's gate, lib + both pixel files); LR-207e added after the fixer's lib measurement (the earlier form of this probe was killed only by the corpus-gated `lab_binance_render.rs` `binance_sourced_equity_curve_rasterizes`, which skips without `data/binance`) |
-//! | P7-7 the window ends at the last CLOSE | `widgets/chart.rs` `bar_window_ms` | `        bars.last().map(\|b\| b.close_ts.unix_millis()),` → `        bars.last().map(\|b\| b.open_ts.unix_millis()),` | lib: C9 (a sample at the last close is hidden) | lib 685 of 686 (the `bars_207` bars open and close at the same instant); pixel REASONED green: no fixture sample lies in (last open, last close] (`lab_runs_report_at` stops at bar 50) | lib measured; pixel REASONED |
-//! | P7-8 the chart's range keeps the window | `widgets/chart.rs` `ChartProgram::equity_range` | `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &self.compare)` → `        compute_equity_range(self.equity.as_ref(), &self.compare, None, None)` | lib: C6 (its out-of-window half), C7 (C7b), C10 (range (−395000, 10495000) vs the derived (99975, 100525)); pixel REASONED: LR-207a and LR3 (the out-of-window overlay reserves the gutter and strokes its clamped edge), LR-207d (scene A: the chart reserves the gutter, the histogram's free helper does not) | lib 683 of 686 (C1-C5, C8, C9 use the free helper or no bars) | lib measured; pixel REASONED |
+//! | P7-1 draw leg | `widgets/chart.rs` `ChartProgram::draw` | `        let has_equity = equity_range.is_some();` → `        let has_equity = self.equity.is_some() \|\| !self.compare.is_empty();` | pixel: LR-207a and LR3 (25,778 px differ from the bars-only frame: the empty gutter), LR-207d (scene A's alignment: the chart reserves the gutter, the histogram does not); #211: LR-211a (25,778 px: the empty gutter) and LR-211c (601 px in both roles: the equity rect and no "No data") | lib 686 of 686 (C1-C10 test the gate and the range, not `draw`); LR-207b, LR-207c and the other 20 of 22 in this file, the other 3 of 4 in `lab_buy_sell_overlay_render.rs`; #211: lib 717 of 717, this file 27 of 31 (LR-211b among them), 6 of 7 in `lab_buy_sell_overlay_render.rs` (LR-211d: scenes A and C both reserve the gutter, so they still match; LR-207d is the kill there) | lib measured; pixel measured on the earlier OLD; #211 cells measured |
+//! | P7-2 the shared window | `widgets/chart.rs` `bar_window_equity_range` | `    compute_equity_range(equity, compare, start, end)` → `    compute_equity_range(equity, compare, None, None)` (two unused-variable warnings, `start` and `end`) | lib: C1, C5 (C5b), C6 (its out-of-window half), C7 (C7b), C9 (its close + 1 ms half), C10; pixel: LR-207a, LR3, LR-207d (shift 0); #211: lib C2 (`one_inside` has two samples in the unbounded window), C11 ((−395000, 10495000) vs the derived (99975, 100525)); pixel LR-211a (27,624 px), LR-211b (6,973 px off scale: the outside samples enter the range and rescale the curve; its on-scale frame stays 0 px), LR-211d (782 px: A and C both reserve the gutter, with different axis labels) | lib 680 of 686 (C2, C3, C4, C8) before #211; #211: lib 709 of 717 (C3, C4, C8, C12, C13, C14), this file 27 of 31 (LR-211c: no bars, no window either way), 5 of 7 in `lab_buy_sell_overlay_render.rs`; LR-207b, LR-207c, LR-207d's alignment (the histogram asks the same range) | lib measured; pixel measured on the earlier OLD; #211 cells measured |
+//! | P7-3 hit-test leg | `widgets/chart.rs` `ChartProgram::plot_rect` | `        if self.equity_axis_shown() {` → `        if self.equity.is_some() \|\| !self.compare.is_empty() {` | lib: C6 (its out-of-window half), C7 (C7b: the plot rect); #211: C12 (a bar-less lone compare sample's plot rect) | lib 684 of 686; every pixel test (`draw` keeps its own rule); #211: lib 714 of 717, every pixel test (31 of 31, 7 of 7) | lib measured; pixel measured (falsifier); #211 cells measured |
+//! | P7-4 histogram leg | `screens/lab.rs` `view` | `        active.is_some() && chart::equity_axis_shown(&bars, equity_overlay.as_ref(), &[]);` → `        equity_overlay.is_some();` | pixel: LR-207d only (scene A: `SELL[1]` volume bar x=1022 vs its triangle x=1042, residual 20 px > `ALIGN_TOL_PX` 16; the histogram reserves the gutter, the chart does not). Its derived histogram shift A − B is then 0 for every fill, 8.1 to 32.5 px off (REASONED; asserted after the alignment) | lib (682 of 682 measured before C7-C10 existed; REASONED 686 of 686 now: no lib test reaches `lab::view`'s histogram flag); this file (22 of 22); the other 3 of 4 in `lab_buy_sell_overlay_render.rs`; #211: lib 717 of 717, this file 31 of 31, 6 of 7 in `lab_buy_sell_overlay_render.rs` (LR-211d: A and C both narrow the histogram) | measured on the earlier OLD; #211 cells measured (LR-207d red again) |
+//! | P7-5 the window is live | `widgets/chart.rs` `bar_window_equity_range` | `    let (start, end) = bar_window_ms(bars);` → `    let (start, end) = (Some(i64::MAX), Some(i64::MAX));` (an unused-variable warning, `bars`) | lib: C2, C3, C5 (C5a), C6 (its in-window half), C7 (C7a), C8, C9 (its last-close half), C10 (no range at all); pixel: LR-207b (shift 0), LR-207c (the bar-less segment is gone), LR-207d (shift 0), LR1, T7(a) `lab_curve_hydrated_from_lab_runs_report_renders`, T7(b) `compare_two_run_overlay_renders_both_series`, `compare_screen_two_run_overlay_renders_both_series`, `compare_screen_single_run_overlay_draws_no_accent2` (the primary ACCENT curve is gone: 0 px < 120); REASONED, added since: LR-207a (its in-window negative control changes 0 px); #211: lib C11, C12, C13, C14 (no range: their `expect`s and the two-sample bar-less half), C2 and C3 (their shown halves); pixel LR-211a-d at their controls (the in-window curve, the two-sample bar-less curves and scene B draw nothing), and, added since, CR1 (#206), LR-208 and LR-208e (#208): this file 13 of 31 red, `lab_buy_sell_overlay_render.rs` 4 of 7 | lib 678 of 686 (C1, C4); LR3, LR-207d's alignment; #211: lib 705 of 717 (C1, C4) | lib measured; pixel measured (falsifier, LR-207a REASONED); #211 cells measured |
+//! | P7-6 compare reaches the chart's range | `widgets/chart.rs` `ChartProgram::equity_range` | `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &self.compare)` → `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &[])` | lib: C7 (C7a), C8; pixel: LR-207e (the compare-only curve is gone), T7(b) `compare_two_run_overlay_renders_both_series` and `compare_screen_two_run_overlay_renders_both_series` (the second curve is scaled to the primary's range alone and leaves the plot); #211: lib C11 (no range: the primary's lone in-window sample is no overlay and the compare series is dropped); pixel LR-211c (its compare-role control: 0 `ACCENT_2` px) and, added since, CR1 (#206) | lib 684 of 686 (C1-C6, C9, C10 pass a primary or call the free helper); every other pixel test in this file and `lab_buy_sell_overlay_render.rs`; #211: lib 714 of 717, this file 26 of 31, 7 of 7 | measured (orchestrator's gate, lib + both pixel files); LR-207e added after the fixer's lib measurement (the earlier form of this probe was killed only by the corpus-gated `lab_binance_render.rs` `binance_sourced_equity_curve_rasterizes`, which skips without `data/binance`) |
+//! | P7-7 the window ends at the last CLOSE | `widgets/chart.rs` `bar_window_ms` | `        bars.last().map(\|b\| b.close_ts.unix_millis()),` → `        bars.last().map(\|b\| b.open_ts.unix_millis()),` | lib: C9 (a sample at the last close is hidden; since #211, the probe at the last close beside its anchor); #211: C14 (the stroke drops the last-close sample: 2 vertices, not 3) | lib 685 of 686 (the `bars_207` bars open and close at the same instant), 715 of 717 since #211 (C13 included); pixel green, 31 of 31 and 7 of 7: no fixture sample lies in (last open, last close] (`lab_runs_report_at` stops at bar 50), and no pixel test pins where the stroke's x scale ends (C14 pins the stroke's window, C9 the gate's) | lib measured; pixel measured 2026-11-24 (REASONED until then) |
+//! | P7-8 the chart's range keeps the window | `widgets/chart.rs` `ChartProgram::equity_range` | `        bar_window_equity_range(&self.bars, self.equity.as_ref(), &self.compare)` → `        compute_equity_range(self.equity.as_ref(), &self.compare, None, None)` | lib: C6 (its out-of-window half), C7 (C7b), C10 (range (−395000, 10495000) vs the derived (99975, 100525)); pixel (REASONED 2026-11-16, measured 2026-11-24): LR-207a and LR3 (the out-of-window overlay reserves the gutter and paints the equity axis with no curve: since #211 nothing is clamped onto an edge), LR-207d (scene A: the chart reserves the gutter, the histogram's free helper does not); #211: lib C11; pixel LR-211a (27,624 px), LR-211b (6,973 px off scale; its on-scale frame 0 px), LR-211d (782 px) | lib 683 of 686 (C1-C5, C8, C9 use the free helper or no bars); #211: lib 713 of 717 (C12, C13, C14 too), this file 27 of 31, 5 of 7 | lib measured; pixel measured 2026-11-24 (REASONED until then) |
 //!
 //! ## bug-log #206 — Compare's scan walks the ONE layout (PHASE 4d)
 //!
@@ -402,6 +413,132 @@
 //! | P214-5 a wider column | `pub(crate) const ROW_LABEL_W: f32 = 120.0;` → `pub(crate) const ROW_LABEL_W: f32 = 160.0;` | ML2 (the 144 px box holds 142.3 px: 10 px tall), ML3 at its precondition (the 144 px box holds the id in 3 lines, 46.8 px, so there is nothing to clip; its bounds hold, 43 px, right edge 162 ≤ 164); baselines 12 of 12 | ML1 (0 px at x ≥ 172, derived); this file 26 of 28 | measured |
 //! | P214-6 a 3-line id | `const OVERLONG_ID: &str = "btc_bbands_mean_revert_20_2_with_volume_filter_and_atr_stop_v2_tuned";` → `const OVERLONG_ID: &str = "btc_bbands_mean_revert_20_2_with_volume_filter_an";` (its first 49 characters) | ML3 at its precondition (3 lines, 46.8 px: no more than the box holds) | ML3's three bounds hold (41 px, right edge 123); this file 27 of 28; baselines 12 of 12 | measured |
 //! | P214-6′ a 3-line id, no clip | P214-6 plus P214-2 | ML3 at its precondition alone | ML3's three bounds hold with no clip (41 px, right edge 123): without the precondition this pair is green, the gap the precondition closes; this file 27 of 28; baselines 12 of 12 | measured |
+//!
+//! ## bug-log #211 — an overlay draws only its in-window samples (PHASE 4f)
+//!
+//! The chart's equity overlay treated out-of-window samples two ways. The
+//! range (`compute_equity_range`, #207) took in-window samples only, and ONE
+//! was enough to scale the axis (to a 1.1 USDT span) and reserve the gutter;
+//! the stroke (`draw_equity_polyline`) drew every sample and clamped each
+//! timestamp onto the plot's left or right edge, at y values the range never
+//! saw, so those strokes left the plot rect. One gate now serves both:
+//! `widgets::chart::drawn_samples` yields a series' in-window samples, and
+//! none unless at least `MIN_DRAWN_SAMPLES` (2) lie inside. A series with
+//! fewer is no overlay: no range, no gutter, no stroke, and the Lab's volume
+//! histogram follows through `equity_axis_shown`. Pass 5 strokes
+//! `equity_stroke_points`: `equity_polyline_points` over `bar_window_ms`, the
+//! window the range uses; the bar-less path needs two samples too, so a
+//! one-sample series draws nothing (alone, the chart shows "No data").
+//! No edge point is interpolated: the curve starts and ends at a recorded
+//! sample. The arithmetic is unchanged, so a fully in-window series keeps its
+//! vertices: `/tmp/lab_211_in_window_only.png` and
+//! `/tmp/lab_211_full_in_window.png` were byte-identical before and after the
+//! fix. The engine stamps one hour per equity entry for the momentum, pairs,
+//! tcn and composed-SMA arms (bug-log #226), so a Lab run of those arms now
+//! draws only the prefix of its series that falls inside its own bars.
+//!
+//! - **LR-211a** [`h1_2024_run_over_the_seeded_hour_draws_nothing`] — the
+//!   operator's case. A persisted `H1_2024` run (the momentum fixture report
+//!   plus a companion `-equity.csv` of `ui::test_support::h1_2024_hourly_samples`,
+//!   the first 4,344 hourly samples from 2024-01-01T00:00Z (a real momentum
+//!   run has 10 · 4,344 + 1, one per merged bar, `#226`), written through the
+//!   production `write_equity_csv` schema and read back by the Lab loader)
+//!   over `render_bars()` (2024-01-15 12:00:00 to 12:59:59): exactly one
+//!   sample (12:00) is inside. The frame is byte-identical to the bars-only
+//!   frame; control: LR-207b's in-window series changes it (31,457 px). PNGs
+//!   `/tmp/lab_211_bars_only.png`, `/tmp/lab_211_h1_2024_over_the_seeded_hour.png`.
+//! - **LR-211b** [`out_of_window_samples_add_no_pixel`] — LR-207b's six
+//!   in-window samples plus 12 hourly samples before the window and 11 after,
+//!   in two variants: at `lo − 5 · span` of the in-window values (off scale;
+//!   precondition: below the axis minimum, derived with
+//!   `test_support::EQUITY_RANGE_PAD_FRACTION`) and at `(lo + hi) / 2` (on
+//!   scale; precondition: inside `[lo, hi]`). Both frames are byte-identical
+//!   to the in-window-only frame, so a sample is dropped for its time, not
+//!   its value. Control: the in-window curve adds ≥ `OVERLAY_ACCENT_DELTA_MIN`
+//!   ACCENT px over bars-only (1,284); margin: 0 ACCENT px below the plot rect
+//!   (rows from its bottom + 2, derived from `chart::inner_rect_for_viewport_test`)
+//!   in the mixed and the bars-only frames. PNGs `/tmp/lab_211_in_window_only.png`,
+//!   `/tmp/lab_211_mixed.png`, `/tmp/lab_211_mixed_on_scale.png`.
+//! - **LR-211c** [`bar_less_lone_sample_draws_nothing`] — no bars and a
+//!   one-row companion CSV (a one-sample `PerBar` series), as the primary and
+//!   as the only compare series (the Compare screen's one-slot case): both
+//!   frames are byte-identical to the "No data" frame. Controls: the committed
+//!   start/end-only series draws ≥ `OVERLAY_DREW_MIN` px as the primary (1,215
+//!   ACCENT) and as the compare series (949 ACCENT_2). PNGs
+//!   `/tmp/lab_211_no_bars_nothing.png`, `/tmp/lab_211_no_bars_lone_primary.png`,
+//!   `/tmp/lab_211_no_bars_lone_compare.png`.
+//! - **LR-211d** — `lab_buy_sell_overlay_render.rs`
+//!   `lab_h1_2024_run_over_the_seeded_hour_matches_the_no_overlay_lab`
+//!   (macOS): the full LR-207d Lab with the `H1_2024` run (scene C) is
+//!   byte-identical to scene A (the committed start/end-only report, no
+//!   overlay), the histogram included; control: scene B (in-window) differs
+//!   from A (19,025 px). PNGs (with `UI_DUMP_PNG`)
+//!   `/tmp/lab_211_full_no_overlay.png`, `/tmp/lab_211_full_in_window.png`,
+//!   `/tmp/lab_211_full_h1_2024.png`.
+//! - **C2, C3, C9 rewritten; C11-C14 new** — `widgets::chart` lib tests: C2
+//!   `equity_axis_shown_when_two_samples_are_in_bar_window` (was
+//!   `equity_axis_shown_when_a_sample_is_in_bar_window`: `one_inside` (one
+//!   in-window sample) hidden, `two_inside` (two) shown, the two-sided pair
+//!   that pins `MIN_DRAWN_SAMPLES` = 2), C3
+//!   `equity_axis_shown_without_bars_for_a_two_sample_series` (was
+//!   `equity_axis_shown_without_bars_for_any_sample`; same assertion), C9
+//!   (each window-edge probe paired with an anchor at bar 30's open), C11
+//!   `a_series_with_one_in_window_sample_does_not_scale_the_axis` (a lone
+//!   in-window extreme leaves the range equal to the compare series' derived
+//!   range; a second in-window sample makes it reach the extreme), C12
+//!   `bar_less_series_needs_two_samples` (without bars a lone sample is no
+//!   overlay as the primary and as the compare series, plain plot rect; two
+//!   samples are), C13 `equity_polyline_vertices_stay_inside_the_plot_rect`
+//!   (C10's mixed series: one vertex per in-window sample, 6, all inside the
+//!   equity plot rect, equal to the in-window series' vertices; so are an
+//!   on-scale sample before the window and one after it; the extreme moved
+//!   inside is a seventh), C14 `equity_stroke_spans_first_open_to_last_close`
+//!   (over `spanning_bars_207`, `equity_stroke_points` puts samples at the
+//!   first open, bar 30's open and the last close on the left edge, at the
+//!   derived fraction and on the right edge; no bars, no vertices).
+//!
+//! **Before the fix** (measured 2026-11-24, unfiltered: HEAD `800cafba`'s
+//! production `widgets/chart.rs` under these tests, C13 and C14 left out:
+//! they call `equity_polyline_points` and `equity_stroke_points`, which HEAD
+//! lacks, so their red is measured through P11-2, P11-8 and P11-9 only). Lib
+//! 711 passed, 4 failed of 715: RED C2 (`one_inside` shown), C9 (the close +
+//! 1 ms probe shown), C11 (range (−395000, 10495000) vs the derived (99975,
+//! 100525)), C12 (a bar-less lone primary shown). This file 28 of 31: RED
+//! LR-211a (29,207 px: the gutter, a 1.1 USDT axis and a stroke up the
+//! plot's left edge), LR-211b (4,289 px off scale, 1,211 px on scale; 20
+//! ACCENT px below the plot rect), LR-211c (2,696 px in each role: an equity
+//! axis with no curve). `lab_buy_sell_overlay_render.rs` 6 of 7: RED LR-211d
+//! (17,437 px). Every pixel control ran (they print before they assert) and
+//! held. In the lib, the asserts after each test's first failing one did not
+//! run on the unfixed tree: C2's `two_inside` half, C9's first-open halves,
+//! C11's negative side and C12's later halves (they pass on the fixed tree).
+//!
+//! LR-211a-d print `#211 pixel margin …` on stderr; run with `--nocapture`.
+//!
+//! ### T-T4 probe table (bug-log #211)
+//!
+//! Same protocol as the tables above. P11-1, P11-2, P11-3, P11-5, P11-8 and
+//! P11-9 edit `crates/ui/src/widgets/chart.rs`, P11-6 and P11-7
+//! `crates/ui/src/test_support.rs` (P11-4 is unused: the design numbered the
+//! probes so). Each OLD occurs exactly once in its file. Measured 2026-11-24
+//! on the final tests: applied, `touch`, run (`cargo test -p ui --lib`, 717
+//! tests; then this file, 31, and `lab_buy_sell_overlay_render.rs`, 7, with
+//! `--no-fail-fast`), restored with `cp` + `touch`, `cmp` byte-identical, one
+//! probe at a time. The #207 rows above were re-measured the same way.
+//! P11-8 and P11-9 came from the fix's review: each was first measured GREEN
+//! on every test (lib 716 of 716, 31 of 31, 7 of 7), the gap; the on-scale
+//! halves of C13 and LR-211b, and C14, close it.
+//!
+//! | Probe | OLD → NEW | RED | GREEN | Measured |
+//! |---|---|---|---|---|
+//! | P11-1 the threshold | `const MIN_DRAWN_SAMPLES: usize = 2;` → `const MIN_DRAWN_SAMPLES: usize = 1;` | lib: C2 (`one_inside`), C9 (close + 1 ms), C11 ((−395000, 10495000)), C12 (a lone primary); pixel: LR-211a (27,674 px), LR-211c (2,696 px in each role), LR-211d (17,163 px) | lib 713 of 717 (C10, C13 and C14 among them); this file 29 of 31 (LR-211b); 6 of 7 | measured |
+//! | P11-2 the clamp returns | in `equity_polyline_points`, `drawn_samples(series, (start, end))` → `series.samples.iter().map(\|(ts, eq)\| ((*ts).clamp(start, end), eq.to_f32().unwrap_or(0.0)))` | lib: C13 (7 vertices, not 6); pixel: LR-211b (4,289 px off scale, 1,211 px on scale; 20 ACCENT px below the plot rect) | lib 716 of 717 (C14: its samples are all inside); this file 30 of 31 (LR-211a and LR-211c: no range, so no stroke runs); 7 of 7 (LR-211d) | measured |
+//! | P11-3 the range ignores the gate | `for (_, v) in drawn_samples(series, window) {` → `for v in series.samples.iter().filter(\|(ts, _)\| (window.0..=window.1).contains(ts)).map(\|(_, eq)\| eq.to_f32().unwrap_or(0.0)) {` | lib: C2, C9, C11, C12; pixel: LR-211a (27,674 px: a gutter and an axis with no curve), LR-211c (2,696 px in each role), LR-211d (17,163 px) | lib 713 of 717 (C10, C13, C14); this file 29 of 31 (LR-211b); 6 of 7 | measured |
+//! | P11-5 the bar-less gate | `if series.samples.len() < MIN_DRAWN_SAMPLES {` → `if series.samples.is_empty() {` | — (a declared equivalent mutant: a one-sample series adds nothing to the range, and its one-vertex path strokes no pixel) | lib 717 of 717; 31 of 31; 7 of 7 | measured |
+//! | P11-6 the H1_2024 origin | `pub const H1_2024_FIRST_HOUR_SECS: i64 = 1_704_067_200;` → `pub const H1_2024_FIRST_HOUR_SECS: i64 = 1_704_070_800;` (one hour late) | LR-211a at its precondition (first sample 1704070800000 ms, not 2024-01-01T00:00Z) | lib 717 of 717; this file 30 of 31; 7 of 7 (LR-211d: hour 347 is then the in-window one) | measured |
+//! | P11-7 the companion's name | `write_equity_csv(&md.with_file_name(format!("{stem}-equity.csv")), &rows)` → `write_equity_csv(&md.with_file_name(format!("{stem}.equity.csv")), &rows)` | LR-211a, LR-211c, LR-211d at their preconditions (the loader falls back to the report's six-row table: 6 samples, not 4,344 or 1) | lib 717 of 717; this file 29 of 31 (LR-211b); 6 of 7 | measured |
+//! | P11-8 the clamp, filtered to the scale | in `equity_polyline_points`, `drawn_samples(series, (start, end))` → `series.samples.iter().map(\|(ts, eq)\| ((*ts).clamp(start, end), eq.to_f32().unwrap_or(0.0))).filter(\|&(_, v)\| (min_eq..=max_eq).contains(&v))` | lib: C13 at its on-scale half (a vertex at (56.0, 348.0), the clamped on-scale sample on the left edge); pixel: LR-211b at its on-scale frame (1,211 px; the off-scale frame stays 0 px) | lib 716 of 717; this file 30 of 31; 7 of 7. Before the on-scale halves existed: every test green (716, 31, 7) | measured |
+//! | P11-9 the stroke's own window | in `equity_stroke_points`, `    let (Some(start), Some(end)) = bar_window_ms(bars) else {` → `    let (Some(start), Some(end)) = (bars.first().map(\|b\| b.open_ts.unix_millis()), bars.last().map(\|b\| b.open_ts.unix_millis())) else {` | lib: C14 (2 vertices, not 3: the last-close sample is dropped while the range keeps it, and bar 30's vertex moves to x = 645.8) | lib 716 of 717; 31 of 31; 7 of 7 (no pixel test pins where the stroke's window ends). Before C14 existed: every test green (716, 31, 7) | measured |
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::cast_precision_loss)]
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -1188,14 +1325,16 @@ use ui::lab::equity_loader::{LabTuple, load_equity};
 use ui::lab::state::{DateRange as LabDateRange, LabDataSource, Preset};
 use ui::test_support::{chart_overlay_program, lab_runs_report_at};
 
-/// Number of synthetic bars under the overlay. `synthetic_candles` stamps bar
-/// `i` at `(FIXED_EPOCH_SECS + i*60)` seconds, so the bar window in
-/// milliseconds is `[BAR_BASE_MS, BAR_BASE_MS + (RENDER_BARS-1)*60_000]`. The
+/// Number of synthetic bars under the overlay. `synthetic_candles` opens bar
+/// `i` at `(FIXED_EPOCH_SECS + i*60)` seconds and closes it 59 s later, so the
+/// bar window in milliseconds is `[BAR_BASE_MS, BAR_BASE_MS +
+/// (RENDER_BARS-1)*60_000 + 59_000]` (first open to last close). The
 /// `lab-runs/` fixture equity timestamps MUST fall INSIDE this window
 /// (`bar_ms()` below; `ui::test_support::lab_runs_report_at` stamps bars 0,
-/// 10, …, 50) or `draw_equity_polyline` clamps them to one edge → a
-/// degenerate vertical line; `compute_equity_range` would also drop them
-/// (it windows to `[bars.first, bars.last]`).
+/// 10, …, 50) or the overlay draws nothing: the chart strokes only in-window
+/// samples, and a series with fewer than two of them is no overlay (no
+/// range, no gutter; bug-log #211, before which the stroke clamped them onto
+/// the plot's edges).
 const RENDER_BARS: usize = 60;
 
 /// `FIXED_EPOCH_SECS` from `fixtures.rs` (Jan 2024) — the base second
@@ -2852,5 +2991,354 @@ fn compare_matrix_overlong_row_label_stays_inside_its_content_box() {
          ({two_lines:.1} px): the widget did not draw the id wrapped past two lines (#214). PNG: \
          {ML_OVERLONG_PNG}",
         bbox.height()
+    );
+}
+
+// ── PHASE 4f — bug-log #211: an overlay draws only its in-window samples ────
+
+use rust_decimal::prelude::ToPrimitive;
+use ui::test_support::{
+    EQUITY_RANGE_PAD_FRACTION, H1_2024_HOURS, h1_2024_hourly_samples,
+    write_companion_equity_csv_for_md,
+};
+
+/// LR-211a's frames: the bars alone and the H1_2024 run over them.
+const LR_211A_BARS_PNG: &str = "/tmp/lab_211_bars_only.png";
+const LR_211A_RUN_PNG: &str = "/tmp/lab_211_h1_2024_over_the_seeded_hour.png";
+/// LR-211b's frames: the in-window series alone and with its outside samples.
+const LR_211B_IN_PNG: &str = "/tmp/lab_211_in_window_only.png";
+const LR_211B_MIXED_PNG: &str = "/tmp/lab_211_mixed.png";
+const LR_211B_ON_SCALE_PNG: &str = "/tmp/lab_211_mixed_on_scale.png";
+/// LR-211c's frames: no bars and a lone sample, as the primary and as the
+/// only compare series, and the "No data" frame they must equal.
+const LR_211C_NOTHING_PNG: &str = "/tmp/lab_211_no_bars_nothing.png";
+const LR_211C_PRIMARY_PNG: &str = "/tmp/lab_211_no_bars_lone_primary.png";
+const LR_211C_COMPARE_PNG: &str = "/tmp/lab_211_no_bars_lone_compare.png";
+
+/// One hour in milliseconds: the spacing of an engine run's samples.
+const HOUR_MS: i64 = 3_600_000;
+
+/// The `render_bars()` bar window `[first open, last close]` in ms, derived
+/// from the bars (2024-01-15 12:00:00.000 to 12:59:59.000Z).
+fn render_bar_window_ms() -> (i64, i64) {
+    let bars = render_bars();
+    (
+        bars.first().expect("bars").open_ts.unix_millis(),
+        bars.last().expect("bars").close_ts.unix_millis(),
+    )
+}
+
+/// How many of `series`' samples lie in `[start, end]` (both inclusive).
+fn in_window_count(
+    series: &ui::lab::equity_loader::LabEquitySeries,
+    (start, end): (i64, i64),
+) -> usize {
+    series
+        .samples
+        .iter()
+        .filter(|(ts, _)| (start..=end).contains(ts))
+        .count()
+}
+
+/// Write a Lab run as a persisted run sits on disk under `<tmp>/lab-runs/`:
+/// the momentum fixture report (`MOMENTUM_FIXTURE`, from
+/// `lab_runs_report_at`) plus its companion `-equity.csv` holding `samples`
+/// (written through the production `write_equity_csv` schema by
+/// `ui::test_support::write_companion_equity_csv_for_md`). Loads it with the
+/// Lab loader, which prefers the CSV, and asserts that it did: the series is
+/// `PerBar` and has exactly `samples.len()` samples (the report's own table
+/// has six).
+fn lab_run_with_companion_csv(
+    tmp: &tempfile::TempDir,
+    samples: &[(i64, Decimal)],
+) -> ui::lab::equity_loader::LabEquitySeries {
+    let lab_runs = tmp.path().join("lab-runs");
+    write_lab_run(
+        &lab_runs,
+        "v1-cross-sectional-momentum",
+        MOMENTUM_FIXTURE,
+        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+    );
+    let md = lab_runs
+        .join("v1-cross-sectional-momentum")
+        .join("reports")
+        .join(MOMENTUM_FIXTURE);
+    write_companion_equity_csv_for_md(&md, samples).expect("write the companion equity CSV");
+    let series = load_equity(&momentum_tuple(), &lab_runs).expect("the persisted run loads");
+    assert_eq!(series.fidelity, Fidelity::PerBar);
+    assert_eq!(
+        series.samples.len(),
+        samples.len(),
+        "the loader must read the companion CSV, not the report's six-row table"
+    );
+    series
+}
+
+/// The persisted `H1_2024` Lab run of LR-211a: `h1_2024_hourly_samples` as
+/// its companion CSV (the first `H1_2024_HOURS`, 4,344, of the hourly samples
+/// the engine stamps; a real top-10 momentum run has 10 · 4,344 + 1, all
+/// outside the seeded hour but hour 348). Preconditions, derived from the
+/// calendar and the bars rather than from the subject: 4,344 samples, the
+/// first at 2024-01-01T00:00:00Z, one hour apart.
+fn h1_2024_lab_run_series(tmp: &tempfile::TempDir) -> ui::lab::equity_loader::LabEquitySeries {
+    let series = lab_run_with_companion_csv(tmp, &h1_2024_hourly_samples(100_000));
+    assert_eq!(series.samples.len(), H1_2024_HOURS);
+    let new_year = time::Date::from_calendar_date(2024, time::Month::January, 1)
+        .expect("2024-01-01")
+        .midnight()
+        .assume_utc();
+    assert_eq!(
+        series.samples[0].0,
+        new_year.unix_timestamp() * 1000,
+        "the first sample of an H1_2024 run is 2024-01-01T00:00:00Z"
+    );
+    assert!(
+        series
+            .samples
+            .windows(2)
+            .all(|w| w[1].0 - w[0].0 == HOUR_MS),
+        "an H1_2024 run's samples are one hour apart"
+    );
+    series
+}
+
+/// **LR-211a — an H1_2024 Lab run drawn over the `cockpit` bin's seeded hour
+/// draws nothing (bug-log #211, the operator's case).** The run is hourly
+/// from 2024-01-01 and the bars cover 2024-01-15 12:00:00 to 12:59:59, so one
+/// sample (12:00) lies inside the window and every other one outside (4,343
+/// in this fixture). One point strokes
+/// no line, so the run is no overlay: the frame is byte-identical to the
+/// bars-only frame (no gutter, no 1.1 USDT axis, no edge strokes). Negative
+/// control: the in-window series of LR-207b over the same bars changes the
+/// frame, so the identity cannot hold because the harness dropped the
+/// overlay. PNGs `/tmp/lab_211_bars_only.png`,
+/// `/tmp/lab_211_h1_2024_over_the_seeded_hour.png`.
+#[test]
+fn h1_2024_run_over_the_seeded_hour_draws_nothing() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let run = h1_2024_lab_run_series(&tmp);
+    let window = render_bar_window_ms();
+    assert_eq!(
+        in_window_count(&run, window),
+        1,
+        "precondition: exactly one hourly sample lies in the seeded hour {window:?}"
+    );
+    let tmp_in = tempfile::tempdir().expect("tempdir");
+    let in_window = in_window_lab_run_series(&tmp_in);
+
+    let bars = render_bars();
+    let bars_only = render_overlay(bars.clone(), None, vec![]);
+    let with_run = render_overlay(bars.clone(), Some(run), vec![]);
+    let with_in_window = render_overlay(bars, Some(in_window), vec![]);
+    dump_png(&bars_only, LR_211A_BARS_PNG);
+    dump_png(&with_run, LR_211A_RUN_PNG);
+
+    let differing = differing_pixels(&bars_only, &with_run);
+    let control = differing_pixels(&bars_only, &with_in_window);
+    eprintln!(
+        "#211 pixel margin LR-211a: {differing} px differ from the bars-only frame (threshold \
+         == 0); negative control: the in-window overlay changes {control} px (threshold > 0)"
+    );
+    assert!(
+        differing == 0,
+        "#211: a run with one sample in the bar window draws no overlay, so the frame must equal \
+         the bars-only frame, but {differing} px differ (an equity gutter and axis, or strokes \
+         of samples outside the window). PNGs: {LR_211A_BARS_PNG}, {LR_211A_RUN_PNG}"
+    );
+    assert!(
+        control > 0,
+        "negative control: an in-window overlay must change the bars-only frame, but 0 px \
+         differ, so this harness does not draw the overlay it is given"
+    );
+}
+
+/// `Curve::Accent` pixels in the rows below the plot rect, `[plot bottom + 2,
+/// VIEW_H)`: the time-axis gutter and the bottom padding, where no `ACCENT`
+/// stroke belongs. The plot's bottom is derived from the widget's rect
+/// (`chart::inner_rect_for_viewport_test`, the plain rect; the equity rect
+/// differs only in its right gutter, so it has the same bottom), plus 2 px for
+/// the 2 px price line's anti-aliasing.
+fn accent_px_below_the_plot(shot: &iced::window::Screenshot) -> usize {
+    let plot = ui::widgets::chart::inner_rect_for_viewport_test((VIEW_W, VIEW_H));
+    let first_row = (plot.y + plot.height).ceil() as u32 + 2;
+    let w = shot.size.width;
+    let rgba: &[u8] = &shot.rgba;
+    (first_row..shot.size.height)
+        .flat_map(|y| (0..w).map(move |x| ((y * w + x) * 4) as usize))
+        .filter(|&i| classify_curve(rgba[i], rgba[i + 1], rgba[i + 2]) == Curve::Accent)
+        .count()
+}
+
+/// **LR-211b — out-of-window samples add no pixel (bug-log #211).** The mixed
+/// series is LR-207b's six in-window samples plus 12 hourly samples before the
+/// window and 11 after it, each at `lo − 5 · span` of the in-window values
+/// (derived; precondition: below the equity axis's minimum, so a stroke to
+/// one leaves the plot rect). The on-scale series has the same 23 outside
+/// timestamps at `(lo + hi) / 2` (precondition: inside `[lo, hi]`, so a
+/// stroke to one stays on the scale). The outside samples have no x on this
+/// chart, so both frames must be byte-identical to the in-window-only frame:
+/// a sample is dropped for its time, not for its value. Control: the
+/// in-window frame adds at least `OVERLAY_ACCENT_DELTA_MIN` `ACCENT` px over
+/// the bars-only frame, so the curve still draws. Margin, made legible: no
+/// `ACCENT` px below the plot rect in the mixed frame or the bars-only frame.
+/// PNGs `/tmp/lab_211_in_window_only.png`, `/tmp/lab_211_mixed.png`,
+/// `/tmp/lab_211_mixed_on_scale.png`.
+#[test]
+fn out_of_window_samples_add_no_pixel() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let in_window = in_window_lab_run_series(&tmp);
+    let (start, end) = render_bar_window_ms();
+
+    let values: Vec<Decimal> = in_window.samples.iter().map(|(_, v)| *v).collect();
+    let lo = values.iter().copied().min().expect("in-window samples");
+    let hi = values.iter().copied().max().expect("in-window samples");
+    let outside = lo - (hi - lo) * dec!(5);
+    let (lo_f, hi_f) = (lo.to_f32().expect("f32"), hi.to_f32().expect("f32"));
+    let axis_min = lo_f - (hi_f - lo_f).max(1.0) * EQUITY_RANGE_PAD_FRACTION;
+    assert!(
+        outside.to_f32().expect("f32") < axis_min,
+        "precondition: the outside equity {outside} lies below the axis minimum {axis_min}"
+    );
+
+    let before = (1..=12_i64).rev().map(|k| (start - k * HOUR_MS, outside));
+    let after = (1..=11_i64).map(|k| (start + k * HOUR_MS, outside));
+    let mut mixed = in_window.clone();
+    mixed.samples = before
+        .chain(in_window.samples.iter().copied())
+        .chain(after)
+        .collect();
+    assert!(
+        mixed.samples.windows(2).all(|w| w[0].0 < w[1].0),
+        "precondition: the mixed samples are in time order"
+    );
+    assert_eq!(
+        (
+            in_window_count(&mixed, (start, end)),
+            mixed.samples.len() - in_window.samples.len(),
+        ),
+        (in_window.samples.len(), 23),
+        "precondition: the mixed series adds 23 samples, all outside [{start}, {end}]"
+    );
+
+    let on_scale = (lo + hi) / dec!(2);
+    assert!(
+        lo < on_scale && on_scale < hi,
+        "precondition: the on-scale equity {on_scale} lies inside [{lo}, {hi}]"
+    );
+    let mut mixed_on_scale = mixed.clone();
+    for sample in mixed_on_scale
+        .samples
+        .iter_mut()
+        .filter(|(ts, _)| !(start..=end).contains(ts))
+    {
+        sample.1 = on_scale;
+    }
+
+    let bars = render_bars();
+    let bars_only = render_overlay(bars.clone(), None, vec![]);
+    let in_only = render_overlay(bars.clone(), Some(in_window), vec![]);
+    let with_mixed = render_overlay(bars.clone(), Some(mixed), vec![]);
+    let with_on_scale = render_overlay(bars, Some(mixed_on_scale), vec![]);
+    dump_png(&in_only, LR_211B_IN_PNG);
+    dump_png(&with_mixed, LR_211B_MIXED_PNG);
+    dump_png(&with_on_scale, LR_211B_ON_SCALE_PNG);
+
+    let differing = differing_pixels(&in_only, &with_mixed);
+    let differing_on_scale = differing_pixels(&in_only, &with_on_scale);
+    let (accent_bars, _) = count_curve_pixels(&bars_only);
+    let (accent_in, _) = count_curve_pixels(&in_only);
+    let delta = accent_in.saturating_sub(accent_bars);
+    let (below_mixed, below_bars) = (
+        accent_px_below_the_plot(&with_mixed),
+        accent_px_below_the_plot(&bars_only),
+    );
+    eprintln!(
+        "#211 pixel margin LR-211b: {differing} px differ between the mixed and the in-window \
+         frames, {differing_on_scale} px between the on-scale and the in-window frames \
+         (threshold == 0); control: the in-window curve adds {delta} ACCENT px (threshold >= \
+         {OVERLAY_ACCENT_DELTA_MIN}); ACCENT px below the plot rect: mixed {below_mixed}, \
+         bars-only {below_bars} (threshold == 0)"
+    );
+    assert!(
+        differing == 0,
+        "#211: samples outside the bar window must add no pixel, but {differing} px differ from \
+         the in-window-only frame. PNGs: {LR_211B_IN_PNG}, {LR_211B_MIXED_PNG}"
+    );
+    assert!(
+        differing_on_scale == 0,
+        "#211: samples outside the bar window must add no pixel even when their equity is on \
+         scale, but {differing_on_scale} px differ from the in-window-only frame. PNGs: \
+         {LR_211B_IN_PNG}, {LR_211B_ON_SCALE_PNG}"
+    );
+    assert_eq!(
+        (below_mixed, below_bars),
+        (0, 0),
+        "#211: no ACCENT stroke may leave the plot rect (mixed, bars-only). PNG: \
+         {LR_211B_MIXED_PNG}"
+    );
+    assert!(
+        delta >= OVERLAY_ACCENT_DELTA_MIN,
+        "control: the in-window curve must draw ({delta} ACCENT px added, expected >= \
+         {OVERLAY_ACCENT_DELTA_MIN})"
+    );
+}
+
+/// **LR-211c — without bars, a lone sample draws nothing (bug-log #211).** A
+/// persisted run whose companion CSV holds one row loads as a one-sample
+/// `PerBar` series. One point strokes no line, so it is no overlay in either
+/// role: as the primary, and as the only compare series (the Compare
+/// screen's one-slot case). Both frames must be byte-identical to the
+/// bar-less "No data" frame. Controls: the committed start/end-only series
+/// (two samples) draws its `ACCENT` curve as the primary (LR-207c) and its
+/// `ACCENT_2` curve as the compare series (LR-207e), each at least
+/// `OVERLAY_DREW_MIN` px. PNGs `/tmp/lab_211_no_bars_nothing.png`,
+/// `/tmp/lab_211_no_bars_lone_primary.png`,
+/// `/tmp/lab_211_no_bars_lone_compare.png`.
+#[test]
+fn bar_less_lone_sample_draws_nothing() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let lone = lab_run_with_companion_csv(&tmp, &[(bar_ms(0), dec!(100_000))]);
+    assert_eq!(lone.samples.len(), 1, "precondition: one sample");
+    let tmp_pair = tempfile::tempdir().expect("tempdir");
+    let pair = committed_start_end_only_series(&tmp_pair);
+
+    let nothing = render_overlay(Vec::new(), None, vec![]);
+    let lone_primary = render_overlay(Vec::new(), Some(lone.clone()), vec![]);
+    let lone_compare = render_overlay(Vec::new(), None, vec![lone]);
+    let (accent_pair, _) =
+        count_curve_pixels(&render_overlay(Vec::new(), Some(pair.clone()), vec![]));
+    let (_, accent2_pair) = count_curve_pixels(&render_overlay(Vec::new(), None, vec![pair]));
+    dump_png(&nothing, LR_211C_NOTHING_PNG);
+    dump_png(&lone_primary, LR_211C_PRIMARY_PNG);
+    dump_png(&lone_compare, LR_211C_COMPARE_PNG);
+
+    let differing_primary = differing_pixels(&nothing, &lone_primary);
+    let differing_compare = differing_pixels(&nothing, &lone_compare);
+    eprintln!(
+        "#211 pixel margin LR-211c: a lone primary sample changes {differing_primary} px and a \
+         lone compare sample {differing_compare} px of the \"No data\" frame (threshold == 0); \
+         controls: the two-sample series draws {accent_pair} ACCENT px as the primary and \
+         {accent2_pair} ACCENT_2 px as the compare series (threshold >= {OVERLAY_DREW_MIN})"
+    );
+    assert!(
+        differing_primary == 0,
+        "#211: a bar-less lone primary sample must leave the \"No data\" frame unchanged, but \
+         {differing_primary} px differ (an equity axis with no curve). PNGs: \
+         {LR_211C_NOTHING_PNG}, {LR_211C_PRIMARY_PNG}"
+    );
+    assert!(
+        differing_compare == 0,
+        "#211: a bar-less lone compare sample must leave the \"No data\" frame unchanged, but \
+         {differing_compare} px differ (an equity axis with no curve). PNGs: \
+         {LR_211C_NOTHING_PNG}, {LR_211C_COMPARE_PNG}"
+    );
+    assert!(
+        accent_pair >= OVERLAY_DREW_MIN,
+        "control: a bar-less two-sample primary must draw its curve ({accent_pair} ACCENT px)"
+    );
+    assert!(
+        accent2_pair >= OVERLAY_DREW_MIN,
+        "control: a bar-less two-sample compare series must draw its curve ({accent2_pair} \
+         ACCENT_2 px)"
     );
 }

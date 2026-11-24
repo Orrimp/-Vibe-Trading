@@ -87,6 +87,32 @@
 //! | Q8 clear only the Lab's own tuple | `lab/equity_loader.rs` `EquityCache::clear` AND `state.rs` the `Message::LabRunCompleted` arm (two edits) | `    pub fn clear(&mut self) {` → `    pub fn remove(&mut self, t: &LabTuple) { self.by_tuple.remove(t); } pub fn clear(&mut self) {` AND `            model.equity_cache.get_mut().clear();` → `            if let (Some(s), Some((v, sym))) = (&model.lab_state.strategy, &model.lab_state.pair) { model.equity_cache.get_mut().remove(&crate::lab::equity_loader::LabTuple::new(s, *v, sym, model.lab_state.range.clone(), model.lab_state.data_source)); } else { model.equity_cache.get_mut().clear(); }` | (b), (c) (the Lab shows a third tuple when the run completes, so T_hit keeps its stale hit) | (a), (a-ev), (d), LR-208, LR-208e (the run's tuple is the missed tuple) | REASONED (the falsifier's form survived before (b)/(c) set a third tuple) |
 //! | Q9 seam empty in `boot` | `state.rs` `Cockpit::boot` | `            session_log: open_session_log(),` → `            session_log: open_session_log(), lab_report_roots: Vec::new(),` | `cockpit_lab_report_roots_are_the_production_union` (its `boot` half) | every other test | REASONED (survived before the seam test covered `boot`) |
 //! | Q10 view passes only the first root | `screens/lab.rs` `view` | `        let roots = &model.lab_report_roots;` → `        let roots: &[std::path::PathBuf] = model.lab_report_roots.get(..1).unwrap_or(&[]);` | LR-208e (F2 cannot read `evidence/`: shift 0) | every lib test, LR-208 (its report is under `lab-runs/`, the first root), LR-207d | REASONED (survived before LR-208e existed) |
+//!
+//! ## bug-log #211 — an overlay with one sample in the window is no overlay
+//!
+//! The chart now strokes only a series' in-window samples, and a series with
+//! fewer than two of them (`widgets::chart::MIN_DRAWN_SAMPLES`) neither scales
+//! the axis nor reserves the gutter; the volume histogram follows through
+//! `chart::equity_axis_shown`. The full write-up, the lib tests and the probe
+//! table are in `live_equity_render.rs` ("bug-log #211").
+//!
+//! - **LR-211d** [`lab_h1_2024_run_over_the_seeded_hour_matches_the_no_overlay_lab`]
+//!   — the LR-207d Lab (v1 momentum on BTCUSDT, default range) with its
+//!   equity cache pre-warmed from an `H1_2024` run as it is persisted (scene
+//!   B's report plus a companion `-equity.csv` of the first 4,344 hourly
+//!   samples from 2024-01-01, `ui::test_support::h1_2024_hourly_samples`; a
+//!   real momentum run has 10 · 4,344 + 1, `#226`), so exactly one
+//!   sample (12:00) is inside the seeded bar window. Scene C must be
+//!   byte-identical to scene A (the committed start/end-only report, which
+//!   draws no overlay): the chart keeps its full width and so does the
+//!   histogram. Control: scene B (in-window) differs from A. Measured
+//!   2026-11-24: before the fix C differed from A in 17,437 px (the gutter, a
+//!   1.1 USDT axis and a stroke up the plot's left edge); after it, 0; B vs A
+//!   19,025 px both times. It prints `#211 pixel margin …`. PNGs (with
+//!   `UI_DUMP_PNG`) `/tmp/lab_211_full_no_overlay.png` (A),
+//!   `/tmp/lab_211_full_in_window.png` (B), `/tmp/lab_211_full_h1_2024.png`
+//!   (C). Probes (`live_equity_render.rs`' P11 table): P11-1, P11-3 and P11-7
+//!   turn it red; the #207 probes P7-2, P7-5 and P7-8 too.
 
 #![cfg(target_os = "macos")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
@@ -864,5 +890,114 @@ fn assert_cached_miss_hides_then_draws_208(under_evidence: bool, png: &str, key:
         "#208: after LabRunCompleted the new report must draw and reserve the equity gutter: \
          right edge F1 {edge_1}, F2 {edge_2}, shift {shift} px, expected {expected} within \
          [{lo}, {hi}]"
+    );
+}
+
+// ── bug-log #211 — the full Lab: an H1_2024 run over the seeded hour ────────
+
+use ui::test_support::{H1_2024_HOURS, h1_2024_hourly_samples, write_companion_equity_csv_for_md};
+
+/// Write the scene-C root: an `H1_2024` Lab run as it is persisted, the
+/// scene-B report plus its companion `-equity.csv` holding the first 4,344 of
+/// the run's hourly samples (`h1_2024_hourly_samples`; a real top-10 momentum
+/// run has 10 · 4,344 + 1, `#226`), which the loader prefers over the
+/// report's own table.
+fn write_h1_2024_root(root: &Path) {
+    write_in_window_root(root);
+    let md = root
+        .join("v1-cross-sectional-momentum")
+        .join("reports")
+        .join("backtest-20260601-120000-top10-2024-h1-momentum.md");
+    write_companion_equity_csv_for_md(&md, &h1_2024_hourly_samples(100_000))
+        .expect("write the hourly companion CSV");
+}
+
+/// **LR-211d — the operator's Lab screen with an H1_2024 run over the seeded
+/// hour (bug-log #211).** Scene C: the LR-207d Lab (v1 momentum on BTCUSDT,
+/// default range, so the range chip is the same in every scene) with its
+/// equity cache pre-warmed from `write_h1_2024_root`: hourly samples from
+/// 2024-01-01, exactly one of them (12:00) inside the seeded bar window.
+/// One point strokes no line, so C draws no overlay and must be
+/// byte-identical to scene A (the committed start/end-only report, which
+/// draws none): no gutter on the chart, and the volume histogram (which asks
+/// `chart::equity_axis_shown`) keeps the full width. Control: scene B (the
+/// in-window report) differs from A, so the identity cannot pass because the
+/// screen drops every overlay. PNGs (with `UI_DUMP_PNG`):
+/// `/tmp/lab_211_full_no_overlay.png` (A), `/tmp/lab_211_full_in_window.png`
+/// (B), `/tmp/lab_211_full_h1_2024.png` (C).
+#[test]
+fn lab_h1_2024_run_over_the_seeded_hour_matches_the_no_overlay_lab() {
+    let window = btc_bar_window_ms();
+    let inside = |series: &ui::lab::equity_loader::LabEquitySeries| {
+        series
+            .samples
+            .iter()
+            .filter(|(ts, _)| (window.0..=window.1).contains(ts))
+            .count()
+    };
+
+    let tmp_a = tempfile::tempdir().expect("tempdir");
+    write_committed_root(tmp_a.path());
+    let (cockpit_a, series_a) = lab_207_scene(tmp_a.path());
+    assert_eq!(series_a.fidelity, Fidelity::StartEndOnly);
+    assert_eq!(
+        inside(&series_a),
+        0,
+        "precondition A: no sample in {window:?}"
+    );
+
+    let tmp_b = tempfile::tempdir().expect("tempdir");
+    write_in_window_root(tmp_b.path());
+    let (cockpit_b, series_b) = lab_207_scene(tmp_b.path());
+    assert_eq!(series_b.fidelity, Fidelity::PerBar);
+    assert_eq!(
+        inside(&series_b),
+        series_b.samples.len(),
+        "precondition B: every sample in {window:?}"
+    );
+
+    let tmp_c = tempfile::tempdir().expect("tempdir");
+    write_h1_2024_root(tmp_c.path());
+    let (cockpit_c, series_c) = lab_207_scene(tmp_c.path());
+    assert_eq!(series_c.fidelity, Fidelity::PerBar);
+    assert_eq!(
+        series_c.samples.len(),
+        H1_2024_HOURS,
+        "precondition C: the loader read the hourly companion CSV"
+    );
+    assert_eq!(
+        inside(&series_c),
+        1,
+        "precondition C: exactly one hourly sample in {window:?}"
+    );
+
+    let (w_a, rgba_a) = render(cockpit_a);
+    let (w_b, rgba_b) = render(cockpit_b);
+    let (w_c, rgba_c) = render(cockpit_c);
+    dump_png(w_a, &rgba_a, "/tmp/lab_211_full_no_overlay.png");
+    dump_png(w_b, &rgba_b, "/tmp/lab_211_full_in_window.png");
+    dump_png(w_c, &rgba_c, "/tmp/lab_211_full_h1_2024.png");
+
+    let differ_ac = differing_pixels(&rgba_a, &rgba_c);
+    let differ_ab = differing_pixels(&rgba_a, &rgba_b);
+    eprintln!(
+        "#211 pixel margin LR-211d: scene C (the H1_2024 run) differs from scene A (no overlay) \
+         in {differ_ac} px (threshold == 0); control: scene B (in-window) differs from A in \
+         {differ_ab} px (threshold > 0)"
+    );
+    assert_eq!(
+        [w_a, w_b, w_c],
+        [VIEW_W; 3],
+        "the three frames must have the requested width"
+    );
+    assert_eq!(
+        differ_ac, 0,
+        "#211: an H1_2024 run with one sample in the seeded hour draws no overlay, so the Lab \
+         must equal the no-overlay Lab, but {differ_ac} px differ"
+    );
+    assert!(
+        differ_ab > 0,
+        "control: an in-window run must change the Lab, but 0 px differ, so this harness \
+         draws no overlay"
     );
 }

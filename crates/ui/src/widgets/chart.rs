@@ -308,12 +308,14 @@ pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
 ///
 /// New Phase A parameters (Design § 3 / T-D-11):
 /// - `equity` — primary strategy equity curve. It (or a `compare` curve)
-///   activates the right Y-axis gutter only when it will draw: at least one
-///   sample inside the `bars` window, or any sample when `bars` is empty
-///   (`equity_axis_shown`). A series whose samples all miss the bars draws
-///   nothing and reserves no gutter, so the frame equals the `None` frame
-///   (bug-log #207). Pass `None` for the v1.10.0 price+markers shape
-///   (backward-compatible — all existing call sites remain pixel-identical).
+///   activates the right Y-axis gutter only when it will draw: at least two
+///   samples inside the `bars` window, or at least two samples when `bars` is
+///   empty (`equity_axis_shown`). A series with fewer — none in the window
+///   (bug-log #207) or one (bug-log #211) — draws nothing and reserves no
+///   gutter, so the frame equals the `None` frame; of a series that draws,
+///   only its in-window samples are stroked (#211). Pass `None` for the
+///   v1.10.0 price+markers shape (backward-compatible — all existing call
+///   sites remain pixel-identical).
 /// - `compare` — up to 4 comparison-strategy equity curves (M3 / T-D-15).
 ///   Pass `vec![]` at all existing call sites.
 ///
@@ -375,8 +377,9 @@ pub(crate) struct ChartProgram {
     pub(crate) tooltip: Option<ChartTooltipView>,
     /// Primary equity-curve overlay (T-D-11 / Design § 3). `None` disables
     /// the overlay and the right Y-axis gutter — backward-compatible. A
-    /// `Some` whose samples all miss the bar window disables both too
-    /// (`equity_axis_shown`, bug-log #207).
+    /// `Some` with fewer than two samples inside the bar window (fewer than
+    /// two at all without bars) disables both too (`equity_axis_shown`,
+    /// bug-log #207 and #211).
     pub(crate) equity: Option<LabEquitySeries>,
     /// Comparison equity curves (T-D-15 / Design § 3). Empty vec disables
     /// the comparison pass.
@@ -497,13 +500,14 @@ impl canvas::Program<Message> for ChartProgram {
         // T-D-11 — when the equity axis will paint, widen the right gutter
         // to `AXIS_GUTTER_EQUITY_PX` (56 px) for the right Y-axis (Design
         // § 3). The frame's equity range is computed ONCE here
-        // (`ChartProgram::equity_range`: every primary and compare sample
-        // inside the bar window, or any sample without bars) and that one
-        // value both decides the gutter and scales Pass 5 / the bar-less
-        // path, so the gutter and the axis cannot disagree. An overlay whose
-        // samples all miss the bars has no range and reserves no gutter
-        // (bug-log #207). `chart_inner_rect_with_equity` keeps the inner
-        // rect math as the single source of truth.
+        // (`ChartProgram::equity_range`: the in-window samples of every
+        // primary and compare series with at least two of them, or of every
+        // series with at least two samples without bars) and that one value
+        // both decides the gutter and scales Pass 5 / the bar-less path, so
+        // the gutter and the axis cannot disagree. An overlay with fewer than
+        // two samples in the window has no range and reserves no gutter
+        // (bug-log #207, #211). `chart_inner_rect_with_equity` keeps the
+        // inner rect math as the single source of truth.
         let equity_range = self.equity_range();
         let has_equity = equity_range.is_some();
         let inner = if has_equity {
@@ -524,8 +528,11 @@ impl canvas::Program<Message> for ChartProgram {
             // Only the equity pass fires; price axis, time axis, and markers are
             // all skipped (no bar data to anchor them). Without bars there is
             // no window (`bar_window_ms` is `(None, None)`), so the frame's
-            // `equity_range` spans every sample — a start/end-only series
-            // draws here as a full-width segment.
+            // `equity_range` spans every sample of every series with at least
+            // two (`MIN_DRAWN_SAMPLES`) — a start/end-only series draws here
+            // as a full-width segment. A one-sample series draws nothing
+            // (bug-log #211); alone, it leaves `has_equity` false and the
+            // "No data" frame.
             if has_equity {
                 let equity_range_present = equity_range.is_some();
                 if let Some((min_eq, max_eq)) = equity_range {
@@ -621,12 +628,15 @@ impl canvas::Program<Message> for ChartProgram {
         // (Pass 6+) so buy/sell markers stay visually dominant (R2.4).
         //
         // The right Y-axis gutter was widened in the inner-rect calculation
-        // above when `has_equity` is true, i.e. when at least one primary or
-        // compare sample lies inside the bar window. Otherwise — no overlay,
-        // or one whose samples all miss the bars (a start/end-only report's
-        // ordinal `0`/`1` timestamps, a persisted run from another period) —
-        // the pass is skipped, no gutter chrome appears and the chart keeps
-        // the v1.10.0 price+markers shape (R2.5, bug-log #207).
+        // above when `has_equity` is true, i.e. when a primary or compare
+        // series has at least two samples inside the bar window. Otherwise —
+        // no overlay, one whose samples all miss the bars (a start/end-only
+        // report's ordinal `0`/`1` timestamps, a persisted run from another
+        // period), or one with a single in-window sample (an hourly run over
+        // a one-minute-bar hour) — the pass is skipped, no gutter chrome
+        // appears and the chart keeps the v1.10.0 price+markers shape (R2.5,
+        // bug-log #207, #211). Each series strokes only its in-window
+        // samples, and only if it has two (`equity_polyline_points`).
         if has_equity {
             // The equity range across primary + compare series is the one
             // `draw` computed above (windowed to the bars), not recomputed.
@@ -1288,11 +1298,47 @@ fn bar_window_ms(bars: &[Bar]) -> (Option<i64>, Option<i64>) {
     )
 }
 
+/// bug-log #211 — the fewest samples a series must have inside the window to
+/// draw. One point strokes no line, so a series with fewer is no overlay: it
+/// neither scales the equity axis nor reserves its gutter, with bars (the
+/// window `[first open, last close]`) or without (every sample).
+const MIN_DRAWN_SAMPLES: usize = 2;
+
+/// bug-log #211 — the samples of `series` the chart draws over the window
+/// `(start, end)` (both ends inclusive), in stored order, as `(ts_ms,
+/// equity)`; none unless at least [`MIN_DRAWN_SAMPLES`] lie inside. A sample
+/// outside the window has no x on this chart: it is not stroked, not clamped
+/// onto an edge, and does not enter the axis range. The one gate both the
+/// range ([`compute_equity_range`]) and the stroke
+/// ([`equity_polyline_points`]) apply. It allocates nothing (`plot_rect`
+/// reaches the range on every `CursorMoved`), and its count stops at the
+/// second in-window sample.
+fn drawn_samples(
+    series: &LabEquitySeries,
+    (start, end): (i64, i64),
+) -> impl Iterator<Item = (i64, f32)> + '_ {
+    let inside = move |ts: i64| (start..=end).contains(&ts);
+    let draws = series
+        .samples
+        .iter()
+        .filter(|(ts, _)| inside(*ts))
+        .take(MIN_DRAWN_SAMPLES)
+        .count()
+        == MIN_DRAWN_SAMPLES;
+    series
+        .samples
+        .iter()
+        .filter(move |(ts, _)| draws && inside(*ts))
+        .map(|(ts, equity)| (*ts, equity.to_f32().unwrap_or(0.0)))
+}
+
 /// bug-log #207 — the equity range a chart over `bars` scales its overlay
-/// and its right axis to: [`compute_equity_range`] over every primary and
-/// compare sample inside the bar window ([`bar_window_ms`]; every sample when
-/// there are no bars). `None` when no sample lies in the window. The one
-/// window both the gutter decision ([`equity_axis_shown`]) and the draw
+/// and its right axis to: [`compute_equity_range`] over the samples each
+/// primary and compare series draws inside the bar window ([`bar_window_ms`];
+/// every sample when there are no bars), i.e. the in-window samples of every
+/// series with at least [`MIN_DRAWN_SAMPLES`] of them (bug-log #211). `None`
+/// when no series has two samples in the window. The one window both the
+/// gutter decision ([`equity_axis_shown`]) and the draw
 /// ([`ChartProgram::equity_range`]) use.
 fn bar_window_equity_range(
     bars: &[Bar],
@@ -1305,23 +1351,21 @@ fn bar_window_equity_range(
 
 /// bug-log #207 — `true` iff the chart reserves its right equity gutter
 /// ([`AXIS_GUTTER_EQUITY_PX`]): [`bar_window_equity_range`] is `Some`, i.e.
-/// at least one primary or compare sample lies inside the bar window (any
-/// sample at all when there are no bars). That range is the one the right
-/// equity axis paints with (Pass 5, or the bar-less path), so the gutter is
-/// reserved exactly when the equity axis paints. An overlay whose samples all
-/// miss the bars — a start/end-only report's ordinal `0`/`1` timestamps, a
-/// persisted run from another period — leaves the chart in its price+markers
-/// shape instead of an empty gutter.
+/// some primary or compare series has at least [`MIN_DRAWN_SAMPLES`] (two)
+/// samples inside the bar window (two samples at all when there are no bars;
+/// bug-log #211). That range is the one the right equity axis paints with
+/// (Pass 5, or the bar-less path), so the gutter is reserved exactly when the
+/// equity axis paints. An overlay whose samples all miss the bars — a
+/// start/end-only report's ordinal `0`/`1` timestamps, a persisted run from
+/// another period — leaves the chart in its price+markers shape instead of an
+/// empty gutter, and so does one with a single in-window sample (an hourly
+/// run over a one-minute-bar hour, bug-log #211).
 ///
-/// The axis can paint with no curve beside it in two corner cases:
-/// - every in-window sample belongs to a series of exactly ONE sample: the
-///   range exists, but `draw_equity_polyline` (and its bar-less twin) needs
-///   two samples per series and strokes nothing (bug-log #211's fix, "fewer
-///   than two in-window samples is no overlay", removes this case);
-/// - an in-window sample only in a FIFTH or later compare series: the range
-///   spans every compare series, the draw strokes the first four (`.take(4)`).
-///   Not reachable today: the Lab passes no compare series and the Compare
-///   screen at most one.
+/// The axis can paint with no curve beside it in one corner case: an
+/// in-window series only in a FIFTH or later compare slot. The range spans
+/// every compare series, the draw strokes the first four (`.take(4)`). Not
+/// reachable today: the Lab passes no compare series and the Compare screen
+/// at most one.
 ///
 /// `screens::lab` calls it with the series it hands to [`view`], so the volume
 /// histogram below the chart mirrors the chart's plot width.
@@ -1334,17 +1378,19 @@ pub(crate) fn equity_axis_shown(
     bar_window_equity_range(bars, equity, compare).is_some()
 }
 
-/// Compute `(min_equity, max_equity)` across primary + compare series,
-/// restricted to the timestamp window `[ts_start, ts_end]` (the visible
-/// bar window). Returns `None` when all series are empty or outside the
-/// window. Adds 5 % padding on each side for visual breathing room.
+/// Compute `(min_equity, max_equity)` across primary + compare series over
+/// the samples each draws in the timestamp window `[ts_start, ts_end]` (the
+/// visible bar window; every sample without one): [`drawn_samples`], so a
+/// series with fewer than [`MIN_DRAWN_SAMPLES`] samples in the window adds
+/// nothing (bug-log #211). Returns `None` when no series draws. Adds 5 %
+/// padding on each side for visual breathing room.
 fn compute_equity_range(
     primary: Option<&LabEquitySeries>,
     compare: &[LabEquitySeries],
     ts_start: Option<i64>,
     ts_end: Option<i64>,
 ) -> Option<(f32, f32)> {
-    let (win_start, win_end) = match (ts_start, ts_end) {
+    let window = match (ts_start, ts_end) {
         (Some(s), Some(e)) => (s, e),
         _ => (i64::MIN, i64::MAX),
     };
@@ -1355,13 +1401,9 @@ fn compute_equity_range(
     let all = primary.into_iter().chain(compare.iter());
 
     for series in all {
-        for &(ts, ref equity) in &series.samples {
-            if ts >= win_start && ts <= win_end {
-                #[allow(clippy::cast_possible_truncation)]
-                let v = equity.to_f32().unwrap_or(0.0);
-                min_v = Some(min_v.map_or(v, |m: f32| m.min(v)));
-                max_v = Some(max_v.map_or(v, |m: f32| m.max(v)));
-            }
+        for (_, v) in drawn_samples(series, window) {
+            min_v = Some(min_v.map_or(v, |m: f32| m.min(v)));
+            max_v = Some(max_v.map_or(v, |m: f32| m.max(v)));
         }
     }
 
@@ -1377,7 +1419,9 @@ fn compute_equity_range(
 /// Draw a single equity polyline on the right Y-axis scale.
 /// Draw a single equity polyline using the equity series' own timestamp range
 /// as the X-axis.  Called when `bars` is empty (F9 — backtest result with no
-/// live price bars available yet).
+/// live price bars available yet). Without bars every sample is in the
+/// window, so a series with fewer than [`MIN_DRAWN_SAMPLES`] samples draws
+/// nothing, as it adds nothing to the range (bug-log #211).
 /// lab-end-to-end-v2 Wave D-1.1 F9.
 fn draw_equity_polyline_standalone(
     frame: &mut Frame,
@@ -1387,7 +1431,7 @@ fn draw_equity_polyline_standalone(
     inner: Rectangle,
     line_color: Color,
 ) {
-    if series.samples.len() < 2 {
+    if series.samples.len() < MIN_DRAWN_SAMPLES {
         return;
     }
 
@@ -1430,6 +1474,58 @@ fn draw_equity_polyline_standalone(
     }
 }
 
+/// bug-log #211 — the vertices of `series`' equity polyline over the bar
+/// window `(start, end)` in `inner`, scaled to `(min_eq, max_eq)`: one per
+/// [`drawn_samples`] sample, so none for a series with fewer than
+/// [`MIN_DRAWN_SAMPLES`] in-window samples, and never one for an
+/// out-of-window sample. (The stroke used to clamp those onto the plot's left
+/// and right edges, at y values the range never saw, which left the plot
+/// rect.) The arithmetic is the pre-#211 stroke's, so a fully in-window
+/// series keeps its vertices bit for bit.
+fn equity_polyline_points(
+    series: &LabEquitySeries,
+    (start, end): (i64, i64),
+    (min_eq, max_eq): (f32, f32),
+    inner: Rectangle,
+) -> Vec<Point> {
+    drawn_samples(series, (start, end))
+        .map(|(ts, eq_v)| {
+            #[allow(clippy::cast_precision_loss)]
+            let x_frac = if end > start {
+                (ts - start) as f32 / (end - start) as f32
+            } else {
+                0.0
+            };
+            let x = inner.x + x_frac * inner.width;
+
+            let span = (max_eq - min_eq).max(1e-6);
+            let y_frac = (eq_v - min_eq) / span;
+            let y = inner.y + (1.0 - y_frac) * inner.height;
+            Point::new(x, y)
+        })
+        .collect()
+}
+
+/// bug-log #211 — the vertices Pass 5 strokes for `series` over `bars`:
+/// [`equity_polyline_points`] over the bar window [`bar_window_ms`], the
+/// window [`bar_window_equity_range`] computes the range over (one source,
+/// so the stroke and the range cannot disagree about which samples exist).
+/// None without bars.
+fn equity_stroke_points(
+    series: &LabEquitySeries,
+    bars: &[Bar],
+    range: (f32, f32),
+    inner: Rectangle,
+) -> Vec<Point> {
+    let (Some(start), Some(end)) = bar_window_ms(bars) else {
+        return Vec::new();
+    };
+    equity_polyline_points(series, (start, end), range, inner)
+}
+
+/// Stroke `series`' equity polyline over `bars` (Pass 5): exactly its
+/// [`equity_stroke_points`]. Nothing without bars, and nothing for a series
+/// with fewer than two in-window samples (bug-log #211).
 fn draw_equity_polyline(
     frame: &mut Frame,
     series: &LabEquitySeries,
@@ -1439,49 +1535,23 @@ fn draw_equity_polyline(
     inner: Rectangle,
     line_color: Color,
 ) {
-    if series.samples.len() < 2 || bars.is_empty() {
+    let points = equity_stroke_points(series, bars, (min_eq, max_eq), inner);
+    let Some((first, rest)) = points.split_first() else {
         return;
-    }
+    };
 
-    let min_bar_ts = bars.first().map_or(i64::MIN, |b| b.open_ts.unix_millis());
-    let max_bar_ts = bars.last().map_or(i64::MAX, |b| b.close_ts.unix_millis());
-
-    let mut path_started = false;
     let polyline = Path::new(|builder| {
-        for &(ts, ref equity) in &series.samples {
-            // Clamp to visible window.
-            let ts_clamped = ts.clamp(min_bar_ts, max_bar_ts);
-            #[allow(clippy::cast_precision_loss)]
-            let x_frac = if max_bar_ts > min_bar_ts {
-                (ts_clamped - min_bar_ts) as f32 / (max_bar_ts - min_bar_ts) as f32
-            } else {
-                0.0
-            };
-            let x = inner.x + x_frac * inner.width;
-
-            #[allow(clippy::cast_possible_truncation)]
-            let eq_v = equity.to_f32().unwrap_or(0.0);
-            let span = (max_eq - min_eq).max(1e-6);
-            let y_frac = (eq_v - min_eq) / span;
-            let y = inner.y + (1.0 - y_frac) * inner.height;
-
-            if path_started {
-                builder.line_to(Point::new(x, y));
-            } else {
-                builder.move_to(Point::new(x, y));
-                path_started = true;
-            }
+        builder.move_to(*first);
+        for point in rest {
+            builder.line_to(*point);
         }
     });
-
-    if path_started {
-        frame.stroke(
-            &polyline,
-            Stroke::default()
-                .with_color(line_color)
-                .with_width(EQUITY_STROKE_PX),
-        );
-    }
+    frame.stroke(
+        &polyline,
+        Stroke::default()
+            .with_color(line_color)
+            .with_width(EQUITY_STROKE_PX),
+    );
 }
 
 /// Draw the right Y-axis ticks + equity value labels (Design § 3, pass 4).
@@ -2440,13 +2510,16 @@ mod tests {
         assert!(!equity_axis_shown(&bars, Some(&s), &[]));
     }
 
-    /// C2 — one sample inside the bar window is enough: a fully in-window
-    /// series and a series with a single in-window sample both show the axis.
-    /// The `one_inside` half pins TODAY's gate (at least one in-window
-    /// sample); bug-log #211's fix makes it at least two per series, which
-    /// flips that half.
+    /// C2 — a series shows the axis only with at least two samples inside the
+    /// bar window (bug-log #211; was `equity_axis_shown_when_a_sample_is_in_bar_window`,
+    /// which pinned #207's at-least-one gate). A fully in-window series shows
+    /// it; `one_inside` (ordinal ts `0` plus bar 30's open) has one in-window
+    /// sample and shows none; `two_inside` (the same plus bar 40's open) has
+    /// two and shows it. The two fixtures differ only in their in-window count
+    /// and expect different outcomes: the pair pins `MIN_DRAWN_SAMPLES` = 2.
+    /// The counts are derived from the bars, not from the subject.
     #[test]
-    fn equity_axis_shown_when_a_sample_is_in_bar_window() {
+    fn equity_axis_shown_when_two_samples_are_in_bar_window() {
         let bars = bars_207();
         assert!(equity_axis_shown(&bars, Some(&in_window_207(&bars)), &[]));
         let one_inside = series_207(
@@ -2456,13 +2529,34 @@ mod tests {
             ],
             crate::lab::equity_loader::Fidelity::PerBar,
         );
-        assert!(equity_axis_shown(&bars, Some(&one_inside), &[]));
+        let mut two_inside = one_inside.clone();
+        two_inside
+            .samples
+            .push((bars[40].open_ts.unix_millis(), dec!(102_000)));
+        assert_eq!(
+            (
+                in_window_count_211(&bars, &one_inside),
+                in_window_count_211(&bars, &two_inside),
+            ),
+            (1, 2),
+            "precondition: `one_inside` has one in-window sample and `two_inside` two"
+        );
+        assert!(
+            !equity_axis_shown(&bars, Some(&one_inside), &[]),
+            "one in-window sample strokes no line, so it is no overlay"
+        );
+        assert!(
+            equity_axis_shown(&bars, Some(&two_inside), &[]),
+            "two in-window samples draw a segment, so they show the axis"
+        );
     }
 
-    /// C3 — without bars there is no window: any sample shows the axis (the
-    /// bar-less path draws the start/end-only segment full width).
+    /// C3 — without bars there is no window: a series of two samples shows
+    /// the axis wherever they lie (the bar-less path draws the start/end-only
+    /// segment full width). C12 pins the one-sample side (bug-log #211; was
+    /// `equity_axis_shown_without_bars_for_any_sample`).
     #[test]
-    fn equity_axis_shown_without_bars_for_any_sample() {
+    fn equity_axis_shown_without_bars_for_a_two_sample_series() {
         assert!(equity_axis_shown(&[], Some(&start_end_only_207()), &[]));
     }
 
@@ -2642,10 +2736,10 @@ mod tests {
     }
 
     /// C8 — the Compare screen with slot 0 unresolved and slot 1 resolved:
-    /// no bars, no primary series, one compare series. Without bars any
-    /// sample shows the axis, so the compare curve draws on the bar-less
-    /// path (F9) in the equity rect. Negative half: no bars and no series
-    /// shows no axis.
+    /// no bars, no primary series, one compare series. Without bars a series
+    /// of at least two samples shows the axis wherever they lie (bug-log
+    /// #211), so the two-sample compare curve draws on the bar-less path (F9)
+    /// in the equity rect. Negative half: no bars and no series shows no axis.
     #[test]
     fn bar_less_compare_only_program_shows_the_axis() {
         let size = bounds_207().size();
@@ -2684,11 +2778,12 @@ mod tests {
     }
 
     /// C9 — the bar window is `[first bar open, last bar close]`, both ends
-    /// inclusive: a lone sample at the last bar's close shows the axis and
-    /// one at close + 1 ms does not; a lone sample at the first bar's open
-    /// shows it and one at open − 1 ms does not. Like C2's `one_inside` half,
-    /// each "shows" half pins TODAY's gate (at least one in-window sample);
-    /// bug-log #211's fix makes it at least two per series.
+    /// inclusive. Each probe timestamp is paired with an anchor sample at bar
+    /// 30's open (inside the window), in time order, so the series shows the
+    /// axis iff the probe is inside too (bug-log #211: a series needs two
+    /// in-window samples): a probe at the last bar's close shows it and one at
+    /// close + 1 ms does not; a probe at the first bar's open shows it and one
+    /// at open − 1 ms does not.
     #[test]
     fn bar_window_is_first_open_to_last_close_inclusive() {
         let bars = spanning_bars_207();
@@ -2699,26 +2794,30 @@ mod tests {
             last_close > last_open,
             "precondition: the last bar spans time (open {last_open} < close {last_close})"
         );
-        let lone = |ts: i64| {
-            series_207(
-                vec![(ts, dec!(100_000))],
-                crate::lab::equity_loader::Fidelity::PerBar,
-            )
+        let anchor = bars[30].open_ts.unix_millis();
+        assert!(
+            first_open < anchor && anchor < last_open,
+            "precondition: the anchor ({anchor}) lies strictly inside the window"
+        );
+        let with_anchor = |probe: i64| {
+            let mut samples = vec![(anchor, dec!(100_000)), (probe, dec!(100_500))];
+            samples.sort_by_key(|(ts, _)| *ts);
+            series_207(samples, crate::lab::equity_loader::Fidelity::PerBar)
         };
         assert!(
-            equity_axis_shown(&bars, Some(&lone(last_close)), &[]),
+            equity_axis_shown(&bars, Some(&with_anchor(last_close)), &[]),
             "a sample AT the last bar's close ({last_close}) is inside the window"
         );
         assert!(
-            !equity_axis_shown(&bars, Some(&lone(last_close + 1)), &[]),
+            !equity_axis_shown(&bars, Some(&with_anchor(last_close + 1)), &[]),
             "a sample 1 ms after the last bar's close is outside the window"
         );
         assert!(
-            equity_axis_shown(&bars, Some(&lone(first_open)), &[]),
+            equity_axis_shown(&bars, Some(&with_anchor(first_open)), &[]),
             "a sample AT the first bar's open ({first_open}) is inside the window"
         );
         assert!(
-            !equity_axis_shown(&bars, Some(&lone(first_open - 1)), &[]),
+            !equity_axis_shown(&bars, Some(&with_anchor(first_open - 1)), &[]),
             "a sample 1 ms before the first bar's open is outside the window"
         );
     }
@@ -2781,6 +2880,287 @@ mod tests {
             moved_max >= extreme_f32,
             "negative side: the extreme INSIDE the window must reach the range's top \
              ({moved_max} < {extreme_f32})"
+        );
+    }
+
+    // ── bug-log #211 — an overlay draws only its in-window samples ──────────
+
+    /// How many of `series`' samples lie in the bar window of `bars`
+    /// (`[first open, last close]`, both inclusive), derived from the bars.
+    fn in_window_count_211(bars: &[Bar], series: &LabEquitySeries) -> usize {
+        let start = bars.first().expect("bars").open_ts.unix_millis();
+        let end = bars.last().expect("bars").close_ts.unix_millis();
+        series
+            .samples
+            .iter()
+            .filter(|(ts, _)| (start..=end).contains(ts))
+            .count()
+    }
+
+    /// C11 — a series with ONE in-window sample does not scale the equity
+    /// axis. The primary holds an ordinal ts `0` sample and one in-window
+    /// sample (bar 59's open) with an extreme equity; the compare series is
+    /// `in_window_207`. The chart's range equals the range DERIVED from the
+    /// compare's values alone (their min and max, each padded by
+    /// `RANGE_PAD_FRACTION` of the span, as C10 derives it). Negative side: a
+    /// second in-window primary sample (bar 58's open) makes the primary an
+    /// overlay, and the range's top reaches the extreme.
+    #[test]
+    fn a_series_with_one_in_window_sample_does_not_scale_the_axis() {
+        let bars = bars_207();
+        let compare = in_window_207(&bars);
+        let extreme = dec!(10_000_000);
+        let extreme_f32 = extreme.to_f32().expect("f32");
+
+        let values: Vec<f32> = compare
+            .samples
+            .iter()
+            .map(|(_, v)| v.to_f32().expect("f32"))
+            .collect();
+        let lo = values.iter().copied().fold(f32::INFINITY, f32::min);
+        let hi = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let pad = (hi - lo).max(1.0) * RANGE_PAD_FRACTION;
+        let (want_min, want_max) = (lo - pad, hi + pad);
+        assert!(
+            want_max < extreme_f32,
+            "precondition: the extreme lies above the compare series' range"
+        );
+
+        let one_inside = series_207(
+            vec![
+                (0, dec!(100_000)),
+                (bars[59].open_ts.unix_millis(), extreme),
+            ],
+            crate::lab::equity_loader::Fidelity::PerBar,
+        );
+        let mut two_inside = one_inside.clone();
+        two_inside
+            .samples
+            .insert(1, (bars[58].open_ts.unix_millis(), dec!(100_000)));
+        assert_eq!(
+            (
+                in_window_count_211(&bars, &one_inside),
+                in_window_count_211(&bars, &two_inside),
+                in_window_count_211(&bars, &compare),
+            ),
+            (1, 2, 6),
+            "precondition: the primaries hold one and two in-window samples, the compare six"
+        );
+
+        let program = |primary: LabEquitySeries| ChartProgram {
+            equity: Some(primary),
+            ..compare_only_program_207(bars.clone(), vec![compare.clone()])
+        };
+        let (got_min, got_max) = program(one_inside)
+            .equity_range()
+            .expect("the compare series gives a range");
+        assert!(
+            (got_min - want_min).abs() < 0.01 && (got_max - want_max).abs() < 0.01,
+            "a lone in-window sample must not enter the range: got ({got_min}, {got_max}), \
+             want the compare series' range ({want_min}, {want_max})"
+        );
+
+        let (_, two_max) = program(two_inside)
+            .equity_range()
+            .expect("both series give a range");
+        assert!(
+            two_max >= extreme_f32,
+            "negative side: with a second in-window sample the primary is an overlay, so its \
+             extreme must reach the range's top ({two_max} < {extreme_f32})"
+        );
+    }
+
+    /// C12 — without bars a series needs two samples too. A lone sample shows
+    /// no axis as the primary or as the only compare series (the Compare
+    /// screen's one-slot case), so the bar-less chart keeps its plain plot
+    /// rect and its "No data" frame; the start/end-only series' two samples
+    /// show the axis in both roles.
+    #[test]
+    fn bar_less_series_needs_two_samples() {
+        let size = bounds_207().size();
+        let lone = series_207(
+            vec![(0, dec!(100_000))],
+            crate::lab::equity_loader::Fidelity::PerBar,
+        );
+        let pair = start_end_only_207();
+        assert_eq!(
+            (lone.samples.len(), pair.samples.len()),
+            (1, 2),
+            "precondition: one sample and two"
+        );
+
+        assert!(
+            !equity_axis_shown(&[], Some(&lone), &[]),
+            "a bar-less lone primary sample is no overlay"
+        );
+        assert!(
+            !equity_axis_shown(&[], None, std::slice::from_ref(&lone)),
+            "a bar-less lone compare sample is no overlay"
+        );
+        assert_eq!(
+            compare_only_program_207(Vec::new(), vec![lone]).plot_rect(size),
+            chart_inner_rect(size),
+            "a bar-less lone compare sample reserves no gutter"
+        );
+
+        assert!(
+            equity_axis_shown(&[], Some(&pair), &[]),
+            "a bar-less two-sample primary shows the axis"
+        );
+        assert!(
+            equity_axis_shown(&[], None, std::slice::from_ref(&pair)),
+            "a bar-less two-sample compare series shows the axis"
+        );
+    }
+
+    /// C13 — the bar-path stroke's vertices stay inside the plot rect. Over
+    /// `bars_207`, in the equity plot rect of a 1280×720 canvas, C10's mixed
+    /// series (`in_window_207`'s six samples plus an ordinal ts `0` sample
+    /// with an extreme equity), scaled to the chart's own range for it, gives
+    /// one vertex per in-window sample (six, counted from the bars), every
+    /// one inside the rect, and exactly the vertices of the in-window samples
+    /// alone. The same holds when the outside samples are ON the axis scale
+    /// (one before the window, one after it, at the midpoint of the in-window
+    /// values): an outside sample is dropped because it has no x, not because
+    /// its y is off the scale. Negative side: the extreme moved INTO the
+    /// window (bar 59's open) is a seventh vertex. Before bug-log #211 the
+    /// stroke clamped every outside sample onto the left or right edge.
+    #[test]
+    fn equity_polyline_vertices_stay_inside_the_plot_rect() {
+        let bars = bars_207();
+        let (start, end) = (
+            bars[0].open_ts.unix_millis(),
+            bars[59].close_ts.unix_millis(),
+        );
+        assert_eq!(
+            bar_window_ms(&bars),
+            (Some(start), Some(end)),
+            "precondition: the stroke's window is [first open, last close]"
+        );
+        let inner = chart_inner_rect_with_equity(bounds_207().size());
+        let inside = in_window_207(&bars);
+        let extreme = dec!(10_000_000);
+        let mut samples = vec![(0, extreme)];
+        samples.extend(inside.samples.iter().copied());
+        let mixed = series_207(samples, crate::lab::equity_loader::Fidelity::PerBar);
+        let in_count = in_window_count_211(&bars, &mixed);
+        assert_eq!(
+            (in_count, mixed.samples.len()),
+            (6, 7),
+            "precondition: six of the seven samples lie in the window (bars 0, 10, …, 50)"
+        );
+
+        let range = bar_window_equity_range(&bars, Some(&mixed), &[])
+            .expect("in-window samples give a range");
+        let points = equity_polyline_points(&mixed, (start, end), range, inner);
+        assert_eq!(points.len(), in_count, "one vertex per in-window sample");
+        let in_rect = |p: &Point| {
+            (inner.x..=inner.x + inner.width).contains(&p.x)
+                && (inner.y..=inner.y + inner.height).contains(&p.y)
+        };
+        assert!(
+            points.iter().all(in_rect),
+            "every vertex must lie in the plot rect {inner:?}: {points:?}"
+        );
+        assert_eq!(
+            points,
+            equity_polyline_points(&inside, (start, end), range, inner),
+            "the out-of-window sample must add no vertex"
+        );
+
+        let first_value = inside.samples.first().expect("samples").1;
+        let last_value = inside.samples.last().expect("samples").1;
+        let mid = (first_value + last_value) / dec!(2);
+        let mid_f = mid.to_f32().expect("f32");
+        assert!(
+            range.0 < mid_f && mid_f < range.1,
+            "precondition: the outside equity {mid} is on the axis scale {range:?}"
+        );
+        let mut on_scale = inside.clone();
+        on_scale.samples.insert(0, (0, mid));
+        on_scale.samples.push((end + 3_600_000, mid));
+        assert_eq!(
+            (
+                in_window_count_211(&bars, &on_scale),
+                on_scale.samples.len()
+            ),
+            (6, 8),
+            "precondition: one on-scale sample before the window and one after it"
+        );
+        assert_eq!(
+            equity_polyline_points(&on_scale, (start, end), range, inner),
+            equity_polyline_points(&inside, (start, end), range, inner),
+            "an out-of-window sample must add no vertex even when its equity is on scale"
+        );
+
+        let mut moved = inside.clone();
+        moved
+            .samples
+            .push((bars[59].open_ts.unix_millis(), extreme));
+        let moved_range = bar_window_equity_range(&bars, Some(&moved), &[])
+            .expect("in-window samples give a range");
+        assert_eq!(
+            equity_polyline_points(&moved, (start, end), moved_range, inner).len(),
+            7,
+            "negative side: the extreme INSIDE the window is a vertex"
+        );
+    }
+
+    /// C14 — the stroke's window is the range's window, `[first open, last
+    /// close]` (`bar_window_ms`), reached from the bars (`equity_stroke_points`,
+    /// the vertices Pass 5 strokes). Over `spanning_bars_207` (the last bar
+    /// closes 59 999 ms after it opens), a series with samples at the first
+    /// bar's open, bar 30's open and the last bar's close has three vertices:
+    /// the first on the plot's left edge, the last on its right edge, and bar
+    /// 30's at its derived fraction of the width. A stroke whose window ended
+    /// at the last OPEN would drop the last-close sample (the range keeps it)
+    /// and stretch every other vertex. Without bars there are no vertices.
+    #[test]
+    fn equity_stroke_spans_first_open_to_last_close() {
+        let bars = spanning_bars_207();
+        let first_open = bars[0].open_ts.unix_millis();
+        let last = bars.last().expect("bars");
+        let (last_open, last_close) = (last.open_ts.unix_millis(), last.close_ts.unix_millis());
+        assert!(
+            last_close > last_open,
+            "precondition: the last bar spans time (open {last_open} < close {last_close})"
+        );
+        let mid_open = bars[30].open_ts.unix_millis();
+        let series = series_207(
+            vec![
+                (first_open, dec!(100_000)),
+                (mid_open, dec!(100_300)),
+                (last_close, dec!(100_200)),
+            ],
+            crate::lab::equity_loader::Fidelity::PerBar,
+        );
+        let inner = chart_inner_rect_with_equity(bounds_207().size());
+        let range =
+            bar_window_equity_range(&bars, Some(&series), &[]).expect("three in-window samples");
+
+        let points = equity_stroke_points(&series, &bars, range, inner);
+        assert_eq!(
+            points.len(),
+            3,
+            "one vertex per in-window sample: {points:?}"
+        );
+        #[allow(clippy::cast_precision_loss)]
+        let mid_frac = (mid_open - first_open) as f32 / (last_close - first_open) as f32;
+        let want_x = [
+            inner.x,
+            inner.x + mid_frac * inner.width,
+            inner.x + inner.width,
+        ];
+        for (point, want) in points.iter().zip(want_x) {
+            assert!(
+                (point.x - want).abs() < 0.01,
+                "vertex x {} must be {want} (the window is [first open, last close]): {points:?}",
+                point.x
+            );
+        }
+        assert!(
+            equity_stroke_points(&series, &[], range, inner).is_empty(),
+            "without bars the stroke has no vertices"
         );
     }
 }

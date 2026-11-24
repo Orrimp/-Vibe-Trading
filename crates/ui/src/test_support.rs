@@ -403,6 +403,91 @@ data_source: synthetic
     )
 }
 
+/// bug-log #211 — the chart's equity-range padding: `RANGE_PAD_FRACTION` of
+/// the range's span, added below its minimum and above its maximum
+/// (`widgets::canvas_chart::RANGE_PAD_FRACTION`). Re-exported so a pixel test
+/// derives the equity axis's minimum instead of reading it off a frame.
+pub const EQUITY_RANGE_PAD_FRACTION: f32 = crate::widgets::canvas_chart::RANGE_PAD_FRACTION;
+
+/// bug-log #211 — the first hour of an `H1_2024` engine run in Unix seconds,
+/// 2024-01-01T00:00:00Z. The engine maps `DateRange::H1_2024` to
+/// `(2024, 4_344)` (`date_range_to_scenario_params`,
+/// `crates/backtest/src/engine.rs:446`), and `synthetic_timestamps` stamps
+/// sample `i` at 1 January of that year, midnight UTC, plus `i` hours
+/// (`engine.rs:484-502`). Mirrored here: that function is `pub(crate)` in
+/// `backtest`, and widening its API for a test fixture is not worth it.
+pub const H1_2024_FIRST_HOUR_SECS: i64 = 1_704_067_200;
+
+/// bug-log #211 — the per-symbol hourly bar count of an `H1_2024` engine run
+/// (`engine.rs:446`, "~181 × 24 = 4344 h"). It is not the run's equity sample
+/// count: the engine stamps one hour per equity entry from
+/// [`H1_2024_FIRST_HOUR_SECS`] (`engine.rs:510/557/593/634`), one entry per
+/// merged bar, so a top-10 momentum run writes 10 · 4,344 + 1 such samples
+/// (bug-log #226).
+pub const H1_2024_HOURS: usize = 4_344;
+
+/// bug-log #211 — the first [`H1_2024_HOURS`] samples of a persisted
+/// `H1_2024` Lab run's equity series as `(timestamp_millis, equity)`: one
+/// hour apart from [`H1_2024_FIRST_HOUR_SECS`], on the ramp `level + 10·i`.
+/// Any series the engine stamps this way has exactly one sample inside the
+/// fixtures' 60 one-minute bars (`fixtures::fixed_ts`, 2024-01-15 12:00:00 to
+/// 12:59:59Z): hour 348, 12:00:00, the first bar's open. Hour 349 (13:00:00)
+/// is after the last bar's close. So keeping the first 4,344 keeps the case.
+#[must_use]
+pub fn h1_2024_hourly_samples(level: i64) -> Vec<(i64, rust_decimal::Decimal)> {
+    (0_i64..)
+        .take(H1_2024_HOURS)
+        .map(|i| {
+            (
+                (H1_2024_FIRST_HOUR_SECS + i * 3_600) * 1_000,
+                rust_decimal::Decimal::from(level + 10 * i),
+            )
+        })
+        .collect()
+}
+
+/// bug-log #211 — write `samples` (`(timestamp_millis, equity)`) as the
+/// companion equity CSV of the report at `md`: `<stem>-equity.csv` beside it,
+/// the name `lab::equity_loader`'s companion rule looks for. The rows go
+/// through the production `reports::csv_artifacts::write_equity_csv` schema
+/// (RFC3339 `ts`; realized and unrealized P&L 0, cash = equity), and the Lab
+/// loader reads them back with `read_equity_csv`, the reader the operator path
+/// uses. The engine writes its own companion with its private
+/// `write_equity_companion_csv` (`crates/backtest/src/engine.rs:955`), so only
+/// the reader is shared with a real persisted run.
+///
+/// # Errors
+///
+/// `CsvError::Format` when `md` has no `.md` file name or a timestamp is out
+/// of range; otherwise whatever `write_equity_csv` returns.
+pub fn write_companion_equity_csv_for_md(
+    md: &std::path::Path,
+    samples: &[(i64, rust_decimal::Decimal)],
+) -> Result<(), reports::csv_artifacts::CsvError> {
+    use reports::csv_artifacts::{CsvError, EquitySample, write_equity_csv};
+    let stem = md
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_suffix(".md"))
+        .ok_or_else(|| CsvError::Format(format!("not a .md report: {}", md.display())))?;
+    let rows = samples
+        .iter()
+        .map(|&(ms, equity)| {
+            let at = time::OffsetDateTime::UNIX_EPOCH
+                .checked_add(time::Duration::milliseconds(ms))
+                .ok_or_else(|| CsvError::Format(format!("timestamp out of range: {ms} ms")))?;
+            Ok(EquitySample {
+                ts: trading_core::Timestamp::new(at),
+                equity_total: equity,
+                realized_pnl: rust_decimal::Decimal::ZERO,
+                unrealized_pnl: rust_decimal::Decimal::ZERO,
+                cash_balance: equity,
+            })
+        })
+        .collect::<Result<Vec<_>, CsvError>>()?;
+    write_equity_csv(&md.with_file_name(format!("{stem}-equity.csv")), &rows)
+}
+
 /// Owned inputs for the [`chart_overlay_program`] render scene.
 #[derive(Clone)]
 struct ChartOverlayScene {
