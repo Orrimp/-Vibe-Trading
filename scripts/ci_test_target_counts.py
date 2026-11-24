@@ -38,9 +38,13 @@ THE COUNTS ARE DECLARED, NOT MEASURED OFF THE SUBJECT. Each one was read off
 the source at the stage that ships it: the `#[test]` / `#[tokio::test]` items
 that survive the leg's cfg set. Both legs build ui's default features (`live`,
 `yahoo`, `binance`, `live-fx`); Windows adds `fixtures`, which no declared file
-has a cfg on. No declared file puts a `target_os`, `unix` or `windows` cfg on a
-test item (the `cfg(unix)` / `cfg(windows)` lines left in two of them gate `use`
-imports only). So every row carries the same number for both legs today.
+has a cfg on. One declared file is OS-gated: `activity_tape_failed_hold_render`
+(bug-log `#217`) is `#![cfg(target_os = "macos")]` (ADR-0057 D2, pixels are
+macOS-canonical), so it declares 4 on macOS and 0 on Windows, and the row makes
+the macOS-only AD-10 proof's count a measurement instead of a silent zero. No
+other declared file puts a `target_os`, `unix` or `windows` cfg on a test item
+(the `cfg(unix)` / `cfg(windows)` lines left in two of them gate `use` imports
+only), so every other row carries the same number for both legs.
 
 PER LEG, ON PURPOSE. The table still names both legs on every row, with no
 default and no inheritance. Each column is a claim of its own (the E2/E3 ports
@@ -211,11 +215,20 @@ DECLARED: dict[str, dict] = {
         "why": "Cases A, B and k2 under `#![cfg(all(feature = \"live\", feature = "
                "\"yahoo\"))]` (Wave F moved the gate from `live` alone).",
     },
+    # ── bug-log #217 (the activity tape's purge; the first OS-gated row) ─────
+    "activity_tape_failed_hold_render": {
+        "macos": 4,
+        "windows": 0,
+        "why": "T1-T4, the AD-10 pixel proof that a failed activity row is red "
+               "inside its 3 s hold and gone after it. `#![cfg(target_os = "
+               "\"macos\")]` (ADR-0057 D2), so Windows lists 0 by design; a 0 "
+               "on macOS is the silent zero this gate exists to catch.",
+    },
 }
 
 # Non-vacuity floor for the declaration itself: deleting rows must be deliberate.
 # Raise it when a row is added; lowering it is a decision, not a fix.
-MIN_DECLARED = 15
+MIN_DECLARED = 16
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
 

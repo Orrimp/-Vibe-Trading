@@ -60,20 +60,31 @@ const MODE: ThemeMode = ThemeMode::Dark;
 /// iced element tree.
 #[must_use]
 pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
-    // CLOCK-OK: unreachable on the snapshot path, and VERIFIED rather than
-    // assumed (2026-11-10, bug-log `#190`). `ActivityTape::apply` — the only
-    // mutator — is called from exactly one site, `state.rs:4043`, inside a
-    // message handler the gallery/snapshot harness never dispatches; the single
-    // gallery cell for this widget declares `state: "empty"` and seeds
-    // `Cockpit::default()`; and no gallery cell anywhere constructs an
-    // `ActivityEvent`. So `visible()` is empty, `renderable` is empty, and this
-    // function returns a zero-size `Space` before `now` reaches anything drawn.
+    // CLOCK-OK: kept out of every byte baseline by a CONDITION, re-verified
+    // 2026-11-24 (bug-log `#217`; first verified 2026-11-10, `#190`).
+    // The tape's mutators are `ActivityTape::apply`, called from the
+    // `ActivityEventReceived` arm of `state::update` (and from unit tests and
+    // the bench), and `apply_at`, called from `apply` and from tests; `purge`
+    // only removes rows. No gallery or byte-baseline cell is
+    // populated: this widget's one gallery cell declares `state: "empty"` and
+    // seeds `Cockpit::default()`, and no gallery cell constructs an
+    // `ActivityEvent`, so there `renderable` is empty and this function
+    // returns a zero-size `Space` before `now` reaches anything drawn.
     //
-    // ⚠️ THE CONDITION, NOT THE CALL, IS WHAT MAKES THIS SAFE. Line ~128 renders
-    // `format_elapsed(now.duration_since(state.started_at))` INTO THE PIXELS, so
-    // the first populated `activity_tape` gallery cell bakes a wall-clock duration
-    // into its baseline and will flake. Add such a cell only with a seeded,
-    // fixed `started_at` — not with `Instant::now()`.
+    // The one populated `program_from_cockpit` render is
+    // `tests/activity_tape_failed_hold_render.rs` (pixel counts and in-process
+    // byte equality, no stored baseline). It is deterministic only because it
+    // seeds `started_at` an hour in the FUTURE: `saturating_duration_since`
+    // below is then zero and the drawn label is always `<1s`.
+    //
+    // ⚠️ THE CONDITION, NOT THE CALL, IS WHAT MAKES THIS SAFE. The label renders
+    // `format_elapsed(now.saturating_duration_since(state.started_at))` INTO
+    // THE PIXELS, so a populated cell seeded with a past `started_at` bakes a
+    // wall-clock duration into its frame and will flake. Seed a fixed future
+    // `started_at` through `apply_at` — never `Instant::now()` or a past one.
+    // This works only for a red-held (failed) row: an IN-FLIGHT row seeded in
+    // the future is hidden by the 200 ms render floor (elapsed saturates to 0),
+    // so a populated in-flight cell needs this function's `now` injected first.
     let now = Instant::now();
     let render_floor = Duration::from_millis(ACTIVITY_TICK_RENDER_FLOOR_MS);
 
@@ -87,7 +98,7 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
                 return true;
             }
             // For in-flight rows, apply the 200 ms floor.
-            now.duration_since(s.started_at) >= render_floor
+            now.saturating_duration_since(s.started_at) >= render_floor
         })
         .collect();
 
@@ -139,7 +150,7 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
 
         // ── Kind label ──
         let kind_label = activity_kind_label(state.kind);
-        let elapsed = format_elapsed(now.duration_since(state.started_at));
+        let elapsed = format_elapsed(now.saturating_duration_since(state.started_at));
 
         // Combine label + elapsed into one compact string.
         let label_str = format!("{kind_label} {elapsed}");

@@ -9,7 +9,13 @@
 //! - `ActivityTape::apply` is called from `Cockpit::update` which already
 //!   runs on the iced thread (single-threaded); no synchronization needed.
 //! - `red_hold_until: Option<Instant>` drives the Q5=(a) 3-second hold
-//!   for failed activities. The `purge` method removes expired entries.
+//!   for failed activities, counted from the `End { Failed }` the tape
+//!   applies (spec R2.5, ADR-0042 D1.3; bug-log `#217`). The `purge` method
+//!   removes expired entries; the `Message::ToastTick(now)` arm calls it
+//!   every 500 ms (ADR-0046 § Changelog, bug-log `#217`).
+//! - `apply_at` takes the instant as a parameter (the ADR-0046 K5
+//!   clock-injection pattern), so tests seed fixed instants; `apply` is
+//!   `apply_at(event, Instant::now())`.
 //!
 //! cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4).
 
@@ -50,8 +56,9 @@ pub struct ActivityState {
     pub total: Option<u64>,
     /// `None` until `End` lands. `Some(outcome)` once the activity is done.
     pub outcome: Option<ActivityOutcome>,
-    /// Q5=(a) — `Some(deadline)` while the row is in the 3-second red hold
-    /// after a `Failed` outcome. `None` for in-flight and `Success` rows.
+    /// Q5=(a) — `Some(deadline)` once a `Failed` outcome lands: deadline =
+    /// the `End { Failed }` instant + 3 s (spec R2.5; bug-log `#217`).
+    /// `None` for in-flight rows (`Success` and `Cancelled` rows are removed).
     pub red_hold_until: Option<Instant>,
 }
 
@@ -75,7 +82,8 @@ impl ActivityState {
 
 /// UI-side collection of in-flight and recently-failed activities.
 ///
-/// Updated by `Cockpit::update` arms (`ActivityEventReceived`, `ActivityTapePurgeTick`).
+/// Updated by the `ActivityEventReceived` arm (`apply`) and purged by the
+/// `ToastTick` arm (`purge`, bug-log `#217`) of `Cockpit::update`.
 /// Read by `widgets::activity_tape::view`.
 ///
 /// `Clone` is derived so `Cockpit` (which derives `Clone`) can include this field.
@@ -99,7 +107,13 @@ impl ActivityTape {
     /// - `End { Success / Cancelled }` — remove the row immediately.
     /// - `End { Failed }` — flip state to red-hold; row removed by `purge`.
     pub fn apply(&mut self, event: ActivityEvent) {
-        let now = Instant::now();
+        self.apply_at(event, Instant::now());
+    }
+
+    /// [`Self::apply`] with the instant injected (ADR-0046 K5): every
+    /// `started_at`, `last_tick` and `red_hold_until` it writes is derived
+    /// from `now`, so tests seed fixed instants.
+    pub fn apply_at(&mut self, event: ActivityEvent, now: Instant) {
         match &event.phase {
             ActivityPhase::Start { .. } => {
                 // F4 mitigation: if same ID already exists, overwrite in-place
@@ -159,11 +173,12 @@ impl ActivityTape {
                         self.in_flight.retain(|s| s.id != event.id);
                     }
                     ActivityOutcome::Failed(_) => {
-                        // Q5=(a) — red hold for 3 seconds.
+                        // Q5=(a) — red hold for 3 seconds, counted from the
+                        // failure (spec R2.5 / ADR-0042 D1.3; bug-log #217).
                         if let Some(state) = self.in_flight.iter_mut().find(|s| s.id == event.id) {
-                            let hold = Duration::from_secs(ACTIVITY_FAILED_HOLD_SECS);
                             state.outcome = Some(outcome.clone());
-                            state.red_hold_until = Some(state.started_at + hold);
+                            state.red_hold_until =
+                                Some(now + Duration::from_secs(ACTIVITY_FAILED_HOLD_SECS));
                         }
                     }
                 }
@@ -173,7 +188,8 @@ impl ActivityTape {
 
     /// Remove rows whose red-hold window has expired.
     ///
-    /// Called at ~1 Hz by the `ActivityTapePurgeTick` message arm.
+    /// Called on every `Message::ToastTick(now)` (500 ms, the shared ticker of
+    /// ADR-0046), bug-log `#217`. A row is kept while `now < deadline`.
     /// O(32) scan — negligible.
     pub fn purge(&mut self, now: Instant) {
         self.in_flight.retain(|s| {
@@ -304,7 +320,9 @@ mod tests {
         assert!(state.red_hold_until.is_some(), "red_hold_until must be set");
 
         let hold = state.red_hold_until.unwrap();
-        // The hold is relative to `started_at`; check it is ≥ started_at + 3s.
+        // The hold counts from the failure, which is at or after `started_at`,
+        // so it is ≥ started_at + 3s. Its exact origin is pinned by
+        // `failed_hold_ends_three_seconds_after_the_failure` (bug-log #217).
         let expected_min = state.started_at + Duration::from_secs(3);
         assert!(
             hold >= expected_min,
@@ -332,6 +350,110 @@ mod tests {
         assert!(
             tape.visible().is_empty(),
             "expired red-hold row must be removed by purge"
+        );
+    }
+
+    // ── bug-log #217: the hold's origin and the purge boundary ──────────────
+    //
+    // Seeded instants only (ADR-0046 K5, via `apply_at`): a 10 s run, started
+    // at `t0` and failed at `t0 + 10 s`. Every hold value below is the spec
+    // literal 3 s (R2.5), never `ACTIVITY_FAILED_HOLD_SECS`, so a change to
+    // the constant turns these red (bug-log #161). A hold counted from the
+    // start (`t0 + 3 s`, the pre-#217 origin) fails (a) and (b); (d) pins the
+    // same origin on the production entry, `apply`.
+    //
+    // T-T4 probes, one edit each, MEASURED 2026-11-24 (the full table, with the
+    // relay's and the pixel target's reds, is bug-log #217's):
+    // - T217-P2, the `Failed` arm's hold → `state.started_at + …`: (a), (b);
+    // - T217-P3, `ACTIVITY_FAILED_HOLD_SECS` 3 → 2: (a), (b), and
+    //   `applies_end_failed_event_holds_red_for_3s`;
+    // - T217-P4, 3 → 4: (a), (b);
+    // - T217-P5, `now < d` → `now <= d` in `purge`: (b);
+    // - T217-P6, `purge`'s in-flight `return true` → `return false`: (c);
+    // - T217-P13, `apply`'s body restored to its pre-#217 form (its own
+    //   `Instant::now()` and `state.started_at + hold`, `apply_at` untouched):
+    //   (d) alone; every test that seeds through `apply_at` stays green.
+
+    /// The seeded 10 s run: started at `t0`, failed at `t0 + 10 s`.
+    fn failed_after_ten_seconds(t0: Instant) -> ActivityTape {
+        let mut tape = ActivityTape::new();
+        tape.apply_at(make_start(217), t0);
+        tape.apply_at(make_end_failed(217), t0 + Duration::from_secs(10));
+        tape
+    }
+
+    /// #217 (a) — the red hold ends 3 s after the FAILURE, not after the start.
+    #[test]
+    fn failed_hold_ends_three_seconds_after_the_failure() {
+        let t0 = Instant::now();
+        let tape = failed_after_ten_seconds(t0);
+        assert_eq!(tape.visible().len(), 1, "the failed row is held");
+        assert_eq!(
+            tape.visible()[0].red_hold_until,
+            Some(t0 + Duration::from_secs(13)),
+            "hold = End{{Failed}} (t0 + 10 s) + 3 s (spec R2.5)"
+        );
+    }
+
+    /// #217 (b) — `purge` keeps the failed row up to the last instant inside
+    /// its hold and drops it at the deadline (`now < deadline` keeps).
+    #[test]
+    fn purge_keeps_a_failed_row_until_its_hold_ends_then_drops_it() {
+        let t0 = Instant::now();
+        let mut tape = failed_after_ten_seconds(t0);
+        tape.purge(t0 + Duration::from_millis(12_999));
+        assert_eq!(
+            tape.visible().len(),
+            1,
+            "purge at t0 + 12.999 s (inside the hold) keeps the failed row"
+        );
+        tape.purge(t0 + Duration::from_secs(13));
+        assert!(
+            tape.visible().is_empty(),
+            "purge at t0 + 13 s (the deadline) drops the failed row: {:?}",
+            tape.visible()
+        );
+    }
+
+    /// #217 (c) — `purge` never drops an in-flight row, however late it runs.
+    #[test]
+    fn purge_keeps_in_flight_rows() {
+        let t0 = Instant::now();
+        let mut tape = ActivityTape::new();
+        tape.apply_at(make_start(1), t0);
+        tape.purge(t0 + Duration::from_secs(3600));
+        assert_eq!(
+            tape.visible().len(),
+            1,
+            "an in-flight row survives purge(t0 + 1 h)"
+        );
+        assert!(tape.visible()[0].is_in_flight());
+    }
+
+    /// #217 (d) — the production entry `apply` (the `ActivityEventReceived`
+    /// arm's call) counts the hold from the failure it applies: a row started
+    /// 10 s ago and failed now is held until now + 3 s, not started + 3 s.
+    /// The real clock is bracketed (`before` / `after`), so it cannot flake.
+    #[test]
+    fn apply_counts_the_hold_from_the_failure_it_applies() {
+        let started = Instant::now()
+            .checked_sub(Duration::from_secs(10))
+            .expect("10 s of monotonic uptime");
+        let mut tape = ActivityTape::new();
+        tape.apply_at(make_start(218), started);
+        let before = Instant::now();
+        tape.apply(make_end_failed(218));
+        let after = Instant::now();
+        let hold = tape.visible()[0]
+            .red_hold_until
+            .expect("the failed row is held");
+        assert!(
+            hold >= before + Duration::from_secs(3) && hold <= after + Duration::from_secs(3),
+            "apply: hold = the End instant + 3 s, in [{:?}, {:?}]; got {hold:?} \
+             (the pre-#217 origin gives started + 3 s = {:?})",
+            before + Duration::from_secs(3),
+            after + Duration::from_secs(3),
+            started + Duration::from_secs(3),
         );
     }
 }

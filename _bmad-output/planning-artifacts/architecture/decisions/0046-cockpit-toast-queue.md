@@ -65,7 +65,9 @@ mirroring `ServerTimeRecipe`'s cadence pattern (tokio interval inside the
 agent runtime handle, 500 ms tick), emitting `Message::ToastTick(Instant)`.
 The `update` arm sweeps `toast_queue` and removes entries whose
 `created_at.elapsed() >= TOAST_AUTODISMISS`. Always-on cost is negligible
-(the activity-tape already runs a 100 ms tick).
+(the activity-tape already runs a 100 ms tick). [corrected 2026-11-24, see
+§ Changelog: no tape tick existed; 100 ms is ADR-0042 D1.4's producer-side
+throttle. Since bug-log `#217` this ticker is also the tape's purge tick.]
 
 **Clock injection (K5 mitigation)**: `Message::ToastTick(Instant)` carries
 the "now" instant as a payload rather than calling `Instant::now()` inside
@@ -146,3 +148,42 @@ ToastTick(Instant),                            // NEW — auto-dismiss sweep tri
 
 - 2026-05-27 (architect): initial accept. Q1=(a) stacked / Q2=(b) cap 5 /
   Q3=(b) 5s / Q4=(a) above tape — all analyst defaults retained.
+- 2026-11-24 (bug-log `#217` fix): amendment — the shared 500 ms ticker is
+  also the activity tape's purge driver.
+  - **Decision.** The `Message::ToastTick(now)` arm also calls
+    `ActivityTape::purge(now)`, with the same injected `now` (K5). It is the
+    tape's only purge driver, so a failed activity row clears 3.0–3.5 s after
+    its failure (the hold's origin is ADR-0042's § Changelog of the same day).
+    `Message::ActivityTapePurgeTick`, handled since `ea52057` (cockpit-activity-
+    status-bar Wave B) and sent by nothing, is deleted: a handled message with
+    no sender is the defect's own shape.
+  - **Correction.** § Decision's aside "the activity-tape already runs a
+    100 ms tick" was false when written: no tape tick existed, and the 100 ms
+    figure is ADR-0042 D1.4's producer-side throttle. The sentence is kept
+    under an in-place `[corrected …]` marker, as ADR-0048 § D4 keeps its
+    false bullet under an in-place `*(Corrected 2026-11-23 …)*` note; this
+    entry is the correction.
+  - **Rejected.** (B) a dedicated 1 Hz `ActivityTapePurgeRecipe` (the archived
+    spec's R3.2 shape): a fifth always-on recipe needing its own executor-
+    fidelity proof (the bug-log `#196` class), every pinned literal in
+    `subscription_batch_inclusion.rs` re-pinned (the 256-combination order,
+    unit counts 14 / 15 / 22, salted indices 13 / 15 / 19 / 20), and an
+    ADR-0048 amendment, for the behaviour of one line in an already-proven
+    arm. `iced::time::every`: absent in this build. iced is built with
+    `thread-pool` only (`crates/ui/Cargo.toml:162`), and
+    `iced_futures-0.14.0/src/backend/native/thread_pool.rs` declares
+    `pub mod time {}` empty. Piggybacking `ServerTimeTick`, which the deleted
+    variant's doc proposed: its payload is a wall-clock `Timestamp`, so the arm
+    would need `Instant::now()` (a K5 violation) or a payload change through
+    both bins' `ServerTimeRecipe` and `server_time_recipe_stream.rs`; the one
+    bin only that option would also cover, the fixtures `cockpit` (it batches
+    `ServerTimeRecipe` but no `ToastDismissRecipe`), has no activity source.
+  - **Coupling.** `ToastDismiss` must stay always-on: gating it (say, on a
+    non-empty toast queue) would silently stop the purge. Pinned by
+    `descriptor_membership_keys_each_variant_on_its_own_input` (always-on) and
+    `batched_toast_tick_purges_the_activity_tape` (the batched tick purges);
+    the variant's and the recipe's docs say so.
+  - **Proof.** Rendered pixels (AD-10):
+    `crates/ui/tests/activity_tape_failed_hold_render.rs` (macOS, ADR-0057 D2;
+    declared 4 / 0 in `scripts/ci_test_target_counts.py`). UI-only; anchors
+    119/119.

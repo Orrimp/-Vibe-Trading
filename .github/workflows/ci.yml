@@ -819,7 +819,7 @@ jobs:
         shell: bash
         run: scripts/ci_run_annotated.sh "ui-windows" cargo test -p ui --features fixtures --no-fail-fast
 
-      # ── Both legs: how many tests the story-2-63 targets hold (Close) ───────
+      # ── Both legs: how many tests the declared ui targets hold (story 2-63 Close; +1 OS-gated row, bug-log #217) ──
       #
       # A test that a cfg compiles out passes in silence: libtest prints
       # `running 0 tests`, exits 0, and the ui test step stays green. A green
@@ -830,7 +830,7 @@ jobs:
       # recorded the Windows half of each `cfg(unix)` port as UNMEASURED.
       # These steps make the counts a measurement (bug-log #190, wiring form).
       #
-      # `scripts/ci_test_target_counts.py` declares, per leg, how many tests 15
+      # `scripts/ci_test_target_counts.py` declares, per leg, how many tests 16
       # targets hold, and fails unless each one LISTS exactly that many. The
       # listing is `-- --list` over the ui test step's own package and features,
       # so cargo should build nothing new (REASONED: `--tests` only narrows

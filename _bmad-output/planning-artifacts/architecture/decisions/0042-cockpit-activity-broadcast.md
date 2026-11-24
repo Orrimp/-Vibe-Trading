@@ -401,3 +401,15 @@ approach because:
   `LlmCall` producer; aggregator design for `AuditLedgerWrite` producer.
   34/34 anchors stay byte-identical (zero scenario-body change).
   Closes T-AR-4 of `docs/archive/pre-bmad-spec/v1/cockpit-activity-status-bar/tasks.md`.
+- 2026-11-24 (bug-log `#217` fix): amendment — the UI-side red hold D1.3
+  relies on ("The 3-second red-hold rendering in the status bar gives the
+  operator time to notice") is measured from the `End { Failed }` the tape
+  applies, as the archived spec's R2.5 says (`66a6b337`: on `End { Failed }`
+  the row "STAYS visible" for the hold, then is removed):
+  `red_hold_until = <End instant> + 3 s` (`ActivityTape::apply_at`, clock
+  injected per ADR-0046 K5). From `ea52057` (Wave B) it was
+  `started_at + 3 s`, which nothing could observe while the tape's purge was
+  unwired; with the purge wired alone, a failure after a run longer than 3 s
+  would have shown red for at most one 500 ms tick. The purge driver is
+  ADR-0046's `ToastTick` (its § Changelog, the same day). D1.1–D1.5 are
+  unchanged; UI-only; anchors 119/119.

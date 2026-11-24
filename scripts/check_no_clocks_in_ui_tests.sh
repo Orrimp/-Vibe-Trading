@@ -79,6 +79,18 @@
 # and says what to do instead (a seeded, fixed `started_at`) when someone adds a
 # populated cell. This gate is now the thing that will ask.
 #
+# RE-VERIFIED 2026-11-24 (bug-log `#217`). The `activity_tape.rs` reasons above
+# went stale: `apply` gained a clock-injected twin, `apply_at` (called from
+# `apply` and tests), and `tests/activity_tape_failed_hold_render.rs` now
+# renders a POPULATED tape through `program_from_cockpit`, this gate's own
+# subject. It stays deterministic because it seeds `started_at` an hour in the
+# future (the label is always `<1s`), and no gallery or byte-baseline cell is
+# populated. The marker in `activity_tape.rs` was rewritten to say so; the
+# condition, not the call, is still what makes it safe. That condition lives in
+# the test file, so the file is now a NAMED_FILES entry and its seed's
+# `Instant::now()` carries its own marker: 77 files, 6 exemptions. A seed moved
+# into the past or present must now get past a reviewer reading that marker.
+#
 # Acceptance criteria (V4):
 #   - Exits 0 on the clean tree.
 #   - Exits non-zero when a `SystemTime::now()` is injected.
@@ -140,18 +152,22 @@ SCAN_DIRS=(
 )
 
 # The harness's own files, which live outside those trees. Every entry MUST
-# exist — these five are also what makes a mis-rooted run impossible to mistake
-# for a clean one.
+# exist — these six are also what makes a mis-rooted run impossible to mistake
+# for a clean one. The sixth (bug-log `#217`) is the one pixel test that bakes a
+# clock reading into rendered state: `activity_tape.rs`'s exemption rests on
+# its seed being an hour AHEAD of the clock, so its `Instant::now()` carries a
+# marker that says so, and this gate reads it.
 NAMED_FILES=(
   "crates/ui/src/test_support.rs"
   "crates/ui/tests/visual_snapshots.rs"
   "crates/ui/tests/chart_hover_grid_sweep.rs"
   "crates/ui/tests/fixtures/mod.rs"
   "crates/ui/tests/fixtures/visual_diff.rs"
+  "crates/ui/tests/activity_tape_failed_hold_render.rs"
 )
 
 # Non-vacuity floor. Measured 2026-11-10: 51 `widgets/*.rs` + 20 `screens/*.rs`
-# + 5 named = 76. The floor's job is to make "the glob returned nothing" or a
+# + 5 named = 76; since 2026-11-24 (bug-log `#217`) + 6 named = 77. The floor's job is to make "the glob returned nothing" or a
 # mis-rooted walk impossible to mistake for a pass — NOT to turn every deleted
 # widget into a gate failure, which is why it sits below the measurement rather
 # than on it. A drop to 59 means something structural moved and should be read,

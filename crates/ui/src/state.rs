@@ -1019,8 +1019,9 @@ pub struct Cockpit {
 
     /// cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) — activity tape.
     /// In-flight background ops (Yahoo preload, Lab Run, Training).
-    /// Updated by `Message::ActivityEventReceived` and purged at ~1 Hz by
-    /// `Message::ActivityTapePurgeTick`. Read by `widgets::activity_tape`.
+    /// Updated by `Message::ActivityEventReceived` and purged by every
+    /// `Message::ToastTick` (500 ms; bug-log `#217`). Read by
+    /// `widgets::activity_tape`.
     pub activity_tape: ActivityTape,
 
     /// `true` while a Lab backtest run is in-flight (T-D-14 / M2.5).
@@ -2349,6 +2350,8 @@ pub enum Message {
     /// Emitted every 500 ms by `ToastDismissRecipe`. Carries the "now" instant
     /// as a payload so tests can inject a synthetic instant without a clock
     /// field on `AppState` (ADR-0046 clock-injection pattern / K5).
+    /// The arm also calls `ActivityTape::purge(now)`: this tick is the
+    /// activity tape's only purge driver (ADR-0046 § Changelog, bug-log `#217`).
     ToastTick(Instant),
 
     // ── Training panel — cockpit-training-control T-D-N4 ─────────────────────
@@ -2667,11 +2670,6 @@ pub enum Message {
     /// An `ActivityEvent` arrived from the broadcast channel via
     /// `ActivityRecipe`. Delegates to `ActivityTape::apply`.
     ActivityEventReceived(ActivityEvent),
-    /// 1 Hz tick to purge expired failed-activity rows from the tape.
-    /// Driven by the same 1 Hz `ServerTimeTick` subscription (the binary
-    /// can piggyback the existing time recipe or add a dedicated one;
-    /// the update arm is stateless — it only calls `tape.purge(now)`).
-    ActivityTapePurgeTick,
 
     // ── F5 — Forward paper-trade budget framing ───────────────────────────────
     /// The cockpit binary emits this ONCE when it starts a forward paper run
@@ -3619,6 +3617,9 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             model
                 .toast_queue
                 .retain(|t| now.duration_since(t.created_at) < TOAST_AUTODISMISS);
+            // bug-log #217: the shared 500 ms ticker also purges the activity
+            // tape (ADR-0046 § Changelog); its only purge driver. Same `now`.
+            model.activity_tape.purge(now);
         }
 
         // ── Training panel — cockpit-training-control T-D-N4 ─────────────────
@@ -4068,11 +4069,6 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             // Delegate to ActivityTape::apply — O(1) for Start/Tick;
             // O(32) for End. All are well within the iced update budget.
             model.activity_tape.apply(event);
-        }
-        Message::ActivityTapePurgeTick => {
-            // Remove expired red-hold rows (Q5=(a) 3-second hold).
-            // Called by the 1 Hz purge tick subscription.
-            model.activity_tape.purge(std::time::Instant::now());
         }
         Message::ForwardPaperTradeStarted(budget, fx_note) => {
             // F5 — store the forward-run budget so the Live screen can render

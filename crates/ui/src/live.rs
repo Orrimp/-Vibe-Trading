@@ -1342,7 +1342,9 @@ pub enum SubscriptionVariant {
     /// `TrainingLogRecipe` — training log receiver (present only when a
     /// training run is in-flight, i.e. `training_log_rx` is `Some`).
     TrainingLog,
-    /// `ToastDismissRecipe` — 500 ms auto-dismiss ticker (always-on).
+    /// `ToastDismissRecipe` — 500 ms auto-dismiss ticker (always-on). Also the
+    /// activity tape's only purge tick (bug-log `#217`): gating this recipe
+    /// stops the purge.
     ToastDismiss,
     /// `ForwardPlanRecipe` — F6 plan return channel (while `plan_rx` is held).
     ForwardPlan,
@@ -1655,6 +1657,10 @@ impl Recipe for ServerTimeRecipe {
 ///
 /// Moved here from `bin/cockpit_live.rs` with [`ServerTimeRecipe`]; the stream is
 /// [`toast_dismiss_stream_impl`], with the same K8 guard discipline.
+///
+/// Also the activity tape's only purge tick: the `ToastTick` arm calls
+/// `ActivityTape::purge(now)` (bug-log `#217`). Gating this recipe stops the
+/// purge, so it stays always-on.
 pub struct ToastDismissRecipe {
     /// Agent-runtime handle, entered only to build the interval.
     pub rt_handle: tokio::runtime::Handle,

@@ -88,7 +88,12 @@
 //!   the VARIANT only: their payload is a `now()` stamp, whose freshness is
 //!   pinned on the seams, by `server_time_recipe_stream.rs`'s T-ST-1b (each
 //!   stamp fresh, two-sided) and by Wave B's `recipe_off_runtime_poll.rs`
-//!   (its B-P15, a stale toast stamp, and B-P26, a future one). `ModalEsc`
+//!   (its B-P15, a stale toast stamp, and B-P26, a future one). One test goes
+//!   past the variant: `batched_toast_tick_purges_the_activity_tape` (bug-log
+//!   `#217`) passes the `ToastDismiss` unit's first item to `ui::state::update`
+//!   and checks the activity tape it purges, which bounds that stamp between
+//!   57 s before the seed instant and 1 h after it (coarse by design: the
+//!   freshness pins stay the seams'). `ModalEsc`
 //!   emits `TapeAuditModalClosed`, which carries nothing; its unit is checked
 //!   by the exact list it emits. The field-by-field mapping is the per-recipe
 //!   files' (`forward_narration_relay.rs`, `bakeoff_progress_relay.rs`,
@@ -134,6 +139,7 @@
 //! | (C2) `batched_bus_recipe_relays` | the always-on `Bus` arm, through its `Mode` unit: the same liveness check, then the positive half, which pins the arm's bus: a mode published on the ctx's bus arrives as `AgentModeChanged(Paper)`, then a second (`Halted`) as `AgentHaltedExternally` with its reason. Before C2 this arm's bus was pinned by nothing (the bus ids never hash the bus). It reads `Mode`'s unit off [`BUS_CHANNELS`]'s order, which its positive failure text names as the table to update on a reorder |
 //! | (C2) `batched_server_time_recipe_relays` | the always-on `ServerTime` unit, through the moved `Recipe::stream`, on a paused clock: its first item is a `ServerTimeTick` (the variant only) |
 //! | (C2) `batched_toast_dismiss_recipe_relays` | the always-on `ToastDismiss` unit, the same way: its first item is a `ToastTick` (the variant only; the pair tells the two moved bodies apart) |
+//! | (#217) `batched_toast_tick_purges_the_activity_tape` | the `ToastDismiss` unit is the activity tape's only purge driver: on a paused clock its first item is a `ToastTick`, and passed to `ui::state::update` it purges a seeded tape (rows by `apply_at`: 1 in flight from 60 s ago, 2 failed 60 s ago, 3 failed an hour ahead) down to exactly `[1, 3]`. Two-sided: an expired failed row goes, a live row and a held failed row stay. The seeds make the outcome independent of the hold's origin (T217-P2 green by design) |
 //! | (C2) `batched_modal_esc_relays_escape_only` | the `ModalEsc` unit, found as the one id opening the modal adds: fed two `Esc` presses (both statuses) it emits exactly two `TapeAuditModalClosed`; fed three non-closing event kinds (an `Enter` press, an `Esc` release, a `ModifiersChanged`) at both statuses it emits nothing; each stream ENDS with its input. No mouse, window or touch event is fed |
 //! | (C2) `forward_plan_stays_batched_after_receiver_taken` | the frame-2 condition: after frame 1's units took both receivers, the same ctx still reports both cells held and batches both units under frame 1's ids, and frame 1's streams still relay |
 //! | (C2) `recipe_ids_are_frame_stable` | two all-Some batches, alive at once (distinct allocations, asserted): all 22 ids equal index by index, the eleven bus units' among them |
@@ -353,6 +359,25 @@
 //! under C2-P5, C2-P8, C2-P11, C2-P12 and C1-P2 / C1-P6; C2-P18's relabelled
 //! positive half; and the boot-salt (0) checks passing under C2-P1..C2-P4,
 //! C2-P11, C2-P15 and C2-P16.
+//!
+//! ## bug-log `#217` probes (the activity tape's purge)
+//!
+//! One edit each, same procedure. Only this file's red is named here; the full
+//! table (with the lib tests' and `activity_tape_failed_hold_render.rs`' reds)
+//! is bug-log `#217`'s.
+//!
+//! | # | symbol | quoted line today | mutation | red here |
+//! |---|---|---|---|---|
+//! | T217-P1 | `ui::state::update`'s `Message::ToastTick(now)` arm | `model.activity_tape.purge(now);` | delete the line | `batched_toast_tick_purges_the_activity_tape`, at "the batched ToastTick purged exactly the expired failed row" (`[1, 2, 3]`) |
+//! | T217-P6 | `ui::lab::activity::ActivityTape::purge` | `return true;` (the in-flight keep) | → `return false;` | the same test, at the same assert (`[3]`: the in-flight row dropped) |
+//! | T217-P7 | the `ToastTick` arm | `model.activity_tape.purge(now);` | → `purge(now + std::time::Duration::from_secs(7200))` | the same test, at the same assert (`[1]`: row 3's hold, an hour ahead, is purged too) |
+//! | T217-P8 | the `ToastTick` arm | `model.activity_tape.purge(now);` | → `purge(std::time::Instant::now())` (the K5 violation) | NONE here by design: the real clock and the stamp agree within the seeds' margins. Red in `activity_tape_failed_hold_render.rs` (T2) |
+//! | T217-P11 | `ui::live::build_subscription_batch_descriptor_from` | `desc.push(SubscriptionVariant::ToastDismiss);` | delete the line | `batched_toast_tick_purges_the_activity_tape` at `take_unit` ("toast/purge (#217): exactly one batched unit carries the reference id", 0 hits), with 8 more here: `batched_toast_dismiss_recipe_relays`, the descriptor matrix, the legacy pin, the outer-option and units tests, and the three identity tests |
+//!
+//! T217-P2 (the hold counted from `started_at` again) and T217-P13 (`apply`'s
+//! pre-#217 body; this test seeds through `apply_at`) leave this test GREEN by
+//! design (see its doc). MEASURED 2026-11-24, each restored byte-identical
+//! (`cmp` and SHA-256) and re-run.
 
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -363,7 +388,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use agent::config::BusConfig;
-use agent::{ActivityKind, ActivityPhase, EventBus};
+use agent::{ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase, EventBus};
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use iced::advanced::subscription::{Event as SubEvent, EventStream, Hasher, Recipe, into_recipes};
@@ -384,7 +409,7 @@ use ui::live::{
     SweepProgressRecipe, ToastDismissRecipe, TrainingLogCell, build_subscription_batch_descriptor,
     build_subscription_batch_descriptor_from, subscription_batch,
 };
-use ui::state::{Message, TrailMirrorUiTick};
+use ui::state::{Cockpit, Message, TrailMirrorUiTick};
 use ui::widgets::journal_transaction_modal::esc_closes_modal;
 
 // ── Tables, written out (NOT read from the subject) ─────────────────────────
@@ -2101,6 +2126,91 @@ async fn batched_toast_dismiss_recipe_relays() {
         matches!(first, Message::ToastTick(_)),
         "toast first item: {first:?}"
     );
+}
+
+/// One activity event for [`batched_toast_tick_purges_the_activity_tape`].
+fn activity_event(id: u64, phase: ActivityPhase) -> ActivityEvent {
+    ActivityEvent {
+        id: ActivityId(id),
+        kind: ActivityKind::YahooPreload,
+        label: format!("t217-{id}"),
+        phase,
+        ts_ms: 0,
+    }
+}
+
+/// bug-log `#217`: the always-on `ToastDismiss` unit is the activity tape's
+/// ONLY purge driver. Its first item, with the stamp production's body put in
+/// it, goes through `ui::state::update`, and the tape loses exactly the row
+/// whose hold is over: batch → message → arm → tape, on both sides.
+///
+/// Seeds, by `apply_at` (ADR-0046 K5), with `past = now - 60 s`:
+/// - row 1, in flight: Start at `past` (kept: `purge` never drops a live row);
+/// - row 2, failed: Start AND End at `past`, so its hold (`past + 3 s`) is over
+///   whichever origin the hold counts from (dropped);
+/// - row 3, failed: Start AND End at `now + 1 h`, so its hold is ahead under
+///   either origin (kept).
+///
+/// So the expected `[1, 3]` does not depend on the hold's origin: T217-P2 (the
+/// pre-#217 `started_at + hold`) leaves this test GREEN by design, and the
+/// origin is pinned by `lab::activity`'s lib tests and the pixel target. The
+/// stamp is `std::time::Instant::now()` taken in the stream body (the paused
+/// tokio clock moves only tokio time), so the margins are −57 s and +1 h: not
+/// timing-sensitive. `checked_sub` assumes 60 s of monotonic uptime.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn batched_toast_tick_purges_the_activity_tape() {
+    const LABEL: &str = "toast/purge (#217)";
+    let now = std::time::Instant::now();
+    let past = now
+        .checked_sub(Duration::from_secs(60))
+        .expect("at least 60 s of monotonic uptime, to seed an instant 60 s back");
+    let ahead = now + Duration::from_secs(3600);
+    let failed = || ActivityPhase::End(ActivityOutcome::Failed("t217".to_owned()));
+
+    let mut cockpit = Cockpit::default();
+    let tape = &mut cockpit.activity_tape;
+    tape.apply_at(
+        activity_event(1, ActivityPhase::Start { total_units: None }),
+        past,
+    );
+    tape.apply_at(
+        activity_event(2, ActivityPhase::Start { total_units: None }),
+        past,
+    );
+    tape.apply_at(activity_event(2, failed()), past);
+    tape.apply_at(
+        activity_event(3, ActivityPhase::Start { total_units: None }),
+        ahead,
+    );
+    tape.apply_at(activity_event(3, failed()), ahead);
+    let tape_ids =
+        |c: &Cockpit| -> Vec<u64> { c.activity_tape.visible().iter().map(|s| s.id.0).collect() };
+    assert_eq!(
+        tape_ids(&cockpit),
+        vec![1, 2, 3],
+        "{LABEL}: precondition, all three seeded rows are on the tape"
+    );
+
+    let rt = tokio::runtime::Handle::current();
+    let bus = new_bus();
+    let reference = id_of(&ToastDismissRecipe {
+        rt_handle: rt.clone(),
+    });
+    let mut units = into_recipes(subscription_batch(&boot_ctx(&rt, &bus)));
+    let mut stream = take_unit(&mut units, reference, LABEL).stream(empty_event_stream());
+    let tick = next_item(&mut stream, LABEL).await;
+    assert!(
+        matches!(tick, Message::ToastTick(_)),
+        "{LABEL}: first item: {tick:?}"
+    );
+    ui::state::update(&mut cockpit, tick);
+    assert_eq!(
+        tape_ids(&cockpit),
+        vec![1, 3],
+        "{LABEL}: the batched ToastTick purged exactly the expired failed row (2); \
+         the in-flight row (1) and the failed row still inside its hold (3) remain"
+    );
+    drop(units);
 }
 
 /// The `ModalEsc` unit, found as the ONE id that opening the modal adds (set
