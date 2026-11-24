@@ -459,6 +459,14 @@ struct ReportMeta {
     final_equity: Option<Decimal>,
 }
 
+/// `raw`, one item of `str::split_inclusive('\n')`, without its terminator: a
+/// trailing `\n` and then a `\r` before it, exactly what `str::lines` strips
+/// (bug-log #232).
+fn line_text(raw: &str) -> &str {
+    raw.strip_suffix('\n')
+        .map_or(raw, |l| l.strip_suffix('\r').unwrap_or(l))
+}
+
 /// Parse report front-matter + body summary block for matching/loading.
 fn parse_report_meta(content: &str) -> Option<ReportMeta> {
     // Extract front-matter (between first and second `---`).
@@ -468,8 +476,12 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
     let mut body = "";
     let mut body_start = 0usize;
 
-    for line in content.lines() {
-        body_start += line.len() + 1; // +1 for '\n'
+    // Each line counted with its own terminator (`\n`, `\r\n`, or none on the
+    // last line), so `body_start` stays within `content` and on a char
+    // boundary (bug-log #232).
+    for raw in content.split_inclusive('\n') {
+        body_start += raw.len();
+        let line = line_text(raw);
         if line.trim() == "---" {
             dash_count += 1;
             if dash_count == 1 {
@@ -1137,11 +1149,14 @@ fn make_start_end_series(
 }
 
 /// Find the byte offset where the report body starts (after `---` front-matter).
+/// Each line is counted with its own terminator, as in [`parse_report_meta`],
+/// so the offset is within `content` and on a char boundary (bug-log #232).
 fn find_body_start(content: &str) -> usize {
     let mut dash_count = 0u32;
     let mut pos = 0usize;
-    for line in content.lines() {
-        pos += line.len() + 1;
+    for raw in content.split_inclusive('\n') {
+        pos += raw.len();
+        let line = line_text(raw);
         if line.trim() == "---" {
             dash_count += 1;
             if dash_count == 2 {
@@ -3463,6 +3478,122 @@ id: sma_crossover
             }
         }
         assert!(fails.is_empty(), "F8: {fails:#?}");
+    }
+
+    // ── bug-log #232: the body offset never leaves the report ───────────────
+
+    /// The body offset the code before bug-log #232 computed: one byte per
+    /// line, plus the line's `str::lines` text, through the second `---`.
+    fn pre_232_body_offset(content: &str) -> Option<usize> {
+        let mut dashes = 0;
+        let mut pos = 0;
+        for line in content.lines() {
+            pos += line.len() + 1;
+            if line.trim() == "---" {
+                dashes += 1;
+                if dashes == 2 {
+                    return Some(pos);
+                }
+            }
+        }
+        None
+    }
+
+    /// bug-log #232 — a report whose text ends at its frontmatter's closing
+    /// `---` with no newline (a `.md` cut right there by a disk-full write)
+    /// must not panic the walk (`parse_report_meta`) or the read
+    /// (`find_body_start`); the old offset was one past the end
+    /// (precondition). DERIVED outcome: its body is empty, so it has no
+    /// Summary, while its scenario names its coin (`btcusdt-…`), so it matches
+    /// the tuple and is a candidate that cannot be read: alone a `ParseError`,
+    /// and beside an older readable run `a` of its root, which it outranks
+    /// (newer `generated:`, smaller name), it yields to `a` (bug-log #209).
+    /// Pair: the same text with the trailing newline, which the old offset
+    /// handled, gives the same outcome.
+    #[test]
+    fn a_report_ending_at_its_closing_dashes_is_a_broken_candidate() {
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        let head = "---\nscenario: btcusdt-2024-h1-sma-cross\ngenerated: 2026-03-01T00:00:00Z\n\
+                    data_source: synthetic\nstrategy:\nid: sma_crossover\n---";
+        let (b, a) = (
+            "backtest-20260101-000000-b.md",
+            "backtest-20260102-000000-a.md",
+        );
+        for newline in ["", "\n"] {
+            let text = format!("{head}{newline}");
+            assert_eq!(
+                pre_232_body_offset(&text),
+                Some(text.len() + usize::from(newline.is_empty())),
+                "precondition: the old offset is one past the end iff no newline"
+            );
+            let tmp = tempfile::tempdir().unwrap();
+            let b_only = tmp.path().join("b-only");
+            write_at(&b_only, LR, b, &text);
+            let alone = load_equity(&tuple, &b_only);
+            assert!(
+                matches!(alone, Err(EquityLoadError::ParseError { .. })),
+                "newline {newline:?}: alone, the frontmatter-only report is a matching report \
+                 that cannot be read; got {alone:?}"
+            );
+            let lab_runs = tmp.path().join("lab-runs");
+            write_at(&lab_runs, LR, b, &text);
+            write_at(
+                &lab_runs,
+                LR,
+                a,
+                &sma_report(H1, SYN, 3, "2026-02-01T00:00:00Z"),
+            );
+            let got = load_equity(&tuple, &lab_runs).expect("the older run resolves");
+            assert_eq!(
+                (got.source_report.as_str(), got.samples.len()),
+                (a, 3),
+                "newline {newline:?}: the frontmatter-only report yields to the older run"
+            );
+        }
+    }
+
+    /// bug-log #232 — a report with `\r\n` line endings and a multi-byte
+    /// character in its frontmatter must not panic: the old offset counted
+    /// each line one byte short, and here it lands inside the character
+    /// (precondition). DERIVED outcome: it reads exactly as its `\n` twin
+    /// does (every other parser here reads it through `str::lines`, which
+    /// strips both endings), and the twin is its declared 4-point per-bar
+    /// table. Pair: the `\n` twin, whose offset the old code got right.
+    #[test]
+    fn a_crlf_report_reads_like_its_lf_twin() {
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        let lf = sma_report(H1, SYN, 4, "2026-02-01T00:00:00Z").replacen(
+            "id: sma_crossover\n---\n",
+            "id: sma_crossover\nnote: \u{e9}\u{e9}\u{e9}\n---\n",
+            1,
+        );
+        assert!(lf.contains("note: "), "the note line landed");
+        let crlf = lf.replace('\n', "\r\n");
+        let true_offset = crlf.find("---\r\n\r\n# Backtest").unwrap() + 5;
+        let old = pre_232_body_offset(&crlf).unwrap();
+        assert!(
+            old < true_offset && !crlf.is_char_boundary(old),
+            "precondition: the old offset ({old}) lands inside a character before the body \
+             ({true_offset})"
+        );
+        assert_eq!(
+            pre_232_body_offset(&lf),
+            lf.find("\n\n# Backtest").map(|i| i + 1)
+        );
+        let read = |text: &str| {
+            let tmp = tempfile::tempdir().unwrap();
+            write_at(tmp.path(), LR, "backtest-20260101-000000-a.md", text);
+            load_equity(&tuple, tmp.path())
+                .map(|s| (s.samples, s.fidelity, s.narrowed_from))
+                .map_err(|e| e.to_string())
+        };
+        let twin = read(&lf);
+        assert_eq!(
+            twin.as_ref().map(|(s, f, _)| (s.len(), *f)),
+            Ok((4, Fidelity::PerBar)),
+            "the LF twin reads its declared 4-point table"
+        );
+        assert_eq!(read(&crlf), twin, "the CRLF report reads as its LF twin");
     }
 
     // ── bug-log #212: the report match (ADR-0055 D9) ─────────────────────────
