@@ -159,3 +159,22 @@ inline.
   amendment time: 114 shipped features, 30 not verbatim-indexed (all under
   documented rollups — 4 auto-resolved by the iteration-suffix normalizer,
   26 allowlisted), 0 genuinely missing. See § Consequences.
+- 2026-11-24 (bug-log `#216` fix, `a010d54bcdd9`): amendment — records two enforcement
+  changes inside D1's philosophy that this ADR never logged. (1) The
+  BMAD-migration Phase-5b re-founding (2026-07-25, `4e67191d`) re-keyed
+  the invariant from `feature.md status:` onto the story `Status:` line,
+  joined to its `trace.toml` row by the REQ-id on the story's `- Trace:`
+  line: the rules are `status-drift` (full vocabulary), `story-done-trace-drift`
+  (D2's terminal case, formerly `feature-shipped-trace-drift`) and
+  `story-done-changelog-missing` (formerly `feature-shipped-changelog-missing`).
+  (2) The join key gains its own guards: `trace-ref-unparsed` (every story
+  has exactly one column-0 `- Trace:` line, ``- Trace: `REQ-…` (state=`…`)``
+  or `- Trace: none — <reason>`) and `trace-ref-dangling` (the named REQ-id
+  has a `[[req]]` row). Both downstream rules skip a story whose key they
+  cannot read, so a garbled, missing, doubled or dangling line silently
+  removed the story from the check (story 2-63, 2026-11-11 to 2026-11-23).
+  Baseline at amendment time: 157 stories, 141 parsed + 16 declared gap,
+  0 unparsed, 0 dangling. main()'s call to the triad is pinned by a
+  subprocess `--self-test` that asserts all five categories in the printed
+  report. An enforcement extension, not a new normative decision: hence an
+  amendment here, not a new ADR.

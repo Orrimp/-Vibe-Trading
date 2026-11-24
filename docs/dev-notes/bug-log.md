@@ -10974,7 +10974,9 @@ Whichever is chosen, move the choice out of the bin into a library function, so 
 
 ### `#216` — spec_lint drops a story from `status-drift` and `story-done-trace-drift` when its `- Trace:` line names a requirement in a form `TRACE_REF_RE` cannot parse, and says nothing
 
-**Status**: **`open`** 2026-11-23. Found while drafting story 2-63's Close. MEASURED: the counts below, by loading `scripts/spec_lint.py` and running its own `STORY_FILENAME_RE` and `TRACE_REF_RE` over `_bmad-output/implementation-artifacts/` on `f7455194cfd4`; the line's history by `git log -S`. REASONED: which rules skip, from the code. Anchor-impacting: **no**.
+**Status**: **`fixed` 2026-11-24 — `a010d54bcdd9`** (every column-0 `- Trace:` line is classified against the two accepted forms; a story with no line, more than one, or one in neither form is `trace-ref-unparsed`, and a parsed id with no `[[req]]` row is `trace-ref-dangling`; `trace_req_id` is derived as before; main() runs the triad through `run_story_triad`, pinned end to end by a subprocess self-test; anchor-neutral).
+
+History: filed **`open`** 2026-11-23. Found while drafting story 2-63's Close. MEASURED: the counts below, by loading `scripts/spec_lint.py` and running its own `STORY_FILENAME_RE` and `TRACE_REF_RE` over `_bmad-output/implementation-artifacts/` on `f7455194cfd4`; the line's history by `git log -S`. REASONED: which rules skip, from the code. Anchor-impacting: **no**. The sections up to Fix describe the code before the fix.
 
 **The code.** `scripts/spec_lint.py`: `parse_story` sets `trace_req_id` only when ``TRACE_REF_RE`` (``^- Trace:\s*`([^`]+)`\s*\(state=`([^`]*)`\)``) matches. `status-drift` and `story-done-trace-drift` skip every story whose `trace_req_id` is `None`; `story-done-changelog-missing` does not (it falls back to the slug). Nothing reports a `- Trace:` line that failed to parse.
 - 160 `.md` files, 156 of them story files; all 156 have a `- Trace:` line, and the pattern matches 139 of them.
@@ -10983,7 +10985,33 @@ Whichever is chosen, move the choice out of the bin into a library function, so 
 
 **Why it matters.** It is the `#188` family: a rule that runs but cannot see its subject reads as a pass. A stale trace state on 2-63 would not have been caught. Story 2-63's Close rewrites its line into the parsed form, so 2-63 is checked from then on; the pattern still drops any other malformed line silently.
 
-**Fix (proposed; its own change):** a `- Trace:` line that names a backticked id must match `TRACE_REF_RE`, or the story gets a violation (say `trace-ref-unparsed`); the declared `none —` form stays allowed. Self-test pair: a story with 2-63's old line raises it; the same story with the parsed form does not.
+**Fix (landed in `a010d54bcdd9`):** `scripts/spec_lint.py` checks every column-0 `- Trace:` line in every story against two accepted forms: ``- Trace: `REQ-…` (state=`…`)``, with free text allowed after the `)`, or `- Trace: none — <reason>`.
+- **`trace-ref-unparsed`:** a story with no such line, more than one, or one in neither form. The message says what the triad still reads ("read only line N (ID)", or "cannot see this story").
+- **`trace-ref-dangling`:** a parsed REQ-id with no `[[req]]` row. That was the second silent shape: both downstream rules skip a dangling id, and the comments at the two skip sites called it a `trace-broken-path` concern, a rule that never reads story ids.
+- **Beyond the literal proposal.** A bare id, a missing line (e.g. `- **Trace:**`) and a duplicate line all ended in the same skip, so the rule enforces "exactly one line, in one of two forms".
+- **What stays the same.** `trace_req_id` and `trace_embedded_state` are derived exactly as before.
+- **Wiring.** main() runs the triad through one function, `run_story_triad` (five calls). A subprocess self-test runs a copy of the script twice against a temp repository layout and asserts all five categories in the printed report. `self_test()` ends in a two-sided registry guard.
+- **The root cause.** The stock create-story template has no `- Trace:` line, and the hook lints the working tree, so a fresh story would block every commit until the line was added. `_bmad/custom/bmad-create-story.toml` states the contract to that workflow.
+
+**Pin / T-T4.** MEASURED at `07b698f8` plus the working tree:
+- **Baseline.** 157 story files, each with exactly 1 `- Trace:` line: 141 parsed and 16 declared gap; 0 unparsed and 0 dangling (141/141 ids resolve against 162 rows). `spec_lint.py` prints PASS (0 violations) before and after. The (path, trace_req_id, trace_embedded_state) dump of all 157 stories is identical before and after (sha256 `cc05cb8c…`).
+- **The incident, replayed** through the CLI on the whole tree at `22ab3a20^` (156 stories: 139 parsed, 16 gap, 1 unparsed). The new script prints exactly `trace-ref-unparsed (1):`, naming `2-63-lab-recipe-test-harness-v0-3-extension.md` line 49, and nothing else. The old script prints PASS (0 violations); HEAD's tree prints PASS.
+- **Self-test.** `--self-test`: 9 lines, all PASS. The fixture table A–M includes K, L and M: near misses of the declared gap that pin `TRACE_NONE_RE`'s rejecting side.
+- **Probes.** Each is one edit on a scratch copy, run with `python3 -I <copy> --self-test`; all 25 are red:
+  - P1/P8, the unparsed rule disabled: A, E, F, G, H, K, L, M and main-wiring.
+  - P2, the `TRACE_REF_RE` accept arm dropped: B, C, G, I, J and main-wiring; 141 hits on the live tree.
+  - P3, the `none —` arm dropped: D; 16 hits on the live tree.
+  - Ma, Mb, Mc, `TRACE_NONE_RE` loosened to anything after `none`, any dash, or no reason: K+L+M, L, M.
+  - P4, a backtick filter: E, K, L, M. P5: F. P6: G. P7: H.
+  - P8b/c/d, one runner call each: B, C, G, J / B, C, G, J / J, each with main-wiring.
+  - P9, the category dropped from `CATEGORIES`: the membership check and main-wiring (the summary counts the violation, but no section prints; filed as `#220`).
+  - P10, a test unlisted: "defined but never run". P10b, the registry scan blinded: "ran but invisible to the scan".
+  - P11/P11b, the dangling rule disabled: I and main-wiring.
+  - P12, the call deleted from main(), and P12b/c/d, main() inlining only some calls: main-wiring alone.
+  - P13/P14, line numbers off by one: I / A, E, G, H, K, L, M misclassified.
+- **Anchors.** 119/119.
+- **Residual.** A mutant that discards the registry guard's own verdict is unpinned.
+- **Enforced by.** The live rule runs from `.githooks/pre-commit` and the CI step "Governance — AD-2 anchors + the ADR-0082 triad lint". Its proof, `--self-test`, runs only in CI; the hook does not run it. ADR-0082 § Changelog records the amendment, and AD-4's "Enforced by" names the live rules. The adjacent findings are filed as `#219` (the `(state=…)` annotation is never checked: 11 stale) and `#220` (the printer drops categories not in `CATEGORIES`).
 
 ### `#217` — the status bar's activity tape is never purged: `Message::ActivityTapePurgeTick` is handled but nothing sends it, so a `Failed` activity row stays red until the tape's 32-slot cap pushes it out
 
@@ -11042,3 +11070,32 @@ CI does not see this. Its runners start from a cache that rust-cache cleans of w
 3. Until then, run `cargo clean`, or the prune above by hand (its one-off script is not in the repo), when `ls -f target/debug/deps | wc -l` passes about 200 k.
 
 > **2026-11-23 (operator ruling): fix the cause, its own story.** The operator chose option 2 (change the profile) over option 1 (the prune), as on 2026-08-19 for `cargo-sweep`. Routed to story [`6-13-split-debuginfo-stops-accumulation`](../../_bmad-output/implementation-artifacts/6-13-split-debuginfo-stops-accumulation.md) (ready-for-dev). It measures today's `unpacked` against three candidates in one same-session A/B, under a protocol committed before the run, and ships the first candidate, in a preference order fixed in advance (`packed`, then `off`, then `packed` with dependencies at `debug = false`), that passes; a candidate is passed over only when it fails. An inconclusive session ships nothing and is re-run once, unchanged, and the re-run's result stands; only an instrument defect, proven by a self-test, may be fixed before that re-run. Disk size is recorded, never judged. `off` for `[profile.test]` alone is not a candidate: a test profile that differs from dev would build every dependency twice (REASONED, story Dev Notes). Until it lands, option 3 stands, with one correction: use `cargo clean --profile dev`, not bare `cargo clean`, which deletes the whole of `target/`, including directories cargo did not make (`visual-diff/`, `logs/`, `relock-1-28/`, `1-29-repro-failures/`).
+
+### `#219` — `spec_lint` parses each story's `(state=…)` annotation into `trace_embedded_state` and no rule reads it: 11 of 141 parsed Trace lines disagree with their trace row
+
+**Status**: **`open`** 2026-11-24. Found by the `#216` design pass (its adjacent finding D3). MEASURED at HEAD `07b698f8`: HEAD's `spec_lint.parse_story` run over the committed story files, joined against the committed `trace.toml`. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.** In `scripts/spec_lint.py`, `parse_story` sets `Story.trace_embedded_state` from `TRACE_REF_RE`'s second group, and no rule reads it. `status-drift` and `story-done-trace-drift` compare the story's `Status:` with the row's `state`, never with the annotation.
+
+**Measured.** 157 stories, 141 of them with a parsed Trace line. 11 carry a `(state=…)` that differs from their row:
+- `1-19-carry-strategy`: `tester-done` against the row's `retired`;
+- `1-20-perp-basis-signal-robustness`, `2-15-cockpit-live-dashboard-wiring` and `2-18-cockpit-baseline-panel`: `tester-done` against `shipped`;
+- `1-24`, `1-25`, `1-28`, `1-29`, `1-30`, `3-20` and `6-12`: `scoped` against `shipped`.
+
+**Why it matters.** Anyone who opens the story reads the annotation as the requirement's state, and for these 11 it is stale. ADR-0082's invariant is that a derived copy is either checked or not kept; this one is neither. Since the `#216` fix, the annotation is also part of the required line form, so every new story carries one.
+
+**Fix (proposed; its own change):** either
+1. add a rule `trace-state-annotation-drift` (the annotation must equal the row's `state`), with its self-test pair, and re-sync the 11 lines in the same change; or
+2. drop the annotation from the contract: `TRACE_REF_RE` and the create-story fact ignore anything after the id, and the annotation is stripped from every story, leaving the row as the single source.
+
+Option 1 keeps the line form the `#216` fix just made required, and the workflows already move the annotation with the row. Option 2 removes the copy outright. Either way, the change amends ADR-0082 § Changelog.
+
+### `#220` — `spec_lint` prints only the categories listed in `CATEGORIES`: a violation in any other category fails the run with no detail line
+
+**Status**: **`open`** 2026-11-24. Found by the `#216` design pass (its adjacent finding D3) and seen live by that fix's probe P9: with `trace-ref-unparsed` removed from `CATEGORIES`, the child run printed `spec-lint: FAIL (1 violations in 1 categories)` and no section. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.** In `scripts/spec_lint.py`, `main()`'s printer iterates `for cat in CATEGORIES`. `Report.add` stores any category with `setdefault`, and the FAIL summary and the exit code count every stored category. So a rule whose category is missing from `CATEGORIES` fails the run, and no line says what failed.
+
+**Why it matters.** A gate that fails without naming its subject reads as broken (`#189`), which invites `--no-verify`. Nothing is hidden at HEAD: every category that is emitted is listed, and the `#216` self-test asserts membership for its own two. The next rule that forgets the list would be hidden.
+
+**Fix (proposed; its own change):** print the `CATEGORIES` sections first, then any other stored category in sorted order, marked `(category not in CATEGORIES)`. Add a self-test pair: a report with one violation in an unlisted category prints that category's section, and a listed one prints as before.

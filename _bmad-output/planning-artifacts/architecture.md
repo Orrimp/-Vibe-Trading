@@ -116,8 +116,12 @@ test/lint/gate is the current enforcement. Break one and a gate goes red.
   copies are read-only projections, and the 5b executor **regenerates** them from `spec/`
   state at the cutover commit's parent — diffing against the Phase-2 output and reviewing any
   drift — before `git rm -r spec/`. Never cut over a stale copy.)
-- **ADR:** ADR-0082 (+ 2026-07-10 P6a amendment). **Enforced by:** `scripts/spec_lint.py`
-  rules `feature-shipped-trace-drift` and `feature-shipped-changelog-missing`.
+- **ADR:** ADR-0082 (+ 2026-07-10 P6a amendment; + 2026-11-24 amendment, bug-log `#216`). **Enforced by:**
+  `scripts/spec_lint.py` rules `status-drift`, `story-done-trace-drift` and
+  `story-done-changelog-missing` (the Phase-5b re-founding of the retired `feature-shipped-trace-drift` /
+  `feature-shipped-changelog-missing`), their join key guarded by `trace-ref-unparsed` and
+  `trace-ref-dangling`. They run live from `.githooks/pre-commit` and the CI step "Governance — AD-2
+  anchors + the ADR-0082 triad lint"; their proof is `spec_lint.py --self-test`, run in CI only.
 
 ### AD-5 — Point-in-time discipline is structural and linted [ADOPTED]
 
