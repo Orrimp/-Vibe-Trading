@@ -93,7 +93,10 @@ fn scenario_is_multi_symbol(scenario: &str) -> bool {
 /// - For lines inside the `strategy:` block (2-space indent): stores
 ///   under `strategy.<key>`.
 /// - Returns `BTreeMap<SmolStr, SmolStr>` (deterministic ordering for tests).
-fn parse_frontmatter(content: &str) -> Option<BTreeMap<SmolStr, SmolStr>> {
+///
+/// `pub(crate)` so the Lab's report lookup (`lab::equity_loader`) reads a
+/// report's `strategy.id` through this same tolerant reader (bug-log #212).
+pub(crate) fn parse_frontmatter(content: &str) -> Option<BTreeMap<SmolStr, SmolStr>> {
     let mut lines = content.lines();
 
     // Expect the first non-empty line to be `---`.

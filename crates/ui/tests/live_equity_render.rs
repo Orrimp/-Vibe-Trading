@@ -1495,13 +1495,23 @@ fn write_two_run_scene(tmp: &tempfile::TempDir) -> std::path::PathBuf {
         &lab_runs,
         "v1-cross-sectional-momentum",
         "backtest-20260601-120000-top10-2024-h1-momentum.md",
-        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+        &lab_runs_report_at(
+            "top10_momentum_h1",
+            "top10-2024-h1-momentum",
+            "XRPUSDT",
+            100_000,
+        ),
     );
     write_lab_run(
         &lab_runs,
         "v0-paper-sma",
-        "backtest-20260601-130000-btc-2023-1m-sma-cross.md",
-        &lab_runs_report_at("btc-2023-1m-sma-cross", "BTCUSDT", 60_000),
+        "backtest-20260601-130000-btcusdt-last90d-sma-cross-synthetic.md",
+        &lab_runs_report_at(
+            "sma_crossover",
+            "btcusdt-last90d-sma-cross-synthetic",
+            "BTCUSDT",
+            60_000,
+        ),
     );
     lab_runs
 }
@@ -1558,7 +1568,12 @@ fn lab_curve_hydrated_from_lab_runs_report_renders() {
         &lab_runs,
         "v1-cross-sectional-momentum",
         "backtest-20260601-120000-top10-2024-h1-momentum.md",
-        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+        &lab_runs_report_at(
+            "top10_momentum_h1",
+            "top10-2024-h1-momentum",
+            "XRPUSDT",
+            100_000,
+        ),
     );
 
     // Load the series via the loader the production Lab cold path uses, pointed
@@ -1642,7 +1657,12 @@ fn single_run_overlay_draws_no_accent2() {
         &lab_runs,
         "v1-cross-sectional-momentum",
         "backtest-20260601-120000-top10-2024-h1-momentum.md",
-        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+        &lab_runs_report_at(
+            "top10_momentum_h1",
+            "top10-2024-h1-momentum",
+            "XRPUSDT",
+            100_000,
+        ),
     );
     let tuple = LabTuple {
         strategy: smol_str::SmolStr::new("v1.momentum"),
@@ -1697,7 +1717,12 @@ fn lab_curve_hydrated_from_container_depth_1_evidence_report_renders() {
         &evidence.join("v1"),
         "v1-cross-sectional-momentum",
         MOMENTUM_FIXTURE,
-        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+        &lab_runs_report_at(
+            "top10_momentum_h1",
+            "top10-2024-h1-momentum",
+            "XRPUSDT",
+            100_000,
+        ),
     );
     let lab_runs = tmp.path().join("lab-runs");
     assert!(
@@ -1751,7 +1776,12 @@ fn lab_curve_from_container_depth_2_evidence_report_does_not_resolve() {
         &evidence.join("v1").join("x"),
         "v1-cross-sectional-momentum",
         MOMENTUM_FIXTURE,
-        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+        &lab_runs_report_at(
+            "top10_momentum_h1",
+            "top10-2024-h1-momentum",
+            "XRPUSDT",
+            100_000,
+        ),
     );
     assert!(
         evidence
@@ -1872,7 +1902,12 @@ fn in_window_lab_run_series(tmp: &tempfile::TempDir) -> ui::lab::equity_loader::
         &lab_runs,
         "v1-cross-sectional-momentum",
         MOMENTUM_FIXTURE,
-        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+        &lab_runs_report_at(
+            "top10_momentum_h1",
+            "top10-2024-h1-momentum",
+            "XRPUSDT",
+            100_000,
+        ),
     );
     let series = load_equity(&momentum_tuple(), &lab_runs).expect("the in-window report loads");
     assert_eq!(series.fidelity, Fidelity::PerBar);
@@ -3057,7 +3092,12 @@ fn lab_run_with_companion_csv(
         &lab_runs,
         "v1-cross-sectional-momentum",
         MOMENTUM_FIXTURE,
-        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+        &lab_runs_report_at(
+            "top10_momentum_h1",
+            "top10-2024-h1-momentum",
+            "XRPUSDT",
+            100_000,
+        ),
     );
     let md = lab_runs
         .join("v1-cross-sectional-momentum")

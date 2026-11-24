@@ -3,7 +3,26 @@
 //! Scans `<root>[/<container>]/<strategy-slug>/reports/backtest-*.md` (the
 //! `crate::reports::layout` contract, ADR-0055 D8 / bug-log #205) under each
 //! report root (`lab-runs/`, `evidence/`) for reports that match a
-//! `(strategy, pair, range)` tuple and parses the per-bar equity series.
+//! `(strategy, pair, range, source)` tuple and parses the per-bar equity
+//! series. The slug is the engine's own write map
+//! (`backtest::engine::strategy_dir_slug`, ADR-0055 § D1).
+//!
+//! ## The match (ADR-0055 D9, bug-log #212)
+//!
+//! A report answers a tuple only if all three hold:
+//! - **Strategy:** `backtest::engine::report_strategy_id` of the report's
+//!   `strategy:` `id:` equals that of the tuple's strategy, both `Some`. A
+//!   report with no `id:` answers no tuple.
+//! - **Coin:** the report's coin is its `## Summary` `| Symbol |` row, else its
+//!   `## Universe` list, else a ticker in its scenario name; a report naming
+//!   no coin answers no tuple.
+//! - **Range:** the scenario name's span token (`last30d`, `last90d`,
+//!   `<year>-h1`, `<year>-h2`, `<year>`, `custom<start_ms>to<end_ms>`) is the
+//!   tuple's range exactly, or, for `H1_2024`/`H2_2024`, a whole-year `2024`
+//!   report, which answers as a narrowed superset.
+//!
+//! Then the source tier: a report tagged with the tuple's `data_source:` beats
+//! an untagged legacy one, and a differently tagged one never matches.
 //!
 //! ## Design notes (Design § 4.3 / R7)
 //!
@@ -11,9 +30,10 @@
 //!   90-day report on the operator's 3360×1890 machine).
 //! - Per-tuple in-memory cache (`EquityCache`) avoids re-parsing on every
 //!   paint.
-//! - Closest-superset fallback: when no exact-match report exists, the loader
-//!   finds the smallest superset-range report and returns it with a
-//!   `narrowed_from` annotation (R5.4 / R7.2).
+//! - Superset fallback: an `H1_2024`/`H2_2024` tuple with no exact-range
+//!   report takes a whole-year `2024` one, with a `narrowed_from` annotation
+//!   (R5.4 / R7.2). No other range has a superset: a report does not record
+//!   its span beyond its scenario name.
 //! - Low-fidelity fallback: if the report has no `## Equity curve` table, a
 //!   two-point segment (start → end) is synthesised from the Summary block
 //!   (R7.3). `Fidelity::StartEndOnly` is set in that case; its ordinal
@@ -271,19 +291,15 @@ impl EquityCache {
 
 // ── Strategy slug resolution ──────────────────────────────────────────────────
 
-/// Map a `StrategyId` to the evidence-directory slug that holds its reports.
-/// Phase A supports the known strategy ids; unknown ids fall back to the
-/// verbatim id string (which may produce a `ReportDirNotFound` error if the
-/// directory doesn't exist).
+/// Map a `StrategyId` to the directory slug that holds its reports: the
+/// engine's own write map, `backtest::engine::strategy_dir_slug` (ADR-0055 §
+/// D1). Until bug-log #212 this was a second, shorter table, and five of the
+/// eight Lab chips fell through it to a raw-id directory the engine never
+/// writes. Unknown ids fall back to the verbatim id string (which may produce a
+/// `ReportDirNotFound` error if the directory doesn't exist).
 #[must_use]
 fn strategy_slug(id: &str) -> SmolStr {
-    match id {
-        "v1.momentum" | "top10_momentum_h1" => SmolStr::new("v1-cross-sectional-momentum"),
-        "v0.sma" | "sma_crossover" => SmolStr::new("v0-paper-sma"),
-        "v0.5.macd" | "btc_macd_trend" => SmolStr::new("v05-composed-strategies"),
-        "v1.5a.mr" | "pairs_mr_h1" => SmolStr::new("v15a-mean-reversion-pairs"),
-        other => SmolStr::new(other),
-    }
+    SmolStr::new(backtest::engine::strategy_dir_slug(id))
 }
 
 // ── Report scanning and parsing ───────────────────────────────────────────────
@@ -332,22 +348,88 @@ fn no_report_detail(report_root: &std::path::Path, slug: &str, dirs: usize) -> S
     }
 }
 
+/// The coins a report covers (bug-log #212), in the order they are read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Coins {
+    /// The `## Summary` `| Symbol |` row (every single-symbol engine and
+    /// committed report writes it), or, without one, a ticker in the
+    /// scenario name.
+    One(String),
+    /// The `## Universe` list (the cross-sectional reports).
+    Universe(Vec<String>),
+    /// No coin found: the report answers no tuple.
+    Unknown,
+}
+
+impl Coins {
+    /// Whether the report covers `sym` (ASCII case-insensitive).
+    fn covers(&self, sym: &str) -> bool {
+        match self {
+            Coins::One(c) => c.eq_ignore_ascii_case(sym),
+            Coins::Universe(list) => list.iter().any(|c| c.eq_ignore_ascii_case(sym)),
+            Coins::Unknown => false,
+        }
+    }
+}
+
+/// The span a report's scenario name states (bug-log #212): its first
+/// `-`/`_`-separated token that is `last30d`, `last90d`,
+/// `custom<start_ms>to<end_ms>` or a four-digit year (a following `h1`/`h2`
+/// token makes the year a half). The engine writes these tokens
+/// (`backtest::engine::lab_scenario_name` / `lab_universe_scenario_name`), and
+/// the committed reports' names carry a year (`btc-2023-1m-…`,
+/// `top10-2024-h1-…`). A pre-1970 custom range, whose `-` sign splits its
+/// token, reads as `Unknown`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Span {
+    Last30d,
+    Last90d,
+    /// `(year, half)`, `half` ∈ {1, 2}.
+    Half(i32, u8),
+    Year(i32),
+    /// `(start_ms, end_ms)`.
+    Custom(i64, i64),
+    Unknown,
+}
+
+/// How a report's span covers the tuple's range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RangeFit {
+    /// The span is the range.
+    Exact,
+    /// The span strictly contains the range (a whole year for a half):
+    /// the series is shown with a `narrowed_from` annotation.
+    Superset,
+}
+
+impl RangeFit {
+    /// The range score: an exact span beats a superset.
+    fn score(self) -> u32 {
+        match self {
+            RangeFit::Exact => 20,
+            RangeFit::Superset => 10,
+        }
+    }
+}
+
 /// Parsed front-matter fields relevant to cache-key matching.
 #[derive(Debug)]
 struct ReportMeta {
-    scenario: String,
+    /// The `strategy:` block's `id:` (bug-log #212), read with Compare's
+    /// tolerant frontmatter reader, which also takes the engine's unindented
+    /// `id:` line. `None` when the report has none: it then answers no tuple.
+    strategy_id: Option<String>,
     /// The `data_source:` frontmatter value ("synthetic" / "yahoo…" /
     /// "binance"), written by every engine report since commit 93845af.
     /// `None` for legacy (pre-June) reports without the field — treated as
     /// source-unknown by [`load_equity`] (review D1: they only match when no
     /// report tagged with the requested source exists; no on-disk migration).
     data_source: Option<String>,
-    /// The pair symbol extracted from the report (from `## Universe` section
-    /// or the `scenario:` field). `None` for multi-symbol reports.
-    symbol: Option<String>,
-    /// Approximate year range extracted from scenario name (e.g. "2024" →
-    /// matches `Preset::H1_2024` / `Preset::H2_2024`).
-    year_hint: Option<i32>,
+    /// The coins the report covers (Summary row, else Universe, else a
+    /// scenario-name ticker).
+    coins: Coins,
+    /// The span the `scenario:` name states.
+    span: Span,
     /// Whether the report body contains a `## Equity curve` section.
     has_equity_section: bool,
     /// Initial capital from the Summary table.
@@ -398,15 +480,17 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
         .find_map(|l| l.strip_prefix("data_source: "))
         .map(|s| s.trim().to_string());
 
-    // Extract year hint from scenario name.
-    let year_hint: Option<i32> = ["2023", "2024", "2025"]
-        .iter()
-        .find(|&&y| scenario.contains(y))
-        .and_then(|y| y.parse::<i32>().ok());
+    // bug-log #212 — the strategy, through Compare's tolerant reader.
+    let strategy_id = crate::compare::cache::parse_frontmatter(content)
+        .and_then(|fm| fm.get("strategy.id").map(ToString::to_string));
 
-    // Symbol: look for single-symbol scenarios (not "multi").
-    let symbol = parse_symbol_from_body(body).or_else(|| {
-        // Fall back to scenario name heuristic.
+    // bug-log #212 — the coin: the Summary's `| Symbol |` row, else the
+    // `## Universe` list, else a ticker in the scenario name.
+    let coins = if let Some(sym) = summary_cell(body, "Symbol") {
+        Coins::One(sym)
+    } else if let Some(list) = parse_universe_from_body(body) {
+        Coins::Universe(list)
+    } else {
         let sym_candidates = [
             "XRPUSDT", "ETHUSDT", "BTCUSDT", "ADAUSDT", "AVAXUSDT", "BNBUSDT", "DOGEUSDT",
             "DOTUSDT", "LINKUSDT", "SOLUSDT",
@@ -414,8 +498,9 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
         sym_candidates
             .iter()
             .find(|&&s| scenario.to_ascii_uppercase().contains(s))
-            .map(ToString::to_string)
-    });
+            .map_or(Coins::Unknown, |s| Coins::One((*s).to_string()))
+    };
+    let span = scenario_span(&scenario);
 
     let has_equity_section = body.contains("## Equity curve") || body.contains("## Equity Curve");
 
@@ -426,10 +511,10 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
         .or_else(|| parse_summary_value(body, "Final Equity"));
 
     Some(ReportMeta {
-        scenario,
+        strategy_id,
         data_source,
-        symbol,
-        year_hint,
+        coins,
+        span,
         has_equity_section,
         initial_capital,
         final_equity,
@@ -451,10 +536,11 @@ fn source_tag_matches(report_data_source: &str, source: LabDataSource) -> bool {
     }
 }
 
-/// Extract a single symbol from the `## Universe` section.
-fn parse_symbol_from_body(body: &str) -> Option<String> {
+/// The coins of the `## Universe` section (`- <SYMBOL>` lines), or `None`
+/// when the report has no such section or it lists none.
+fn parse_universe_from_body(body: &str) -> Option<Vec<String>> {
     let mut in_universe = false;
-    let mut symbols: Vec<&str> = Vec::new();
+    let mut symbols: Vec<String> = Vec::new();
     for line in body.lines() {
         if line.trim_start().starts_with("## Universe") {
             in_universe = true;
@@ -467,15 +553,72 @@ fn parse_symbol_from_body(body: &str) -> Option<String> {
             let sym = line.trim_start_matches(['-', ' ', '\t']);
             let sym = sym.trim();
             if !sym.is_empty() && !sym.contains(' ') {
-                symbols.push(sym);
+                symbols.push(sym.to_string());
             }
         }
     }
-    if symbols.len() == 1 {
-        Some(symbols[0].to_string())
-    } else {
+    if symbols.is_empty() {
         None
+    } else {
+        Some(symbols)
     }
+}
+
+/// The value of the `## Summary` table row whose first cell is exactly
+/// `field` (`| Symbol | BTCUSDT |` → `BTCUSDT`), or `None` when the section
+/// has no such row or its value cell is empty (bug-log #212). Only the
+/// `## Summary` section is read.
+fn summary_cell(body: &str, field: &str) -> Option<String> {
+    let mut in_summary = false;
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("## ") {
+            in_summary = trimmed.starts_with("## Summary");
+            continue;
+        }
+        if !in_summary || !trimmed.starts_with('|') {
+            continue;
+        }
+        let mut cells = trimmed.trim_matches('|').split('|').map(str::trim);
+        if cells.next() == Some(field) {
+            return cells
+                .next()
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string);
+        }
+    }
+    None
+}
+
+/// The [`Span`] of a scenario name (bug-log #212). See [`Span`] for the
+/// token rule.
+fn scenario_span(scenario: &str) -> Span {
+    let lower = scenario.to_ascii_lowercase();
+    let tokens: Vec<&str> = lower.split(['-', '_']).collect();
+    for (i, tok) in tokens.iter().enumerate() {
+        match *tok {
+            "last30d" => return Span::Last30d,
+            "last90d" => return Span::Last90d,
+            _ => {}
+        }
+        if let Some(rest) = tok.strip_prefix("custom")
+            && let Some((start, end)) = rest.split_once("to")
+            && let (Ok(start), Ok(end)) = (start.parse::<i64>(), end.parse::<i64>())
+        {
+            return Span::Custom(start, end);
+        }
+        if tok.len() == 4
+            && tok.bytes().all(|b| b.is_ascii_digit())
+            && let Ok(year) = tok.parse::<i32>()
+        {
+            return match tokens.get(i + 1).copied() {
+                Some("h1") => Span::Half(year, 1),
+                Some("h2") => Span::Half(year, 2),
+                _ => Span::Year(year),
+            };
+        }
+    }
+    Span::Unknown
 }
 
 /// Extract a `Decimal` value from a markdown table row like
@@ -501,79 +644,56 @@ fn parse_summary_value(body: &str, field: &str) -> Option<Decimal> {
     None
 }
 
-/// Check whether a report matches the requested `(symbol, range)` tuple.
-fn report_matches(meta: &ReportMeta, sym: &str, range: &DateRange) -> MatchQuality {
-    // Symbol check.
-    let sym_match = match &meta.symbol {
-        Some(s) => s.eq_ignore_ascii_case(sym),
-        None => true, // Multi-symbol reports: pass if symbol is in universe.
-    };
-
-    if !sym_match {
+/// Whether a report answers `tuple` (ADR-0055 D9, bug-log #212): its
+/// strategy, its coin and its range must all fit. The source tier is
+/// [`load_equity`]'s.
+fn report_matches(meta: &ReportMeta, tuple: &LabTuple) -> MatchQuality {
+    // Strategy: both sides through the engine's one writer-id map. A report
+    // with no `id:`, or an id the map does not know, answers nothing.
+    let want = backtest::engine::report_strategy_id(&tuple.strategy);
+    let have = meta
+        .strategy_id
+        .as_deref()
+        .and_then(backtest::engine::report_strategy_id);
+    if want.is_none() || want != have {
         return MatchQuality::NoMatch;
     }
-
-    let range_match = range_score(meta, range);
-    if range_match == 0 {
+    if !meta.coins.covers(&tuple.symbol) {
         return MatchQuality::NoMatch;
     }
-    MatchQuality::Match {
-        range_score: range_match,
+    match range_fit(meta.span, &tuple.range) {
+        Some(fit) => MatchQuality::Match { fit },
+        None => MatchQuality::NoMatch,
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum MatchQuality {
     NoMatch,
-    Match { range_score: u32 },
+    Match { fit: RangeFit },
 }
 
-/// Score how well a report's time range covers the requested range.
-/// Higher = better. `0` = no match.
-fn range_score(meta: &ReportMeta, range: &DateRange) -> u32 {
-    match range {
-        DateRange::Preset(p) => match p {
-            Preset::Last30d => {
-                // Any report covers this as a superset — prefer 2024 reports.
-                match meta.year_hint {
-                    Some(2024) => 10,
-                    Some(_) => 5,
-                    None => 3,
-                }
-            }
-            Preset::Last90d => match meta.year_hint {
-                Some(2024) => 10,
-                Some(_) => 5,
-                None => 3,
-            },
-            Preset::H1_2024 => {
-                if meta.scenario.contains("2024")
-                    || meta.scenario.contains("h1")
-                    || meta.scenario.contains("2024-h1")
-                {
-                    20
-                } else if meta.year_hint == Some(2024) {
-                    10
-                } else {
-                    0
-                }
-            }
-            Preset::H2_2024 => {
-                if meta.scenario.contains("2024")
-                    && (meta.scenario.contains("h2") || meta.scenario.contains("H2"))
-                {
-                    20
-                } else if meta.year_hint == Some(2024) {
-                    8
-                } else {
-                    0
-                }
-            }
-        },
-        DateRange::Custom { .. } => {
-            // Custom ranges: any report is a superset fallback.
-            1
+/// How the report span `span` covers `range`, or `None` (bug-log #212). Only
+/// the same token is exact; the one superset is a whole year 2024 for an
+/// `H1_2024`/`H2_2024` tuple. A `Custom` tuple matches only a report whose
+/// `custom<start_ms>to<end_ms>` equals the range the run mapper derives from
+/// its date strings (`lab::runner::custom_range_ms`).
+fn range_fit(span: Span, range: &DateRange) -> Option<RangeFit> {
+    match (range, span) {
+        (DateRange::Preset(Preset::Last30d), Span::Last30d)
+        | (DateRange::Preset(Preset::Last90d), Span::Last90d)
+        | (DateRange::Preset(Preset::H1_2024), Span::Half(2024, 1))
+        | (DateRange::Preset(Preset::H2_2024), Span::Half(2024, 2)) => Some(RangeFit::Exact),
+        (DateRange::Preset(Preset::H1_2024 | Preset::H2_2024), Span::Year(2024)) => {
+            Some(RangeFit::Superset)
         }
+        (DateRange::Custom { start_raw, end_raw }, Span::Custom(start, end)) => {
+            crate::lab::runner::custom_range_ms(start_raw, end_raw)
+                .ok()
+                .filter(|&ms| ms == (start, end))
+                .map(|_| RangeFit::Exact)
+        }
+        _ => None,
     }
 }
 
@@ -689,8 +809,8 @@ pub fn load_equity(
     // Reports tagged with a DIFFERENT source never match — that is the
     // shadowing bug this fix removes (a Synthetic run no longer hijacks a
     // Binance tuple's resolution and vice versa).
-    let mut best_tagged: Option<(u32, PathBuf)> = None;
-    let mut best_untagged: Option<(u32, PathBuf)> = None;
+    let mut best_tagged: Option<(RangeFit, PathBuf)> = None;
+    let mut best_untagged: Option<(RangeFit, PathBuf)> = None;
     for path in &reports {
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
@@ -698,21 +818,21 @@ pub fn load_equity(
         let Some(meta) = parse_report_meta(&content) else {
             continue;
         };
-        let quality = report_matches(&meta, &tuple.symbol, &tuple.range);
-        if let MatchQuality::Match { range_score } = quality {
+        let quality = report_matches(&meta, tuple);
+        if let MatchQuality::Match { fit } = quality {
             let slot = match meta.data_source.as_deref() {
                 Some(ds) if source_tag_matches(ds, tuple.source) => &mut best_tagged,
                 Some(_) => continue, // tagged with a different source — excluded
                 None => &mut best_untagged, // legacy-unknown (tier 2)
             };
-            let is_better = slot.as_ref().is_none_or(|(s, _)| range_score > *s);
+            let is_better = slot.as_ref().is_none_or(|(s, _)| fit.score() > s.score());
             if is_better {
-                *slot = Some((range_score, path.clone()));
+                *slot = Some((fit, path.clone()));
             }
         }
     }
 
-    let Some((_, best_path)) = best_tagged.or(best_untagged) else {
+    let Some((best_fit, best_path)) = best_tagged.or(best_untagged) else {
         return Err(EquityLoadError::NoReport {
             strategy: tuple.strategy.clone(),
             symbol: tuple.symbol.clone(),
@@ -737,16 +857,10 @@ pub fn load_equity(
         .unwrap_or("unknown")
         .to_string();
 
-    // Determine narrowed_from: the report is a superset if the scenario name
-    // doesn't exactly match the requested range.
-    let narrowed_from: Option<SmolStr> = {
-        let exact = is_exact_range_match(&meta, &tuple.range);
-        if exact {
-            None
-        } else {
-            Some(SmolStr::new(&report_name))
-        }
-    };
+    // narrowed_from: the report's span is a superset of the requested range
+    // (the same fit that scored it, so the badge and the score cannot drift).
+    let narrowed_from: Option<SmolStr> =
+        (best_fit == RangeFit::Superset).then(|| SmolStr::new(&report_name));
 
     // Extract equity body.
     let body_start = find_body_start(&content);
@@ -819,22 +933,6 @@ fn make_start_end_series(
     // the bar window and the chart draws no overlay and reserves no gutter
     // (bug-log #207); without bars they span the chart's full width.
     Ok(vec![(0, initial), (1, final_eq)])
-}
-
-/// True when the report's range coverage exactly matches the request.
-fn is_exact_range_match(meta: &ReportMeta, range: &DateRange) -> bool {
-    match range {
-        DateRange::Preset(p) => match p {
-            Preset::H1_2024 => {
-                meta.scenario.contains("2024-h1") || meta.scenario.contains("2024_h1")
-            }
-            Preset::H2_2024 => {
-                meta.scenario.contains("2024-h2") || meta.scenario.contains("2024_h2")
-            }
-            Preset::Last30d | Preset::Last90d => false, // synthetic ranges never exact
-        },
-        DateRange::Custom { .. } => false,
-    }
 }
 
 /// Find the byte offset where the report body starts (after `---` front-matter).
@@ -987,6 +1085,8 @@ seed: 0xC0FFEE
 generated: 2026-04-29T19:52:43Z
 wall_clock_s: 2.0
 data_source: synthetic
+strategy:
+id: top10_momentum_h1
 ---
 
 # Backtest Report — top10-2024-h1-momentum
@@ -1027,6 +1127,8 @@ seed: 0xC0FFEE
 generated: 2026-06-01T12:00:00Z
 wall_clock_s: 0.0
 data_source: synthetic
+strategy:
+id: top10_momentum_h1
 ---
 
 # Backtest Report — top10-2024-h1-momentum
@@ -1056,21 +1158,26 @@ data_source: synthetic
 - lab-runs collision fixture
 "#;
 
+    /// A start/end-only sma report for the `Last90d` tuple of
+    /// `load_equity_start_end_fallback` (bug-log #212: a `btc-2023-1m-…` name
+    /// answered `Last90d` only through the old any-report-matches rule).
     const FIXTURE_REPORT_NO_EQUITY: &str = r#"---
-scenario: btc-2023-1m-sma-cross
+scenario: btcusdt-last90d-sma-cross-synthetic
 seed: 0xC0FFEE
 generated: 2026-04-29T10:00:00Z
 wall_clock_s: 0.2
 data_source: synthetic
+strategy:
+id: sma_crossover
 ---
 
-# Backtest Report — btc-2023-1m-sma-cross
+# Backtest Report — btcusdt-last90d-sma-cross-synthetic
 
 ## Summary
 
 | Metric          | Value             |
 |-----------------|-------------------|
-| Scenario        | btc-2023-1m-sma-cross |
+| Scenario        | btcusdt-last90d-sma-cross-synthetic |
 | Initial capital | $100000.00 USDT   |
 | Final equity    | $108540.00 USDT   |
 
@@ -1265,6 +1372,8 @@ data_source: synthetic
              generated: {generated}\n\
              wall_clock_s: 0.1\n\
              {ds_line}\
+             strategy:\n\
+             id: sma_crossover\n\
              ---\n\
              \n\
              # Backtest Report — {scenario}\n\
@@ -1404,6 +1513,15 @@ data_source: synthetic
         );
         assert_eq!(strategy_slug("v0.sma"), "v0-paper-sma");
         assert_eq!(strategy_slug("v0.5.macd"), "v05-composed-strategies");
+        // bug-log #212: the five Lab chips the old table sent to a raw-id dir.
+        assert_eq!(strategy_slug("v0.5.rsi"), "v05-composed-strategies");
+        assert_eq!(strategy_slug("v0.5.bbands"), "v05-composed-strategies");
+        assert_eq!(strategy_slug("v1.5a.pairs"), "v15a-mean-reversion-pairs");
+        assert_eq!(strategy_slug("v2.5.tcn"), "v2.5.tcn_overlay");
+        assert_eq!(
+            strategy_slug("v2.5.tcn.weights"),
+            "v2.5.tcn_overlay_weights"
+        );
     }
 
     /// lab-run-save-compare T2 — `default_lab_runs_root()` resolves a sibling
@@ -2099,23 +2217,25 @@ data_source: synthetic
     /// E4c — the within-root UNION is complete (falsifier O3): the strictly
     /// better report sits in the SECOND dir of the (container depth, path)
     /// order, so a reader that stops after the first dir picks the worse one.
-    /// Range `Last90d`: a `2024` scenario covers it better than a `2023` one.
+    /// Range `H1_2024` (bug-log #212, re-derived from `Last90d`, which no
+    /// longer matches any year): the `2024-h1` scenario is an exact match, the
+    /// whole-year `2024` one only a narrowed superset (M7).
     #[test]
     fn a_strictly_better_report_in_the_second_report_dir_wins() {
         let tmp = tempfile::tempdir().unwrap();
         let evidence = tmp.path().join("evidence");
-        // (reports dir, file name, scenario, equity points); the 2024 row wins.
+        // (reports dir, file name, scenario, equity points); the 2024-h1 row wins.
         let table: [(&str, &str, &str, usize); 2] = [
             (
                 "v1/v0-paper-sma/reports",
-                "backtest-20260601-000000-btc-2023-sma-cross.md",
-                "btc-2023-sma-cross",
+                "backtest-20260601-000000-btc-2024-sma-cross.md",
+                "btc-2024-sma-cross",
                 4,
             ),
             (
                 "v2/v0-paper-sma/reports",
-                "backtest-20260101-000000-btc-2024-sma-cross.md",
-                "btc-2024-sma-cross",
+                "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
+                "btc-2024-h1-sma-cross",
                 3,
             ),
         ];
@@ -2127,7 +2247,7 @@ data_source: synthetic
                 &sma_report(scenario, Some("synthetic"), n, "2026-06-01T12:00:00Z"),
             );
         }
-        let better = table.iter().find(|r| r.2.contains("2024")).unwrap();
+        let better = table.iter().find(|r| r.2.contains("2024-h1")).unwrap();
         let first_dir = table
             .iter()
             .min_by_key(|r| (container_depth_of(r.0), evidence.join(r.0)))
@@ -2140,18 +2260,501 @@ data_source: synthetic
             better.3, first_dir.3,
             "the two reports must differ in point count, else E4c cannot tell which won"
         );
-        let tuple = LabTuple {
-            strategy: SmolStr::new("v0.sma"),
-            symbol: SmolStr::new("BTCUSDT"),
-            range: DateRange::Preset(Preset::Last90d),
-            source: LabDataSource::Synthetic,
-        };
+        let tuple = sma_tuple(LabDataSource::Synthetic);
         let series = load_equity(&tuple, &evidence).expect("the slug resolves");
         assert_eq!(
             series.samples.len(),
             better.3,
             "the better-scoring report in the second report dir must win; every dir of the \
              slug is read (#205)"
+        );
+        assert!(
+            series.narrowed_from.is_none(),
+            "the winner is an exact match"
+        );
+        // The first dir's report is a real competitor: alone, it answers the
+        // same tuple as a narrowed superset (bug-log #212).
+        let worse_only = tmp.path().join("worse-only");
+        write_at(
+            &worse_only,
+            first_dir.0,
+            first_dir.1,
+            &sma_report(
+                first_dir.2,
+                Some("synthetic"),
+                first_dir.3,
+                "2026-06-01T12:00:00Z",
+            ),
+        );
+        let worse = load_equity(&tuple, &worse_only).expect("the year report answers H1_2024");
+        assert_eq!(worse.samples.len(), first_dir.3);
+        assert_eq!(
+            worse.narrowed_from.as_deref(),
+            Some(first_dir.1),
+            "a whole-year 2024 report answers H1_2024 as a narrowed superset"
+        );
+    }
+
+    // ── bug-log #212: the report match (ADR-0055 D9) ─────────────────────────
+
+    use crate::test_support::{LabReportFixture, lab_report};
+
+    /// A `(strategy, symbol, H1_2024, Synthetic)` tuple.
+    fn h1_tuple(strategy: &str, symbol: &str) -> LabTuple {
+        LabTuple {
+            strategy: SmolStr::new(strategy),
+            symbol: SmolStr::new(symbol),
+            range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
+        }
+    }
+
+    /// An `H1_2024` synthetic report fixture for `strategy_id` whose curve
+    /// starts at `level` (so the first equity value names the report).
+    fn h1_fixture<'a>(
+        strategy_id: Option<&'a str>,
+        scenario: &'a str,
+        symbol_row: Option<&'a str>,
+        universe: &'a [&'a str],
+        level: i64,
+    ) -> LabReportFixture<'a> {
+        LabReportFixture {
+            strategy_id,
+            scenario,
+            symbol_row,
+            universe,
+            generated: "2026-06-01T12:00:00Z",
+            data_source: "synthetic",
+            level,
+            falling: false,
+        }
+    }
+
+    /// The first equity value of a resolved series, or `None` for a miss.
+    fn first_level(result: &Result<LabEquitySeries, EquityLoadError>) -> Option<Decimal> {
+        result
+            .as_ref()
+            .ok()
+            .and_then(|s| s.samples.first())
+            .map(|(_, v)| *v)
+    }
+
+    /// M1 — a report whose coin is named ONLY in its `## Summary` `| Symbol |`
+    /// row (the shape of all 23 committed single-coin reports and of every
+    /// engine-written single-symbol report: no `## Universe`, no ticker in the
+    /// scenario) answers only that coin. The BTC report sits at the smaller
+    /// path, so a coin-blind reader hands the ETH and SOL tuples the BTC run.
+    #[test]
+    fn a_coin_named_only_in_the_summary_row_matches_that_coin_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("lab-runs");
+        // (file name, scenario, Summary coin, level)
+        let table: [(&str, &str, &str, i64); 2] = [
+            (
+                "backtest-20260601-120000000-btc-2024-h1-sma-cross.md",
+                "btc-2024-h1-sma-cross",
+                "BTCUSDT",
+                100_000,
+            ),
+            (
+                "backtest-20260601-130000000-eth-2024-h1-sma-cross.md",
+                "eth-2024-h1-sma-cross",
+                "ETHUSDT",
+                200_000,
+            ),
+        ];
+        assert!(
+            table[0].0 < table[1].0,
+            "the BTC report has the smaller path"
+        );
+        for (name, scenario, coin, level) in table {
+            let text = lab_report(&h1_fixture(
+                Some("sma_crossover"),
+                scenario,
+                Some(coin),
+                &[],
+                level,
+            ));
+            assert!(
+                !text.contains("## Universe") && !scenario.to_ascii_uppercase().contains("USDT"),
+                "precondition: the coin is named only in the Summary row"
+            );
+            write_at(&root, "v0-paper-sma/reports", name, &text);
+        }
+        for coin in ["ETHUSDT", "BTCUSDT", "SOLUSDT"] {
+            let want = table
+                .iter()
+                .find(|r| r.2 == coin)
+                .map(|r| Decimal::from(r.3));
+            let got = load_equity(&h1_tuple("v0.sma", coin), &root);
+            assert_eq!(first_level(&got), want, "{coin}: got {got:?}");
+            if want.is_none() {
+                assert!(
+                    matches!(got, Err(EquityLoadError::NoReport { .. })),
+                    "{coin}: no report names it, so NoReport; got {got:?}"
+                );
+            }
+        }
+    }
+
+    /// M2 — a multi-symbol report answers only a coin its `## Universe`
+    /// lists.
+    #[test]
+    fn a_multi_symbol_report_matches_only_a_coin_in_its_universe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("lab-runs");
+        let universe = ["BTCUSDT", "ETHUSDT"];
+        write_at(
+            &root,
+            "v1-cross-sectional-momentum/reports",
+            "backtest-20260601-120000000-top10-2024-h1-momentum.md",
+            &lab_report(&h1_fixture(
+                Some("top10_momentum_h1"),
+                "top10-2024-h1-momentum",
+                None,
+                &universe,
+                100_000,
+            )),
+        );
+        for coin in ["BTCUSDT", "ETHUSDT", "SOLUSDT"] {
+            let got = load_equity(&h1_tuple("v1.momentum", coin), &root);
+            if universe.contains(&coin) {
+                assert_eq!(first_level(&got), Some(Decimal::from(100_000)), "{coin}");
+            } else {
+                assert!(
+                    matches!(got, Err(EquityLoadError::NoReport { .. })),
+                    "{coin} is outside the universe: NoReport; got {got:?}"
+                );
+            }
+        }
+    }
+
+    /// M3 — a report that names no coin (no Summary `Symbol` row, no
+    /// `## Universe`, no ticker in its scenario) answers no coin. Control: the
+    /// same report with a Summary row answers its coin.
+    #[test]
+    fn a_report_naming_no_coin_matches_no_coin() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (dir, symbol_row, resolves) in [("none", None, false), ("row", Some("BTCUSDT"), true)] {
+            let root = tmp.path().join(dir);
+            write_at(
+                &root,
+                "v0-paper-sma/reports",
+                "backtest-20260601-120000000-btc-2024-h1-sma-cross.md",
+                &lab_report(&h1_fixture(
+                    Some("sma_crossover"),
+                    "btc-2024-h1-sma-cross",
+                    symbol_row,
+                    &[],
+                    100_000,
+                )),
+            );
+            let got = load_equity(&h1_tuple("v0.sma", "BTCUSDT"), &root);
+            assert_eq!(got.is_ok(), resolves, "{dir}: got {got:?}");
+        }
+    }
+
+    /// M4 — a report answers only its own strategy. `v05-composed-strategies`
+    /// holds a bbands report at the smaller path and a macd report at the
+    /// larger one, equal in coin, range and source, so a strategy-blind reader
+    /// hands the macd tuple the bbands run (and the rsi tuple too). The
+    /// writer ids are DECLARED from the engine's dispatch arms.
+    #[test]
+    fn a_report_matches_only_its_own_strategy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("lab-runs");
+        // (file name, scenario, writer id, level)
+        let table: [(&str, &str, &str, i64); 2] = [
+            (
+                "backtest-20260601-120000000-btcusdt-2024-h1-bbands-mean-revert-synthetic.md",
+                "btcusdt-2024-h1-bbands-mean-revert-synthetic",
+                "btc_bbands_mean_revert",
+                100_000,
+            ),
+            (
+                "backtest-20260601-130000000-btcusdt-2024-h1-macd-trend-synthetic.md",
+                "btcusdt-2024-h1-macd-trend-synthetic",
+                "btc_macd_trend",
+                200_000,
+            ),
+        ];
+        assert!(
+            table[0].0 < table[1].0,
+            "the bbands report has the smaller path"
+        );
+        for (name, scenario, id, level) in table {
+            write_at(
+                &root,
+                "v05-composed-strategies/reports",
+                name,
+                &lab_report(&h1_fixture(Some(id), scenario, Some("BTCUSDT"), &[], level)),
+            );
+        }
+        // (chip, the id its arm writes)
+        for (chip, writes) in [
+            ("v0.5.macd", "btc_macd_trend"),
+            ("v0.5.bbands", "btc_bbands_mean_revert"),
+            ("v0.5.rsi", "btc_rsi_reversion"),
+        ] {
+            let want = table
+                .iter()
+                .find(|r| r.2 == writes)
+                .map(|r| Decimal::from(r.3));
+            let got = load_equity(&h1_tuple(chip, "BTCUSDT"), &root);
+            assert_eq!(first_level(&got), want, "{chip}: got {got:?}");
+            if want.is_none() {
+                assert!(
+                    matches!(got, Err(EquityLoadError::NoReport { .. })),
+                    "{chip}: its dir holds no report of its own, so NoReport; got {got:?}"
+                );
+            }
+        }
+    }
+
+    /// M5 — a report with no `strategy:` `id:` answers no strategy. Control:
+    /// the same report with its id answers.
+    #[test]
+    fn a_report_without_a_strategy_id_matches_no_strategy() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (dir, id, resolves) in [("no-id", None, false), ("id", Some("sma_crossover"), true)] {
+            let root = tmp.path().join(dir);
+            write_at(
+                &root,
+                "v0-paper-sma/reports",
+                "backtest-20260601-120000000-btcusdt-2024-h1-sma-cross-synthetic.md",
+                &lab_report(&h1_fixture(
+                    id,
+                    "btcusdt-2024-h1-sma-cross-synthetic",
+                    Some("BTCUSDT"),
+                    &[],
+                    100_000,
+                )),
+            );
+            let got = load_equity(&h1_tuple("v0.sma", "BTCUSDT"), &root);
+            assert_eq!(got.is_ok(), resolves, "{dir}: got {got:?}");
+        }
+    }
+
+    /// M6 — a report answers a range only through its scenario's span token:
+    /// the same token is an exact match, a whole-year `2024` report a narrowed
+    /// superset of `H1_2024`/`H2_2024`, anything else nothing (a half of
+    /// another year included). One root per (tuple range × fixture scenario). Every expectation comes from the
+    /// DECLARED label table below, never from the loader; the two custom
+    /// ranges' millisecond bounds are derived from the calendar.
+    #[test]
+    fn range_tokens_match_exactly() {
+        use time::macros::datetime;
+        let ms = |dt: time::OffsetDateTime| dt.unix_timestamp() * 1_000;
+        let a = (
+            ms(datetime!(2024-01-01 0:00 UTC)),
+            ms(datetime!(2024-02-01 0:00 UTC)),
+        );
+        let b = (
+            ms(datetime!(2024-03-01 0:00 UTC)),
+            ms(datetime!(2024-04-01 0:00 UTC)),
+        );
+        let custom_a = format!("btcusdt-custom{}to{}-sma-cross-synthetic", a.0, a.1);
+        let custom_b = format!("btcusdt-custom{}to{}-sma-cross-synthetic", b.0, b.1);
+        // (label, fixture scenario). `h1y2023` and `h2y2025` are halves of
+        // other years: they pin the year inside `Span::Half` (probe R13).
+        let scenarios: [(&str, &str); 11] = [
+            ("last30d", "btcusdt-last30d-sma-cross-synthetic"),
+            ("last90d", "btcusdt-last90d-sma-cross-synthetic"),
+            ("h1", "btcusdt-2024-h1-sma-cross-synthetic"),
+            ("h2", "btcusdt-2024-h2-sma-cross-synthetic"),
+            ("h1y2023", "btcusdt-2023-h1-sma-cross-synthetic"),
+            ("h2y2025", "btcusdt-2025-h2-sma-cross-synthetic"),
+            ("y2024", "btc-2024-sma-cross"),
+            ("y2023", "btc-2023-1m-sma-cross"),
+            ("ca", &custom_a),
+            ("cb", &custom_b),
+            ("none", "v1.momentum"),
+        ];
+        let custom = |start: &str, end: &str| DateRange::Custom {
+            start_raw: SmolStr::new(start),
+            end_raw: SmolStr::new(end),
+        };
+        // (tuple range, the label it matches exactly, the labels it takes as a
+        // narrowed superset)
+        let ranges: [(DateRange, &str, &[&str]); 6] = [
+            (DateRange::Preset(Preset::Last30d), "last30d", &[]),
+            (DateRange::Preset(Preset::Last90d), "last90d", &[]),
+            (DateRange::Preset(Preset::H1_2024), "h1", &["y2024"]),
+            (DateRange::Preset(Preset::H2_2024), "h2", &["y2024"]),
+            (custom("2024-01-01", "2024-02-01"), "ca", &[]),
+            (custom("2024-03-01", "2024-04-01"), "cb", &[]),
+        ];
+        let tmp = tempfile::tempdir().unwrap();
+        let mut failures = Vec::new();
+        for (ri, (range, exact, supersets)) in ranges.iter().enumerate() {
+            for (si, (label, scenario)) in scenarios.iter().enumerate() {
+                let root = tmp.path().join(format!("r{ri}-s{si}"));
+                write_at(
+                    &root,
+                    "v0-paper-sma/reports",
+                    "backtest-20260601-120000000-fixture.md",
+                    &lab_report(&h1_fixture(
+                        Some("sma_crossover"),
+                        scenario,
+                        Some("BTCUSDT"),
+                        &[],
+                        100_000,
+                    )),
+                );
+                let want = if label == exact {
+                    "exact"
+                } else if supersets.contains(label) {
+                    "superset"
+                } else {
+                    "none"
+                };
+                let tuple = LabTuple {
+                    range: range.clone(),
+                    ..h1_tuple("v0.sma", "BTCUSDT")
+                };
+                let got = match load_equity(&tuple, &root) {
+                    Ok(s) if s.narrowed_from.is_none() => "exact",
+                    Ok(_) => "superset",
+                    Err(EquityLoadError::NoReport { .. }) => "none",
+                    Err(e) => panic!("{range:?} × {scenario}: unexpected {e}"),
+                };
+                if got != want {
+                    failures.push(format!("{range:?} × {scenario}: want {want}, got {got}"));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "range mismatches:\n{}",
+            failures.join("\n")
+        );
+    }
+
+    /// The `id:` line of the committed real-weights TCN reports
+    /// (`*-tcn-overlay-weights.md`, read from the files git lists), asserted
+    /// to be one id. M8's writer-id row for `v2.5.tcn.weights`.
+    fn committed_tcn_weights_id() -> String {
+        use crate::test_support::evidence_oracle;
+        let evidence = default_evidence_root();
+        let ws = evidence.parent().unwrap().to_path_buf();
+        let files = evidence_oracle::git_listed_files(&mut evidence_oracle::live_git(&ws))
+            .unwrap_or_else(|e| panic!("the evidence oracle must run: {e}"));
+        let mut ids: Vec<String> = files
+            .iter()
+            .filter(|c| {
+                evidence_oracle::is_contract_report(c)
+                    && c[c.len() - 1].ends_with("-tcn-overlay-weights.md")
+            })
+            .map(|c| {
+                let body =
+                    std::fs::read_to_string(c.iter().fold(ws.clone(), |p, x| p.join(x))).unwrap();
+                body.lines()
+                    .find_map(|l| l.strip_prefix("id: "))
+                    .unwrap()
+                    .trim()
+                    .to_string()
+            })
+            .collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(
+            ids.len(),
+            1,
+            "the committed real-weights TCN reports carry one id: {ids:?}"
+        );
+        ids.remove(0)
+    }
+
+    /// M8 — every Lab chip, and every fixtures-build strategy id, reads the
+    /// directory the engine writes it to (`backtest::engine::strategy_dir_slug`)
+    /// and matches the `id:` its writer emits. The writer ids are a DECLARED
+    /// table, never `report_strategy_id`; the real-weights TCN row is the
+    /// `id:` line of the committed `*-tcn-overlay-weights.md` reports (no ui
+    /// build enables `backtest/candle`, so no test can run that writer). The
+    /// chip list is the one `cockpit_live` seeds (`LAB_SEED_STRATEGIES`) plus
+    /// `fixtures::fake_strategy_rows()`, asserted equal to the table's.
+    #[test]
+    fn every_lab_chip_reads_the_dir_the_engine_writes() {
+        let weights_id = committed_tcn_weights_id();
+        let weights_id = weights_id.as_str();
+        let single: &[&str] = &[];
+        let universe: &[&str] = &["BTCUSDT", "ETHUSDT"];
+        // (chip id, the id its writer emits, Summary coin, Universe)
+        let table: [(&str, &str, Option<&str>, &[&str]); 11] = [
+            ("v0.sma", "sma_crossover", Some("BTCUSDT"), single),
+            ("v0.5.macd", "btc_macd_trend", Some("BTCUSDT"), single),
+            ("v0.5.rsi", "btc_rsi_reversion", Some("BTCUSDT"), single),
+            (
+                "v0.5.bbands",
+                "btc_bbands_mean_revert",
+                Some("BTCUSDT"),
+                single,
+            ),
+            ("v1.momentum", "top10_momentum_h1", None, universe),
+            ("v1.5a.pairs", "pairs_mr_h1", None, universe),
+            (
+                "v2.5.tcn",
+                "tcn_overlay_momentum/tcn_overlay_momentum",
+                None,
+                universe,
+            ),
+            ("v2.5.tcn.weights", weights_id, None, universe),
+            ("btc_macd_trend", "btc_macd_trend", Some("BTCUSDT"), single),
+            (
+                "btc_rsi_reversion",
+                "btc_rsi_reversion",
+                Some("BTCUSDT"),
+                single,
+            ),
+            (
+                "btc_bbands_mean_revert",
+                "btc_bbands_mean_revert",
+                Some("BTCUSDT"),
+                single,
+            ),
+        ];
+        let mut production: Vec<String> = crate::lab::defaults::LAB_SEED_STRATEGIES
+            .iter()
+            .map(|(id, _)| (*id).to_string())
+            .chain(
+                crate::fixtures::fake_strategy_rows()
+                    .into_iter()
+                    .map(|r| r.id.0.to_string()),
+            )
+            .collect();
+        let mut declared: Vec<String> = table.iter().map(|r| r.0.to_string()).collect();
+        production.sort();
+        declared.sort();
+        assert_eq!(
+            declared, production,
+            "the table covers exactly the production ids"
+        );
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut failures = Vec::new();
+        for (i, (chip, writes, symbol_row, universe)) in table.iter().enumerate() {
+            let root = tmp.path().join(format!("chip-{i}"));
+            write_at(
+                &root,
+                &format!("{}/reports", backtest::engine::strategy_dir_slug(chip)),
+                "backtest-20260601-120000000-btcusdt-2024-h1-lab-chip-synthetic.md",
+                &lab_report(&h1_fixture(
+                    Some(writes),
+                    "btcusdt-2024-h1-lab-chip-synthetic",
+                    *symbol_row,
+                    universe,
+                    100_000,
+                )),
+            );
+            let got = load_equity(&h1_tuple(chip, "BTCUSDT"), &root);
+            if first_level(&got) != Some(Decimal::from(100_000)) {
+                failures.push(format!("{chip} (writes `{writes}`): {got:?}"));
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "chips that do not read back their engine-written report:\n{}",
+            failures.join("\n")
         );
     }
 

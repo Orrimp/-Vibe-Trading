@@ -23,6 +23,16 @@ use crate::cli_types::TcnScenarioInput;
 use crate::scenarios::momentum::{synthetic_bars_hourly, top10_symbols_with_prices};
 use crate::scenarios::sim::sim_slippage_cost;
 
+/// The `strategy:` `id:` a passthrough-TCN run's report carries:
+/// `tcn_overlay_momentum/<config_id>`. The run's `strategy_id` and so its
+/// report's `id:` line come from here, and `backtest::engine::report_strategy_id`
+/// is pinned against it (bug-log #212), so the Lab's report match and this
+/// writer share one source.
+#[must_use]
+pub fn strategy_id_for(config_id: &str) -> String {
+    format!("tcn_overlay_momentum/{config_id}")
+}
+
 // ── Result struct ─────────────────────────────────────────────────────────────
 
 /// Result of the v2.5 TCN overlay momentum backtest.
@@ -99,7 +109,7 @@ pub async fn run(
     let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
         .with_context(|| format!("load momentum config: {}", rel_path.display()))?;
     let universe_list: Vec<String> = cfg.universe.iter().map(ToString::to_string).collect();
-    let strategy_id_str = format!("tcn_overlay_momentum/{}", input.config_id);
+    let strategy_id_str = strategy_id_for(&input.config_id);
 
     let base = strategy::MomentumStrategy::from_config(
         cfg,

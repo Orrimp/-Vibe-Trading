@@ -190,7 +190,8 @@ which moved the tree with its container depths unchanged.
    precedence" and handed off to bug-log `#209` (AD-18), where either the code or § D5 moves.
 3. **§ D1, third sentence** ("The `<strategy-slug>` matches `equity_loader::strategy_slug`"): the
    engine's `strategy_dir_slug` maps ids that `strategy_slug` does not. Handed off to bug-log
-   `#212`; D8 does not depend on it.
+   `#212`; D8 does not depend on it. *(2026-11-24: closed by the bug-log `#212` amendment below:
+   one map, which the Lab calls.)*
 
 **Context.** `1395520629dc` (2026-06-28, the `spec/v1` reorganisation) moved 68 of the 125
 committed `backtest-*.md` reports from container depth 0 to container depth 1, every report of the
@@ -377,8 +378,143 @@ prints `ANCHORS PASS  (119 / 119)`, and
   (`/tmp/lab_207_committed_overlay.png`).
 - Each probe's edit and its red and green sets: the T-T4 tables named under § Context.
 
+## Amendment 2026-11-24 (bug-log `#212`: the Lab's report match)
+
+**What it closes.** The 2026-11-15 amendment's handoff item 3. § D1's third sentence ("The
+`<strategy-slug>` matches `equity_loader::strategy_slug`") now holds by construction: there is one
+map, `backtest::engine::strategy_dir_slug` (now `pub`), and `ui::lab::equity_loader::strategy_slug`
+calls it (`backtest` cannot depend on `ui`, so the map lives in `backtest`). The `ui` copy mapped
+four families; 5 of the 8 chips `cockpit_live` seeds (`v0.5.rsi`, `v0.5.bbands`, `v1.5a.pairs`,
+`v2.5.tcn`, `v2.5.tcn.weights`) and 2 of the 3 fixtures-build ids (`btc_rsi_reversion`,
+`btc_bbands_mean_revert`) fell through to a raw-id directory the engine never writes, so their
+persisted runs were never read back. The chip list moved to `ui::lab::defaults::LAB_SEED_STRATEGIES`,
+which the bin iterates, so the pins below iterate the production list.
+
+**D9 — the Lab's report match.** A report answers a Lab tuple `(strategy, symbol, range, source)`
+only if all of these hold. Before this amendment the match took no strategy, accepted every coin a
+report did not name, and let `Last30d`, `Last90d` and `Custom` accept every report of the slug.
+
+1. **Strategy.** `backtest::engine::report_strategy_id` maps the report's `strategy:` `id:` and the
+   tuple's strategy to the same writer id, both `Some`. The map takes every report-writing dispatch
+   alias of an arm, and the id that arm's writer emits, to that id: `sma_crossover`,
+   `btc_macd_trend`, `btc_rsi_reversion`, `btc_bbands_mean_revert`, the signal-library `btc_*` ids,
+   `top10_momentum_h1`, `pairs_mr_h1`, and the two TCN ids
+   `tcn_overlay_momentum/tcn_overlay_momentum` and
+   `tcn_overlay_momentum_weights/tcn_overlay_momentum`, which the TCN writers build through
+   `scenarios::tcn_overlay{,_weights}::strategy_id_for` (one source). `v0.dvol_regime` writes no
+   report today and maps to its own id, so a future writer needs no edit. A report with no `id:`
+   answers no tuple. The long/short aliases (`v0.*_ls`) map to `None`: their reports carry the base
+   arm's id, so a report cannot tell them apart from it, and no Lab chip offers them. `None` too
+   for every id no arm writes a `.md` under: `v0.always_short` and `v0.buyhold` (no-op writers),
+   `v0.macro_riskon`, the `v0.8.vote.*` arms, and unknown ids. The leaderboard's Inspect can still put an `_ls` id in the Lab, which runs it long-only
+   (`lab_config_to_scenario` sets `short_enabled: false`); that run is written under the base arm's
+   dir, id and scenario name, so it is read back under the base arm's tuple, which is what it
+   computed, and never under the `_ls` tuple (REASONED).
+   The `id:` is read with Compare's tolerant frontmatter reader (`compare::cache::parse_frontmatter`,
+   now `pub(crate)`), which takes the engine's unindented `id:` line.
+2. **Coin.** The report's `## Summary` `| Symbol |` row, else its `## Universe` list, else a
+   `…USDT` ticker in its scenario name; a report naming no coin answers no tuple. Every
+   single-symbol engine report and all 23 committed single-coin reports state their coin only in
+   the Summary row. A cross-sectional report answers only the coins of its universe: the momentum
+   and TCN arms list the Lab's 10 pairs, the pairs arm 4 (BNB, BTC, ETH, SOL). So for the Lab's
+   other 6 pairs a `v1.5a.pairs` run is shown from the in-memory mirror but never read back from
+   disk: D6's "in-memory equals cached disk" holds for a cross-sectional arm only on its universe's
+   coins (the pairs arm ignores `cfg.pair`). That is not a regression (before this amendment the
+   pairs chip read no dir at all), and it is pinned two-sided.
+3. **Range.** The scenario name's span token: the first `-`/`_`-separated token that is `last30d`,
+   `last90d`, `custom<start_ms>to<end_ms>` or a four-digit year (`<year>-h1`/`-h2` a half). The same
+   span is an exact match (score 20). For `H1_2024` and `H2_2024` a whole-year `2024` report is a
+   narrowed superset (score 10, with `narrowed_from` set from the same fit, so the badge and the
+   score cannot drift). A `Custom` tuple matches only a `custom…` token equal to what the run
+   mapper derives from its date strings (`lab::runner::custom_range_ms`, the mapper's own parse).
+   Nothing else matches.
+4. **Source.** The tiers are unchanged: a report tagged with the tuple's `data_source:` beats an
+   untagged legacy one; a differently tagged one never matches.
+
+**What evidence/ still answers (REASONED from the corpus table in bug-log `#212`).** The Lab
+reaches only the 9 synthetic-tagged committed reports (the 18 `real (Binance Vision)` ones are
+excluded by source, unchanged). Of those, only two answer a Lab range: v1 momentum
+`top10-2024-h1-momentum` (its 10 coins, `H1_2024`) and, newly reachable because `v1.5a.pairs` now
+reads `v15a-mean-reversion-pairs`, `pairs-2024-h1-zscore-mr` (BNB, BTC, ETH, SOL, `H1_2024`). The
+2023 reports answer nothing, because no Lab range is a 2023 year. The committed TCN reports sit in
+`evidence/v1/v25-tcn-overlay/`, a dir no chip maps to. Both reachable reports are start/end-only,
+so neither draws over price bars (bug-log `#207`); on the bar-less path the pairs `H1_2024` tuple
+now draws a start→end line. **No committed report answers `Last30d`, `Last90d` or `Custom`**: a
+report records no span beyond its scenario name, and an engine `Last30d` run is not a 2023
+full-year run. Only persisted Lab runs answer those ranges.
+
+**D4 note.** The four cross-sectional arms' Lab scenario names gain range and source tokens
+(`engine::lab_universe_scenario_name`: `v1.momentum-<range>-<source>`, and `v1.5a.pairs`,
+`v2.5.tcn_overlay`, `v2.5.tcn_overlay_weights`), as the single-symbol arms' did on 2026-07-26
+(`lab_scenario_name`). Until now they wrote a fixed name with no range, so an `H1_2024` run of
+them could not be read back and any `Last30d`, `Last90d` or `Custom` tuple read whichever such run
+came first. The `<arm>` prefix is kept, so Compare's `scenario_universe` still rejects these names.
+Only the Lab write seam (`write_report = true`, set by `cockpit_live` alone) uses them: CLI bytes
+and anchored bodies are unchanged, 119/119.
+
+**What the operator sees change.** The default Lab range (`Last90d`) no longer shows any committed
+curve, and a `lab-runs/` run of another coin, strategy or range no longer draws under the tuple's
+label. A Lab run of `v0.5.rsi`, `v0.5.bbands`, `v1.5a.pairs` or `v2.5.tcn` is now read back after
+a restart. The operator's existing `lab-runs/` reports named `btc-2023-1m-*` (written before
+2026-07-26) and the range-less cross-sectional runs never answer again; they age out through the
+200-per-dir cap. Over price bars the committed frames do not move.
+
+**Residuals.** A pre-1970 `Custom` bound writes a `-` inside its token, so such a report reads as no
+span. The scenario-ticker fallback lists the Lab's 10 pairs only (no ARB, ATOM, NEAR, OP, SUI); it
+decides nothing today, because every engine and committed report has a Summary row or a Universe.
+
+**Pins.** `lab::equity_loader` lib tests M1
+`a_coin_named_only_in_the_summary_row_matches_that_coin_only`, M2
+`a_multi_symbol_report_matches_only_a_coin_in_its_universe`, M3
+`a_report_naming_no_coin_matches_no_coin`, M4 `a_report_matches_only_its_own_strategy`, M5
+`a_report_without_a_strategy_id_matches_no_strategy`, M6 `range_tokens_match_exactly`, M7 (E4c,
+re-derived on `H1_2024`) `a_strictly_better_report_in_the_second_report_dir_wins`, M8
+`every_lab_chip_reads_the_dir_the_engine_writes`, and `strategy_slug_mapping`; `backtest::engine`
+`strategy_dir_slug_known_ids`, `report_strategy_id_is_what_each_writer_emits`,
+`cross_sectional_lab_scenario_names_carry_range_and_source`; end to end
+`lab_run_engine.rs::inner::every_lab_chip_run_is_read_back_from_its_write_root` (and H3, which
+stays green only because of the cross-sectional names); pixels (AD-10)
+`lab_buy_sell_overlay_render.rs` LR-212a `lab_draws_its_tuples_strategy_not_a_sibling_in_its_dir`
+and LR-212b `lab_draws_no_report_of_another_coin`.
+
+**Verification (2026-11-24).**
+
+- `cargo test -p ui --lib`: 725 passed (718 + M1–M6 and M8; M7 is E4c re-derived);
+  `cargo test -p backtest --lib`: 264 passed, 8 ignored (262 + 2);
+  `--test lab_run_engine` 2 (H3 + the end-to-end chip test), `--test lab_buy_sell_overlay_render`
+  9 (7 + LR-212a, LR-212b), `--test live_equity_render` 31, `--test lab_binance_persist_compare` 2
+  (no edit: its engine report is `btcusdt-2024-h1-sma-cross-binance`, `sma_crossover`, Summary
+  BTCUSDT). The whole `cargo test -p ui --no-fail-fast`: 124 test binaries and the doc-tests,
+  1508 passed, 0 failed, 32 ignored, among them `visual_snapshots` 55, `render_snapshots` 14 (15 ignored),
+  `panel_snapshots` 113 and `gallery_snapshots` 6 (3 ignored), with no baseline file moved;
+  `cargo check -p ui --no-default-features --features fixtures` builds;
+  `scripts/ci_test_target_counts.py --os macos` PASS (17/17, `lab_run_engine` now 2).
+- Pixel margins (macOS): LR-212a F_both vs F_macd 0 px, F_bb vs F_none 0 px, controls F_swap vs
+  F_macd 4,338 px and F_macd vs F_none 19,025 px (floor 1,000 each); LR-212b F_eth vs F_none 0 px, control right-edge shift 40 px
+  (band [34, 44]). LR-207d, LR-208, LR-208e and LR-211d now render `H1_2024` and keep their
+  margins (40 px, 40 px, 40 px, 0 px with control 19,025 px).
+- Thirteen probes R1–R13, each applied once and restored byte-identical, the red set compared by
+  name (R13, the year inside `Span::Half`, was added after review: M6 holds a 2023 H1 and a 2025 H2
+  scenario; on the `#212` tree R13 ran `cargo test -p ui --lib` only, 724 of 725, and its four
+  targets were measured on the `#212` + `#209` tree, 2, 10, 31, 2, all green); the table is in the
+  module doc of `crates/ui/tests/lab_buy_sell_overlay_render.rs`.
+- `cargo clippy -p backtest -p ui --lib --bins --tests -- -D warnings` clean after touching every
+  changed file; `bash scripts/verify_anchors.sh` `ANCHORS PASS  (119 / 119)` before and after,
+  `--explain` byte-identical; `git status --porcelain -- evidence` empty.
+
 ## Changelog
 
+- 2026-11-24 (orchestrator, bug-log `#212` fix): **D9, the Lab's report match; one slug map.**
+  The amendment "2026-11-24 (bug-log `#212`)" above adds D9: a report answers a Lab tuple only
+  through its strategy (`backtest::engine::report_strategy_id` of its `strategy:` `id:`), its coin
+  (Summary `| Symbol |` row, else `## Universe`, else a scenario ticker) and its scenario's span
+  token (exact; a whole-year `2024` report is a narrowed superset of `H1_2024`/`H2_2024`), then
+  the unchanged source tiers. § D1's third sentence now holds by construction: one slug map,
+  `backtest::engine::strategy_dir_slug` (`pub`), which the Lab calls; this closes the 2026-11-15
+  amendment's handoff item 3. D4 note: the four cross-sectional arms' Lab scenario names carry
+  range and source. No committed report answers `Last30d`, `Last90d` or `Custom`; a
+  cross-sectional run answers only its universe's coins. No other decision changes; no ADR
+  added. Anchor-neutral, 119/119.
 - 2026-11-24 (orchestrator, bug-log `#210` fix): **the backtest CLI leaves D8's subject.** The
   "readers outside D8" entry for the backtest CLI and the order rule's backtest-CLI-twin example
   gain dated notes: since ADR-0104 a default CLI run writes the git-ignored `backtest-runs/`, so it

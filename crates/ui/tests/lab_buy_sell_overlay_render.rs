@@ -97,7 +97,7 @@
 //! table are in `live_equity_render.rs` ("bug-log #211").
 //!
 //! - **LR-211d** [`lab_h1_2024_run_over_the_seeded_hour_matches_the_no_overlay_lab`]
-//!   — the LR-207d Lab (v1 momentum on BTCUSDT, default range) with its
+//!   — the LR-207d Lab (v1 momentum on BTCUSDT, `H1_2024` since #212) with its
 //!   equity cache pre-warmed from an `H1_2024` run as it is persisted (scene
 //!   B's report plus a companion `-equity.csv` of the first 4,344 hourly
 //!   samples from 2024-01-01, `ui::test_support::h1_2024_hourly_samples`; a
@@ -113,6 +113,77 @@
 //!   `/tmp/lab_211_full_in_window.png` (B), `/tmp/lab_211_full_h1_2024.png`
 //!   (C). Probes (`live_equity_render.rs`' P11 table): P11-1, P11-3 and P11-7
 //!   turn it red; the #207 probes P7-2, P7-5 and P7-8 too.
+//!
+//! ## bug-log #212 — the Lab draws only a report of its own tuple
+//!
+//! The Lab's report lookup (`lab::equity_loader`) took no strategy, accepted
+//! every coin a report did not name in a one-entry `## Universe`, let
+//! `Last30d`, `Last90d` and `Custom` accept every report of the slug, and kept
+//! a second, shorter copy of the engine's slug map. A report now answers a
+//! tuple only through its strategy (`backtest::engine::report_strategy_id` of
+//! its `id:`), its coin (Summary `| Symbol |` row, else `## Universe`, else a
+//! scenario ticker) and its scenario's span token, and the slug is the
+//! engine's `strategy_dir_slug` (ADR-0055 D9). Tests:
+//!
+//! - **Lib** (`lab::equity_loader`): M1
+//!   `a_coin_named_only_in_the_summary_row_matches_that_coin_only`, M2
+//!   `a_multi_symbol_report_matches_only_a_coin_in_its_universe`, M3
+//!   `a_report_naming_no_coin_matches_no_coin`, M4
+//!   `a_report_matches_only_its_own_strategy`, M5
+//!   `a_report_without_a_strategy_id_matches_no_strategy`, M6
+//!   `range_tokens_match_exactly`, M7 (E4c, re-derived on `H1_2024`)
+//!   `a_strictly_better_report_in_the_second_report_dir_wins`, M8
+//!   `every_lab_chip_reads_the_dir_the_engine_writes`, and
+//!   `strategy_slug_mapping`. `backtest::engine`: `strategy_dir_slug_known_ids`,
+//!   `report_strategy_id_is_what_each_writer_emits` (E-ID),
+//!   `cross_sectional_lab_scenario_names_carry_range_and_source`.
+//! - **End to end** (`lab_run_engine.rs`, both CI legs):
+//!   `inner::every_lab_chip_run_is_read_back_from_its_write_root` (E2E), and
+//!   H3, which stays green only because the cross-sectional names carry their
+//!   range.
+//! - **LR-212a** [`lab_draws_its_tuples_strategy_not_a_sibling_in_its_dir`]
+//!   and **LR-212b** [`lab_draws_no_report_of_another_coin`] (below). Both
+//!   render the full Lab through `lab::view` with `Cockpit::lab_report_roots`
+//!   on temp roots and no pre-warm. LR-207d, LR-208, LR-208e and LR-211d set
+//!   the range to `H1_2024`: their reports are `2024-h1` runs, which no longer
+//!   answer the default `Last90d`. Their margins are unchanged.
+//!
+//! ### T-T4 probe table (bug-log #212)
+//!
+//! The #208 protocol: one edit, each OLD exactly once in its file, applied to
+//! the real file, `touch`, run, then restored from a `cp -p` copy, `cmp` and
+//! `touch`. Paths: `ui/` = `crates/ui/src/`, `engine.rs` =
+//! `crates/backtest/src/engine.rs`. Each probe ran `cargo test -p ui --lib`
+//! (725), `--no-fail-fast --test lab_run_engine --test
+//! lab_buy_sell_overlay_render --test live_equity_render --test
+//! lab_binance_persist_compare` (2, 9, 31, 2), and for the `engine.rs` probes
+//! `cargo test -p backtest --lib` (264). RED is the measured failing set,
+//! compared by name; everything else stayed green. Measured 2026-11-24.
+//!
+//! | Probe | File / symbol | OLD → NEW | RED (measured) |
+//! |---|---|---|---|
+//! | R1 | `ui/lab/equity_loader.rs` `Coins::covers` | `            Coins::Unknown => false,` → `            Coins::Unknown => true,` | M3 |
+//! | R2 | `ui/lab/equity_loader.rs` `parse_report_meta` | `    let coins = if let Some(sym) = summary_cell(body, "Symbol") {` → `    let coins = if let Some(sym) = None::<String> {` | M1, M3 (its control half), M6 (H1_2024 and H2_2024 × `btc-2024-sma-cross`: superset → none; the `btcusdt-…` cells keep their coin through the scenario fallback), LR-212b (its control: shift 0). Narrower than designed: an engine-shaped name (`btcusdt-…`) carries the ticker, so the scenario fallback still finds the coin for M4, M5, M8, E2E and LR-212a |
+//! | R3 | `ui/lab/equity_loader.rs` `Coins::covers` | `            Coins::Universe(list) => list.iter().any(\|c\| c.eq_ignore_ascii_case(sym)),` → `            Coins::Universe(_) => true,` | M2, E2E (the pairs run answers XRPUSDT, outside its 4-coin universe) |
+//! | R4 | `ui/lab/equity_loader.rs` `report_matches` | `    if want.is_none() \|\| want != have {` → `    if false {` | M4, M5, LR-212a (F_both vs F_macd 4,338 px, the F_swap figure: it draws the bbands curve; F_bb vs F_none 18,811 px) |
+//! | R5 | `ui/lab/equity_loader.rs` `report_matches` | `        .and_then(backtest::engine::report_strategy_id);` → `        .map_or(want, backtest::engine::report_strategy_id);` | M5 |
+//! | R6 | `ui/lab/equity_loader.rs` `range_fit` | `        (DateRange::Custom { start_raw, end_raw }, Span::Custom(start, end)) => {` → the same line preceded by `        (DateRange::Preset(Preset::Last90d), Span::Year(_)) => Some(RangeFit::Superset),` | M6 (Last90d × `btc-2024-…` and × `btc-2023-1m-…`: superset, not none) |
+//! | R7 | `ui/lab/equity_loader.rs` `range_fit` | `        \| (DateRange::Preset(Preset::H1_2024), Span::Half(2024, 1))` → `        \| (DateRange::Preset(Preset::H1_2024), Span::Half(2024, _))` | M6 (H1_2024 × `…-2024-h2-…`: exact, not none) |
+//! | R13 | `ui/lab/equity_loader.rs` `range_fit` | the two lines `        \| (DateRange::Preset(Preset::H1_2024), Span::Half(2024, 1))` + `        \| (DateRange::Preset(Preset::H2_2024), Span::Half(2024, 2)) => Some(RangeFit::Exact),` → `Span::Half(_, 1)` / `Span::Half(_, 2)` | M6 (H1_2024 × `…-2023-h1-…` and H2_2024 × `…-2025-h2-…`: exact, not none). Added after review: before M6 held a 2023 H1 and a 2025 H2 scenario, this probe left every test green. On the `#212` tree R13 ran `cargo test -p ui --lib` only (724 of 725); its four targets were measured on the `#212` + `#209` tree (2, 10, 31, 2, all green) |
+//! | R8 | `ui/lab/equity_loader.rs` `strategy_slug` | `    SmolStr::new(backtest::engine::strategy_dir_slug(id))` → `    if id == "v0.5.rsi" { return SmolStr::new(id); }` + the same line | M8, `strategy_slug_mapping`, M4 (rsi: `ReportDirNotFound`, not `NoReport`), E2E |
+//! | R9 | `engine.rs` the `"v1.momentum"` dispatch arm | `                scenario_name: lab_universe_scenario_name("v1.momentum", &cfg),` → `                scenario_name: "v1.momentum".to_string(),` | H3, E2E (momentum reads nothing back) |
+//! | R10 | `engine.rs` `report_strategy_id` | `        "v0.5.macd" \| "macd_trend" \| "btc_macd_trend" \| "macd_trend_h1" => Some("btc_macd_trend"),` → `… => Some("macd_trend"),` | E-ID, E2E (the written `id:` is `btc_macd_trend`); M4 stays green, as designed: both sides normalise |
+//! | R11 | `engine.rs` `report_strategy_id` | the same OLD → `        "v0.5.macd" \| "macd_trend" \| "btc_macd_trend" \| "macd_trend_h1" \| "btc_bbands_mean_revert" => Some("btc_macd_trend"),` | E-ID, M4, M8 (`v0.5.bbands`), E2E, LR-212a (4,338 px) |
+//! | R12 | `engine.rs` `report_strategy_id` | the two TCN arms → the design's first form, `"v2.5.tcn" \| "v2.5.tcn_overlay" \| "tcn_overlay_momentum" \| "v2.5.tcn.weights" \| "v2.5.tcn_overlay_weights" => Some("tcn_overlay_momentum"),` | E-ID, M8 (`v2.5.tcn`, `v2.5.tcn.weights`), E2E (`v2.5.tcn`) |
+//!
+//! Every probe left `live_equity_render.rs` (31) and
+//! `lab_binance_persist_compare.rs` (2) green: their fixtures are migrated to
+//! well-formed reports of their own tuple. Red-first at HEAD is REASONED per
+//! component, not measured as one run: HEAD's predicate is R4 (no strategy)
+//! plus R1/R3 (any coin when the Universe is not one entry) plus a range rule
+//! wider than R6, and its slug map is R8 for five chips. PNGs (with
+//! `UI_DUMP_PNG`) of the fixed tree: `/tmp/lab_212a_{both,macd,bbands,none,swap}.png`,
+//! `/tmp/lab_212b_{eth,none,btc}.png`.
 
 #![cfg(target_os = "macos")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
@@ -421,7 +492,9 @@ fn long_only_paints_no_sell_volume_bars() {
 // ── bug-log #207 — the full Lab: the equity gutter is reserved iff it draws ──
 //
 // LR-207d: the operator's screen. The Lab is pointed at the v1 momentum
-// strategy on BTCUSDT (defaults: Last90d, Synthetic) and its equity cache is
+// strategy on BTCUSDT over `H1_2024` (Synthetic; the range is `H1_2024`, not
+// the default `Last90d`, since bug-log #212: both scene reports are `2024-h1`
+// runs, and a report answers only its own range) and its equity cache is
 // pre-warmed from a temp root (`EquityCache::get_or_load`), so `lab::view`'s
 // `route_equity_overlay` is a cache hit and never reads the real
 // `lab-runs/`/`evidence/` roots: the frame depends on the fixture only.
@@ -436,6 +509,7 @@ use std::path::Path;
 
 use trading_core::StrategyId;
 use ui::lab::equity_loader::{Fidelity, LabTuple, default_evidence_root};
+use ui::lab::state::{DateRange, Preset};
 use ui::test_support::{EQUITY_GUTTER_WIDENING_PX, lab_runs_report_at};
 
 /// The committed start/end-only momentum report, relative to `evidence/`.
@@ -453,14 +527,17 @@ const CHART_CANVAS_ROWS: (u32, u32) = (560, 700);
 
 /// The Lab scene at a strategy: `charts_screen_cockpit` (60 seeded BTCUSDT
 /// bars, 4 alternating fills at bars 12/24/36/48) pointed at v1 momentum on
-/// BTCUSDT, its equity cache pre-warmed from `root`. Returns the cockpit and
-/// the cached series.
+/// BTCUSDT over `H1_2024`, its equity cache pre-warmed from `root`. Returns
+/// the cockpit and the cached series. The range is `H1_2024`, not the default
+/// `Last90d`, because both scene reports are `2024-h1` runs and since bug-log
+/// #212 a report answers only its own range.
 fn lab_207_scene(root: &Path) -> (Cockpit, ui::lab::equity_loader::LabEquitySeries) {
     let mut cockpit = charts_screen_cockpit();
     let strategy = StrategyId::new("v1.momentum");
     let symbol = Symbol::new("BTCUSDT");
     cockpit.lab_state.strategy = Some(strategy.clone());
     cockpit.lab_state.pair = Some((Venue::Binance, symbol.clone()));
+    cockpit.lab_state.range = DateRange::Preset(Preset::H1_2024);
     // The tuple exactly as `lab::view` builds it from `lab_state`.
     let tuple = LabTuple::new(
         &strategy,
@@ -521,7 +598,12 @@ fn write_in_window_root(root: &Path) {
     std::fs::create_dir_all(&dir).expect("create reports dir");
     std::fs::write(
         dir.join("backtest-20260601-120000-top10-2024-h1-momentum.md"),
-        lab_runs_report_at("top10-2024-h1-momentum", "BTCUSDT", 100_000),
+        lab_runs_report_at(
+            "top10_momentum_h1",
+            "top10-2024-h1-momentum",
+            "BTCUSDT",
+            100_000,
+        ),
     )
     .expect("write the in-window report");
 }
@@ -823,6 +905,8 @@ fn assert_cached_miss_hides_then_draws_208(under_evidence: bool, png: &str, key:
     let symbol = Symbol::new("BTCUSDT");
     cockpit.lab_state.strategy = Some(strategy.clone());
     cockpit.lab_state.pair = Some((Venue::Binance, symbol.clone()));
+    // The written report is a `2024-h1` run (bug-log #212).
+    cockpit.lab_state.range = DateRange::Preset(Preset::H1_2024);
     cockpit.lab_report_roots = vec![lab_runs.clone(), tmp.path().join("evidence")];
     assert!(
         cockpit.lab_state.last_run_report.is_none(),
@@ -914,7 +998,7 @@ fn write_h1_2024_root(root: &Path) {
 
 /// **LR-211d — the operator's Lab screen with an H1_2024 run over the seeded
 /// hour (bug-log #211).** Scene C: the LR-207d Lab (v1 momentum on BTCUSDT,
-/// default range, so the range chip is the same in every scene) with its
+/// `H1_2024` in every scene, so the range chip is the same) with its
 /// equity cache pre-warmed from `write_h1_2024_root`: hourly samples from
 /// 2024-01-01, exactly one of them (12:00) inside the seeded bar window.
 /// One point strokes no line, so C draws no overlay and must be
@@ -999,5 +1083,249 @@ fn lab_h1_2024_run_over_the_seeded_hour_matches_the_no_overlay_lab() {
         differ_ab > 0,
         "control: an in-window run must change the Lab, but 0 px differ, so this harness \
          draws no overlay"
+    );
+}
+
+// ── bug-log #212 — the Lab draws only a report of its own tuple ─────────────
+
+use ui::test_support::{LabReportFixture, lab_report};
+
+/// The full Lab over `(strategy, BTCUSDT, H1_2024, Synthetic)`, reading the
+/// report roots `[<root>/lab-runs, <root>/evidence]` through the real
+/// `lab::view` (no pre-warm: every render clones a cockpit with an empty
+/// equity cache, so the frame is what the cold path resolves from disk).
+fn lab_reading(strategy: &str, root: &Path) -> Cockpit {
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.lab_state.strategy = Some(StrategyId::new(strategy));
+    cockpit.lab_state.pair = Some((Venue::Binance, Symbol::new("BTCUSDT")));
+    cockpit.lab_state.range = DateRange::Preset(Preset::H1_2024);
+    cockpit.lab_report_roots = vec![root.join("lab-runs"), root.join("evidence")];
+    assert!(
+        cockpit.lab_state.last_run_report.is_none(),
+        "precondition: no run mirror, so the overlay comes from the report roots"
+    );
+    cockpit
+}
+
+/// Write `f` as `<root>/lab-runs/<slug>/reports/<name>`.
+fn write_lab_run(root: &Path, slug: &str, name: &str, f: &LabReportFixture<'_>) {
+    let dir = root.join("lab-runs").join(slug).join("reports");
+    std::fs::create_dir_all(&dir).expect("create reports dir");
+    std::fs::write(dir.join(name), lab_report(f)).expect("write the report");
+}
+
+/// An `H1_2024` synthetic engine-shaped single-coin report: the coin in the
+/// Summary `| Symbol |` row only, the curve in the seeded bar window.
+fn h1_run<'a>(
+    strategy_id: &'a str,
+    scenario: &'a str,
+    coin: &'a str,
+    generated: &'a str,
+    falling: bool,
+) -> LabReportFixture<'a> {
+    LabReportFixture {
+        strategy_id: Some(strategy_id),
+        scenario,
+        symbol_row: Some(coin),
+        universe: &[],
+        generated,
+        data_source: "synthetic",
+        level: 100_000,
+        falling,
+    }
+}
+
+/// The least number of pixels by which two Lab frames that draw different
+/// curves for one tuple (rising vs falling) must differ, so a 0-px identity
+/// against one of them cannot pass by drawing the other, and by which a frame
+/// that draws a run must differ from the no-overlay frame. Measured
+/// 2026-11-24: LR-212a's controls differ by far more (printed as `#212 pixel
+/// margin …`).
+const CURVE_SWAP_MIN_PX: usize = 1_000;
+
+/// The v05-composed-strategies pair of LR-212a: (file name, writer id,
+/// scenario, `generated:`, falling). The bbands run sits at the SMALLER stamp
+/// and carries the NEWER `generated:`, so both a first-in-path-order and a
+/// newest-`generated:` reader that ignores the strategy draw it.
+const LR212A_RUNS: [(&str, &str, &str, &str, bool); 2] = [
+    (
+        "backtest-20260601-120000000-btcusdt-2024-h1-bbands-mean-revert-synthetic.md",
+        "btc_bbands_mean_revert",
+        "btcusdt-2024-h1-bbands-mean-revert-synthetic",
+        "2026-06-02T12:00:00Z",
+        true,
+    ),
+    (
+        "backtest-20260601-130000000-btcusdt-2024-h1-macd-trend-synthetic.md",
+        "btc_macd_trend",
+        "btcusdt-2024-h1-macd-trend-synthetic",
+        "2026-06-01T12:00:00Z",
+        false,
+    ),
+];
+
+/// **LR-212a — the Lab draws its tuple's strategy, not a sibling in the same
+/// dir (bug-log #212).** Tuple `(v0.5.macd, BTCUSDT, H1_2024, Synthetic)`;
+/// `lab-runs/v05-composed-strategies/reports/` (the dir the engine writes
+/// macd, rsi and bbands runs to) holds a falling bbands run and a rising macd
+/// run, equal in coin, range and source (`LR212A_RUNS`).
+///   F_both  — both runs: must equal F_macd byte for byte.
+///   F_macd  — the macd run alone.
+///   F_bb    — the bbands run alone: must equal F_none (it answers no macd
+///             tuple).
+///   F_none  — empty roots: no overlay. F_macd must differ from it by
+///             ≥ `CURVE_SWAP_MIN_PX`: the macd run does draw (#187).
+///   F_swap  — the control: the bbands bytes relabelled `btc_macd_trend`,
+///             i.e. what a strategy-blind reader draws. It must differ from
+///             F_macd by ≥ `CURVE_SWAP_MIN_PX`, so the identity cannot pass
+///             by drawing the bbands curve.
+/// PNGs (with `UI_DUMP_PNG`): `/tmp/lab_212a_{both,macd,bbands,none,swap}.png`.
+#[test]
+fn lab_draws_its_tuples_strategy_not_a_sibling_in_its_dir() {
+    let slug = backtest::engine::strategy_dir_slug("v0.5.macd");
+    assert_eq!(
+        slug,
+        backtest::engine::strategy_dir_slug("v0.5.bbands"),
+        "precondition: the engine writes macd and bbands runs to one dir"
+    );
+    assert!(
+        LR212A_RUNS[0].0 < LR212A_RUNS[1].0,
+        "precondition: the bbands run has the smaller stamp"
+    );
+    let write = |root: &Path, idx: &[usize], relabel: Option<&str>| {
+        for &i in idx {
+            let (name, id, scenario, generated, falling) = LR212A_RUNS[i];
+            let id = relabel.unwrap_or(id);
+            write_lab_run(
+                root,
+                slug,
+                name,
+                &h1_run(id, scenario, "BTCUSDT", generated, falling),
+            );
+        }
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let roots: Vec<(&str, std::path::PathBuf)> = ["both", "macd", "bbands", "none", "swap"]
+        .into_iter()
+        .map(|k| (k, tmp.path().join(k)))
+        .collect();
+    write(&roots[0].1, &[0, 1], None);
+    write(&roots[1].1, &[1], None);
+    write(&roots[2].1, &[0], None);
+    write(&roots[4].1, &[0], Some("btc_macd_trend"));
+
+    let frames: Vec<(u32, Vec<u8>)> = roots
+        .iter()
+        .map(|(k, root)| {
+            let (w, rgba) = render(lab_reading("v0.5.macd", root));
+            dump_png(w, &rgba, &format!("/tmp/lab_212a_{k}.png"));
+            (w, rgba)
+        })
+        .collect();
+    let [both, macd, bbands, none, swap] = [0, 1, 2, 3, 4].map(|i| &frames[i].1);
+    assert!(
+        frames.iter().all(|(w, _)| *w == VIEW_W),
+        "every frame must have the requested width"
+    );
+    let differ_both = differing_pixels(both, macd);
+    let differ_bb = differing_pixels(bbands, none);
+    let differ_swap = differing_pixels(swap, macd);
+    let differ_macd_none = differing_pixels(macd, none);
+    eprintln!(
+        "#212 pixel margin LR-212a: F_both vs F_macd {differ_both} px (threshold == 0); F_bb vs \
+         F_none {differ_bb} px (threshold == 0); control F_swap vs F_macd {differ_swap} px \
+         (threshold >= {CURVE_SWAP_MIN_PX}); control F_macd vs F_none {differ_macd_none} px \
+         (threshold >= {CURVE_SWAP_MIN_PX})"
+    );
+    assert!(
+        differ_swap >= CURVE_SWAP_MIN_PX,
+        "control: the bbands curve must look different from the macd curve, but only \
+         {differ_swap} px differ"
+    );
+    assert!(
+        differ_macd_none >= CURVE_SWAP_MIN_PX,
+        "control: the macd run alone must draw, but only {differ_macd_none} px differ from the \
+         no-overlay frame"
+    );
+    assert_eq!(
+        differ_bb, 0,
+        "#212: a bbands run answers no macd tuple, so the Lab must draw nothing, but \
+         {differ_bb} px differ from the no-overlay frame"
+    );
+    assert_eq!(
+        differ_both, 0,
+        "#212: beside a bbands run the macd tuple must still draw its own run, but {differ_both} \
+         px differ"
+    );
+}
+
+/// **LR-212b — the Lab draws no report of another coin (bug-log #212).**
+/// Tuple `(v0.sma, BTCUSDT, H1_2024, Synthetic)`. The only report is an ETH
+/// run whose coin is named only in its Summary `| Symbol |` row (the shape of
+/// every engine-written single-symbol report; its scenario `eth-2024-h1-…`
+/// names no `…USDT` ticker). Its frame must be byte-identical to the
+/// empty-root frame. Control: the BTC twin (the same report with `BTCUSDT` in
+/// the row) draws, so the chart reserves the equity gutter and the plot's
+/// right edge moves left by the derived `EQUITY_GUTTER_WIDENING_PX` (40 px)
+/// within `[34, 44]` (`measure_lab_frame`). PNGs (with `UI_DUMP_PNG`):
+/// `/tmp/lab_212b_{eth,none,btc}.png`.
+#[test]
+fn lab_draws_no_report_of_another_coin() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (eth, none, btc) = (
+        tmp.path().join("eth"),
+        tmp.path().join("none"),
+        tmp.path().join("btc"),
+    );
+    let slug = backtest::engine::strategy_dir_slug("v0.sma");
+    for (root, coin, scenario) in [
+        (&eth, "ETHUSDT", "eth-2024-h1-sma-cross"),
+        (&btc, "BTCUSDT", "btc-2024-h1-sma-cross"),
+    ] {
+        assert!(
+            !scenario.to_ascii_uppercase().contains("USDT"),
+            "precondition: the scenario names no ticker, only the Summary row does"
+        );
+        write_lab_run(
+            root,
+            slug,
+            &format!("backtest-20260601-120000000-{scenario}.md"),
+            &h1_run(
+                "sma_crossover",
+                scenario,
+                coin,
+                "2026-06-01T12:00:00Z",
+                false,
+            ),
+        );
+    }
+    let (w_eth, f_eth) = render(lab_reading("v0.sma", &eth));
+    let (w_none, f_none) = render(lab_reading("v0.sma", &none));
+    let (w_btc, f_btc) = render(lab_reading("v0.sma", &btc));
+    dump_png(w_eth, &f_eth, "/tmp/lab_212b_eth.png");
+    dump_png(w_none, &f_none, "/tmp/lab_212b_none.png");
+    dump_png(w_btc, &f_btc, "/tmp/lab_212b_btc.png");
+    assert_eq!([w_eth, w_none, w_btc], [VIEW_W; 3], "frame widths");
+
+    let differ = differing_pixels(&f_eth, &f_none);
+    let edge_none = measure_lab_frame("#212b no report", w_none, &f_none).plot_right;
+    let edge_btc = measure_lab_frame("#212b BTC twin", w_btc, &f_btc).plot_right;
+    let shift = i64::from(edge_none) - i64::from(edge_btc);
+    let expected = EQUITY_GUTTER_WIDENING_PX.round() as i64;
+    let (lo, hi) = (expected - 6, expected + 4);
+    eprintln!(
+        "#212 pixel margin LR-212b: F_eth vs F_none {differ} px (threshold == 0); control: right \
+         edge F_none {edge_none} - F_btc {edge_btc} = {shift} px (expected {expected}, band \
+         [{lo}, {hi}])"
+    );
+    assert!(
+        (lo..=hi).contains(&shift),
+        "control: the BTC twin must draw and reserve the equity gutter: shift {shift} px, \
+         expected {expected} within [{lo}, {hi}]"
+    );
+    assert_eq!(
+        differ, 0,
+        "#212: an ETH run answers no BTCUSDT tuple, so the Lab must draw nothing, but {differ} \
+         px differ from the no-overlay frame"
     );
 }

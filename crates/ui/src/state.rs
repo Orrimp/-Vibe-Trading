@@ -6999,11 +6999,18 @@ mod tests {
         }
     }
 
-    fn write_report_208(reports_dir: &std::path::Path, scenario: &str, level: i64) {
+    /// `strategy_id` is the report's `strategy:` `id:`, which the Lab's
+    /// report match reads (bug-log #212).
+    fn write_report_208(
+        reports_dir: &std::path::Path,
+        strategy_id: &str,
+        scenario: &str,
+        level: i64,
+    ) {
         std::fs::create_dir_all(reports_dir).unwrap();
         std::fs::write(
             reports_dir.join(format!("backtest-20260601-120000-{scenario}.md")),
-            crate::test_support::lab_runs_report_at(scenario, "BTCUSDT", level),
+            crate::test_support::lab_runs_report_at(strategy_id, scenario, "BTCUSDT", level),
         )
         .unwrap();
     }
@@ -7040,6 +7047,7 @@ mod tests {
         let evidence = tmp.path().join("evidence");
         write_report_208(
             &evidence.join("v1/v0-paper-sma/reports"),
+            "sma_crossover",
             "btc-2024-h1-sma-cross",
             LEVEL_COMMITTED_208,
         );
@@ -7060,11 +7068,13 @@ mod tests {
 
         write_report_208(
             &lab_runs.join("v0-paper-sma/reports"),
+            "sma_crossover",
             "btc-2024-h1-sma-cross",
             LEVEL_NEW_208,
         );
         write_report_208(
             &lab_runs.join("v1-cross-sectional-momentum/reports"),
+            "top10_momentum_h1",
             "top10-2024-h1-momentum",
             LEVEL_NEW_208,
         );

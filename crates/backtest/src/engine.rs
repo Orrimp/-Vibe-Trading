@@ -698,10 +698,12 @@ fn default_lab_runs_root() -> PathBuf {
 
 /// Map a strategy id to the directory slug used for `lab-runs/<slug>/reports/`.
 ///
-/// Mirrors `ui::lab::equity_loader::strategy_slug` exactly so the ui-designer's
-/// loader root finds what the engine writes.  Unknown ids fall back to the
-/// verbatim id string (safe: the loader does the same).
-fn strategy_dir_slug(strategy_id: &str) -> &str {
+/// The one map (ADR-0055 § D1, bug-log #212): the engine writes under it, and
+/// `ui::lab::equity_loader` reads through it (its `strategy_slug` calls this
+/// function; `backtest` cannot depend on `ui`, so the map lives here). Unknown
+/// ids fall back to the verbatim id string.
+#[must_use]
+pub fn strategy_dir_slug(strategy_id: &str) -> &str {
     match strategy_id {
         "v1.momentum" | "top10_momentum_h1" => "v1-cross-sectional-momentum",
         // ADR-0068 T-D6: _ls aliases map to the same dir slug as their base arm.
@@ -746,6 +748,65 @@ fn strategy_dir_slug(strategy_id: &str) -> &str {
         "v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => "v2.5.tcn_overlay",
         "v2.5.tcn.weights" | "v2.5.tcn_overlay_weights" => "v2.5.tcn_overlay_weights",
         other => other,
+    }
+}
+
+/// The `config_id` both TCN dispatch arms pass, so their reports' `id:` is
+/// `tcn_overlay_momentum/tcn_overlay_momentum` (passthrough) and
+/// `tcn_overlay_momentum_weights/tcn_overlay_momentum` (real weights); see
+/// [`report_strategy_id`].
+const TCN_CONFIG_ID: &str = "tcn_overlay_momentum";
+
+/// The `strategy:` `id:` the report of the arm `strategy_id` dispatches to
+/// carries, for every report-writing dispatch alias of that arm (bug-log
+/// #212). The Lab matches a
+/// report to its tuple's strategy by comparing this for the report's `id:` and
+/// for the tuple's strategy (`ui::lab::equity_loader`, ADR-0055 D9).
+///
+/// - The single-symbol arms write their `SmaComposedRunInput::strategy_id`,
+///   the cross-sectional arms their config's id (`top10_momentum_h1`,
+///   `pairs_mr_h1`), the TCN arms `scenarios::tcn_overlay::strategy_id_for` /
+///   `scenarios::tcn_overlay_weights::strategy_id_for` of `TCN_CONFIG_ID`
+///   (pinned by `report_strategy_id_is_what_each_writer_emits`). Each written
+///   id is also an alias of its own arm, so a report's `id:` maps to itself.
+/// - `None` for the long/short aliases (`v0.*_ls`): their reports carry the
+///   base arm's id, so a report cannot tell them apart from it. `None` too for
+///   every id no arm writes a `.md` under: `v0.always_short` and `v0.buyhold`
+///   (no-op writers), `v0.macro_riskon`, the `v0.8.vote.*` arms, and unknown
+///   ids. `v0.dvol_regime` writes no report today and maps to its own id, so a
+///   future writer needs no edit.
+#[must_use]
+pub fn report_strategy_id(strategy_id: &str) -> Option<&'static str> {
+    match strategy_id {
+        "v1.momentum" | "top10_momentum_h1" => Some("top10_momentum_h1"),
+        "v0.sma" | "sma_cross" | "sma_crossover" | "sma_cross_h1" => Some("sma_crossover"),
+        "v0.5.macd" | "macd_trend" | "btc_macd_trend" | "macd_trend_h1" => Some("btc_macd_trend"),
+        "v0.5.rsi" | "rsi_reversion" | "btc_rsi_reversion" | "rsi_reversion_h1" => {
+            Some("btc_rsi_reversion")
+        }
+        "v0.5.bbands"
+        | "bbands_mean_revert"
+        | "btc_bbands_mean_revert"
+        | "bbands_mean_revert_h1" => Some("btc_bbands_mean_revert"),
+        "v0.donchian_break" | "btc_donchian_break" => Some("btc_donchian_break"),
+        "v0.donchian_floor" | "btc_donchian_floor" => Some("btc_donchian_floor"),
+        "v0.vol_breakout" | "btc_vol_breakout" => Some("btc_vol_breakout"),
+        "v0.roc_momentum" | "btc_roc_momentum" => Some("btc_roc_momentum"),
+        "v0.obv" | "btc_obv" => Some("btc_obv"),
+        "v0.dvol_regime" => Some("v0.dvol_regime"),
+        "v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => Some("pairs_mr_h1"),
+        "v2.5.tcn"
+        | "v2.5.tcn_overlay"
+        | "tcn_overlay_momentum"
+        | "tcn_overlay_momentum/tcn_overlay_momentum" => {
+            Some("tcn_overlay_momentum/tcn_overlay_momentum")
+        }
+        "v2.5.tcn.weights"
+        | "v2.5.tcn_overlay_weights"
+        | "tcn_overlay_momentum_weights/tcn_overlay_momentum" => {
+            Some("tcn_overlay_momentum_weights/tcn_overlay_momentum")
+        }
+        _ => None,
     }
 }
 
@@ -974,32 +1035,64 @@ fn write_equity_companion_csv(
 
 // ── run_scenario ─────────────────────────────────────────────────────────────
 
+/// The range token of a Lab report's scenario name: `last30d`, `last90d`,
+/// `2024-h1`, `2024-h2` or `custom<start_ms>to<end_ms>`. The Lab reads it back
+/// as the report's span (`ui::lab::equity_loader`, ADR-0055 D9).
+fn range_token(range: &DateRange) -> String {
+    match range {
+        DateRange::Last30d => "last30d".to_string(),
+        DateRange::Last90d => "last90d".to_string(),
+        DateRange::H1_2024 => "2024-h1".to_string(),
+        DateRange::H2_2024 => "2024-h2".to_string(),
+        DateRange::Custom { start_ms, end_ms } => format!("custom{start_ms}to{end_ms}"),
+    }
+}
+
+/// The data-source token of a Lab report's scenario name.
+fn source_token(source: ScenarioDataSource) -> &'static str {
+    match source {
+        ScenarioDataSource::Synthetic => "synthetic",
+        ScenarioDataSource::YahooCache => "yahoo",
+        ScenarioDataSource::BinanceCache => "binance",
+    }
+}
+
 /// Lab write-seam scenario name (review D1 completion, 2026-07-26).
 ///
 /// Carries the actual symbol, range, and data source so per-tuple lab-run
 /// reports (a) never collide across sources at the file layer —
 /// `delete_older_reports` keys on the `-<scenario_name>.md` suffix, so a
 /// shared hardcoded name made a Binance run's report replace the Synthetic
-/// run's on disk — and (b) score correctly against the requested range in
-/// the Compare loader (`ui::lab::equity_loader::range_score`), which the old
-/// `btc-2023-1m-*` constants broke for every 2024-preset run.
+/// run's on disk — and (b) match the requested range in the Lab's report
+/// lookup (`ui::lab::equity_loader`, which reads the range token back as the
+/// report's span, ADR-0055 D9), which the old `btc-2023-1m-*` constants broke
+/// for every 2024-preset run. The single-symbol arms use it; the
+/// cross-sectional arms use [`lab_universe_scenario_name`].
 /// CLI/evidence reports never route through this seam (`main.rs` builds its
 /// report inputs directly), so anchored bodies are untouched by construction.
 fn lab_scenario_name(arm_slug: &str, cfg: &ScenarioConfig) -> String {
-    let range_token = match &cfg.range {
-        DateRange::Last30d => "last30d".to_string(),
-        DateRange::Last90d => "last90d".to_string(),
-        DateRange::H1_2024 => "2024-h1".to_string(),
-        DateRange::H2_2024 => "2024-h2".to_string(),
-        DateRange::Custom { start_ms, end_ms } => format!("custom{start_ms}to{end_ms}"),
-    };
-    let source_token = match cfg.data_source {
-        ScenarioDataSource::Synthetic => "synthetic",
-        ScenarioDataSource::YahooCache => "yahoo",
-        ScenarioDataSource::BinanceCache => "binance",
-    };
     let symbol = cfg.pair.1.to_string().to_ascii_lowercase();
-    format!("{symbol}-{range_token}-{arm_slug}-{source_token}")
+    format!(
+        "{symbol}-{}-{arm_slug}-{}",
+        range_token(&cfg.range),
+        source_token(cfg.data_source)
+    )
+}
+
+/// The cross-sectional sibling of [`lab_scenario_name`] (bug-log #212):
+/// `<arm>-<range>-<source>`, for the momentum, pairs and two TCN arms, which
+/// trade a fixed universe and ignore `cfg.pair`, so the name carries no
+/// symbol (the report's `## Universe` names the coins). Until #212 those arms
+/// wrote a fixed `scenario_name` (`v1.momentum`, …) with no range, so the Lab
+/// could not tell an `H1_2024` run of them from a `Last30d` one. The `<arm>`
+/// prefix is kept, so Compare's `scenario_universe` still rejects these names
+/// as before. CLI/evidence reports never route through this seam.
+fn lab_universe_scenario_name(arm: &str, cfg: &ScenarioConfig) -> String {
+    format!(
+        "{arm}-{}-{}",
+        range_token(&cfg.range),
+        source_token(cfg.data_source)
+    )
 }
 /// Run a backtest for the given `ScenarioConfig` and return an
 /// in-memory `RunReport` (ADR-0030 / T-D-12 / Phase B dispatch).
@@ -1116,7 +1209,7 @@ pub async fn run_scenario(
                 )));
             }
             let input = crate::cli_types::MomentumScenarioInput {
-                scenario_name: "v1.momentum".to_string(),
+                scenario_name: lab_universe_scenario_name("v1.momentum", &cfg),
                 start_year,
                 bar_count,
                 initial_capital: dec!(100_000),
@@ -1165,7 +1258,7 @@ pub async fn run_scenario(
                 )));
             }
             let input = crate::cli_types::PairsScenarioInput {
-                scenario_name: "v1.5a.pairs".to_string(),
+                scenario_name: lab_universe_scenario_name("v1.5a.pairs", &cfg),
                 start_year,
                 bar_count,
                 initial_capital: dec!(100_000),
@@ -1215,13 +1308,13 @@ pub async fn run_scenario(
                 )));
             }
             let input = crate::cli_types::TcnScenarioInput {
-                scenario_name: "v2.5.tcn_overlay".to_string(),
+                scenario_name: lab_universe_scenario_name("v2.5.tcn_overlay", &cfg),
                 start_year,
                 bar_count,
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
-                config_id: "tcn_overlay_momentum".to_string(),
+                config_id: TCN_CONFIG_ID.to_string(),
                 forecaster_id: "passthrough".to_string(),
                 bars_override: None,
                 emit_equity_bin: None,
@@ -1283,13 +1376,13 @@ pub async fn run_scenario(
                 )));
             }
             let input = crate::cli_types::TcnScenarioInput {
-                scenario_name: "v2.5.tcn_overlay_weights".to_string(),
+                scenario_name: lab_universe_scenario_name("v2.5.tcn_overlay_weights", &cfg),
                 start_year,
                 bar_count,
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
-                config_id: "tcn_overlay_momentum".to_string(),
+                config_id: TCN_CONFIG_ID.to_string(),
                 forecaster_id: "tcn-bs1".to_string(),
                 bars_override: None,
                 emit_equity_bin: None,
@@ -3373,6 +3466,25 @@ mod tests {
         assert_eq!(strategy_dir_slug("v0.5.bbands"), "v05-composed-strategies");
         assert_eq!(strategy_dir_slug("v1.5a.mr"), "v15a-mean-reversion-pairs");
         assert_eq!(strategy_dir_slug("v2.5.tcn_overlay"), "v2.5.tcn_overlay");
+        // bug-log #212: the Lab chips and fixtures-build ids the ui's old copy
+        // of this map sent to a raw-id directory.
+        assert_eq!(
+            strategy_dir_slug("v1.5a.pairs"),
+            "v15a-mean-reversion-pairs"
+        );
+        assert_eq!(strategy_dir_slug("v2.5.tcn"), "v2.5.tcn_overlay");
+        assert_eq!(
+            strategy_dir_slug("v2.5.tcn.weights"),
+            "v2.5.tcn_overlay_weights"
+        );
+        assert_eq!(
+            strategy_dir_slug("btc_rsi_reversion"),
+            "v05-composed-strategies"
+        );
+        assert_eq!(
+            strategy_dir_slug("btc_bbands_mean_revert"),
+            "v05-composed-strategies"
+        );
         // ADR-0068 T-D6: _ls aliases and always_short map to the same slugs.
         assert_eq!(strategy_dir_slug("v0.sma_cross_ls"), "v0-paper-sma");
         assert_eq!(strategy_dir_slug("v0.macd_ls"), "v05-composed-strategies");
@@ -3395,5 +3507,159 @@ mod tests {
         assert_eq!(strategy_dir_slug("btc_roc_momentum"), "v0-signal-library");
         assert_eq!(strategy_dir_slug("v0.obv"), "v0-signal-library");
         assert_eq!(strategy_dir_slug("btc_obv"), "v0-signal-library");
+    }
+
+    /// bug-log #212 — `report_strategy_id` maps every dispatch alias to the
+    /// `id:` its arm's writer emits. The table is DECLARED from the dispatch
+    /// arms (each arm's `strategy_id: "…"` or config id); the TCN rows come
+    /// from the writers' own `strategy_id_for` of the config id the arms pass,
+    /// so a TCN writer and this map cannot drift apart. Each written id maps to
+    /// itself (the report side of the Lab's comparison), and the aliases whose
+    /// reports cannot be told from their base arm's map to `None`.
+    #[test]
+    fn report_strategy_id_is_what_each_writer_emits() {
+        let tcn = crate::scenarios::tcn_overlay::strategy_id_for(TCN_CONFIG_ID);
+        let tcn_weights = crate::scenarios::tcn_overlay_weights::strategy_id_for(TCN_CONFIG_ID);
+        assert_eq!(
+            (tcn.as_str(), tcn_weights.as_str()),
+            (
+                "tcn_overlay_momentum/tcn_overlay_momentum",
+                "tcn_overlay_momentum_weights/tcn_overlay_momentum"
+            ),
+            "the TCN writers' ids, as the committed v25-tcn-overlay reports carry them"
+        );
+        let table: [(&[&str], &str); 14] = [
+            (&["v1.momentum", "top10_momentum_h1"], "top10_momentum_h1"),
+            (
+                &["v0.sma", "sma_cross", "sma_crossover", "sma_cross_h1"],
+                "sma_crossover",
+            ),
+            (
+                &["v0.5.macd", "macd_trend", "btc_macd_trend", "macd_trend_h1"],
+                "btc_macd_trend",
+            ),
+            (
+                &[
+                    "v0.5.rsi",
+                    "rsi_reversion",
+                    "btc_rsi_reversion",
+                    "rsi_reversion_h1",
+                ],
+                "btc_rsi_reversion",
+            ),
+            (
+                &[
+                    "v0.5.bbands",
+                    "bbands_mean_revert",
+                    "btc_bbands_mean_revert",
+                    "bbands_mean_revert_h1",
+                ],
+                "btc_bbands_mean_revert",
+            ),
+            (
+                &["v0.donchian_break", "btc_donchian_break"],
+                "btc_donchian_break",
+            ),
+            (
+                &["v0.donchian_floor", "btc_donchian_floor"],
+                "btc_donchian_floor",
+            ),
+            (&["v0.vol_breakout", "btc_vol_breakout"], "btc_vol_breakout"),
+            (&["v0.roc_momentum", "btc_roc_momentum"], "btc_roc_momentum"),
+            (&["v0.obv", "btc_obv"], "btc_obv"),
+            (&["v0.dvol_regime"], "v0.dvol_regime"),
+            (&["v1.5a.mr", "v1.5a.pairs", "pairs_mr_h1"], "pairs_mr_h1"),
+            (
+                &["v2.5.tcn", "v2.5.tcn_overlay", "tcn_overlay_momentum"],
+                tcn.as_str(),
+            ),
+            (
+                &["v2.5.tcn.weights", "v2.5.tcn_overlay_weights"],
+                tcn_weights.as_str(),
+            ),
+        ];
+        for (aliases, written) in &table {
+            for alias in *aliases {
+                assert_eq!(
+                    report_strategy_id(alias),
+                    Some(*written),
+                    "alias `{alias}` must map to the id its writer emits"
+                );
+            }
+            assert_eq!(
+                report_strategy_id(written),
+                Some(*written),
+                "a report's own `id:` `{written}` must map to itself"
+            );
+        }
+        for id in [
+            "v0.sma_cross_ls",
+            "v0.macd_ls",
+            "v0.rsi_ls",
+            "v0.bbands_ls",
+            "v0.always_short",
+            "v0.buyhold",
+            "v0.macro_riskon",
+            "some_unknown_id",
+        ] {
+            assert_eq!(
+                report_strategy_id(id),
+                None,
+                "`{id}` writes no report the Lab can tell from another arm's"
+            );
+        }
+    }
+
+    /// bug-log #212 — the Lab scenario names carry range and source, the
+    /// cross-sectional ones (`<arm>-<range>-<source>`) as the single-symbol
+    /// ones (`<symbol>-<range>-<arm>-<source>`) do. Every expected name is
+    /// DECLARED as a literal.
+    #[test]
+    fn cross_sectional_lab_scenario_names_carry_range_and_source() {
+        let cases: [(DateRange, ScenarioDataSource, &str, &str); 5] = [
+            (
+                DateRange::Last30d,
+                ScenarioDataSource::Synthetic,
+                "v1.momentum-last30d-synthetic",
+                "xrpusdt-last30d-sma-cross-synthetic",
+            ),
+            (
+                DateRange::Last90d,
+                ScenarioDataSource::Synthetic,
+                "v1.momentum-last90d-synthetic",
+                "xrpusdt-last90d-sma-cross-synthetic",
+            ),
+            (
+                DateRange::H1_2024,
+                ScenarioDataSource::YahooCache,
+                "v1.momentum-2024-h1-yahoo",
+                "xrpusdt-2024-h1-sma-cross-yahoo",
+            ),
+            (
+                DateRange::H2_2024,
+                ScenarioDataSource::BinanceCache,
+                "v1.momentum-2024-h2-binance",
+                "xrpusdt-2024-h2-sma-cross-binance",
+            ),
+            (
+                DateRange::Custom {
+                    start_ms: 1_704_067_200_000,
+                    end_ms: 1_706_745_600_000,
+                },
+                ScenarioDataSource::Synthetic,
+                "v1.momentum-custom1704067200000to1706745600000-synthetic",
+                "xrpusdt-custom1704067200000to1706745600000-sma-cross-synthetic",
+            ),
+        ];
+        for (range, source, universe_name, symbol_name) in cases {
+            let mut cfg = config_with_seed(valid_seed());
+            cfg.range = range;
+            cfg.data_source = source;
+            assert_eq!(
+                lab_universe_scenario_name("v1.momentum", &cfg),
+                universe_name
+            );
+            assert_eq!(lab_scenario_name("sma-cross", &cfg), symbol_name);
+        }
     }
 }

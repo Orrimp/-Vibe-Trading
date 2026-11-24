@@ -673,35 +673,23 @@ fn main() -> Result<()> {
     {
         use trading_core::StrategyId;
         use ui::state::{PanelState, StrategyRow, StrategyStatus};
-        let seed_rows: Vec<StrategyRow> = [
-            // Single-symbol strategies (Wave D-2 — full chart per Phase A R2).
-            ("v0.sma", "config/strategies/sma_cross.toml"),
-            ("v0.5.macd", "config/strategies/macd_trend.toml"),
-            ("v0.5.rsi", "config/strategies/rsi_reversion.toml"),
-            ("v0.5.bbands", "config/strategies/bbands_mean_revert.toml"),
-            // Cross-sectional strategies (equity-only render until v0.2.0 D-2.5).
-            ("v1.momentum", "config/strategies/top10_momentum_h1.toml"),
-            ("v1.5a.pairs", "config/strategies/pairs_mr_h1.toml"),
-            ("v2.5.tcn", "config/strategies/tcn_overlay_momentum.toml"),
-            (
-                "v2.5.tcn.weights",
-                "config/strategies/tcn_overlay_momentum.toml",
-            ),
-        ]
-        .into_iter()
-        .map(|(id, path)| StrategyRow {
-            id: StrategyId(id.into()),
-            short_hash: smol_str::SmolStr::new("0000000"),
-            full_hash: smol_str::SmolStr::new(
-                "0000000000000000000000000000000000000000000000000000000000000000",
-            ),
-            status: StrategyStatus::Ready,
-            last_event: None,
-            signals_60s: 0,
-            has_position: false,
-            source_path: smol_str::SmolStr::new(path),
-        })
-        .collect();
+        // The chip list lives in `ui::lab::defaults::LAB_SEED_STRATEGIES`, so
+        // the Lab's report-lookup pins iterate the list seeded here (#212).
+        let seed_rows: Vec<StrategyRow> = ui::lab::defaults::LAB_SEED_STRATEGIES
+            .into_iter()
+            .map(|(id, path)| StrategyRow {
+                id: StrategyId(id.into()),
+                short_hash: smol_str::SmolStr::new("0000000"),
+                full_hash: smol_str::SmolStr::new(
+                    "0000000000000000000000000000000000000000000000000000000000000000",
+                ),
+                status: StrategyStatus::Ready,
+                last_event: None,
+                signals_60s: 0,
+                has_position: false,
+                source_path: smol_str::SmolStr::new(path),
+            })
+            .collect();
         cockpit.strategies = PanelState::Ready(seed_rows);
     }
 

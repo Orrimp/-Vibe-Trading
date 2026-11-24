@@ -51,6 +51,27 @@ pub const LAB_DEFAULT_SEED: [u8; 32] = {
     seed
 };
 
+/// The Lab strategy chips `cockpit_live` seeds the registry with, as
+/// `(strategy id, config source path)` — the bin iterates this list, so a pin
+/// over it is a pin over the production chips (bug-log #212: five of them
+/// were read from a directory the engine never writes). Moved verbatim from
+/// `crates/ui/src/bin/cockpit_live.rs`.
+pub const LAB_SEED_STRATEGIES: [(&str, &str); 8] = [
+    // Single-symbol strategies (Wave D-2 — full chart per Phase A R2).
+    ("v0.sma", "config/strategies/sma_cross.toml"),
+    ("v0.5.macd", "config/strategies/macd_trend.toml"),
+    ("v0.5.rsi", "config/strategies/rsi_reversion.toml"),
+    ("v0.5.bbands", "config/strategies/bbands_mean_revert.toml"),
+    // Cross-sectional strategies (equity-only render until v0.2.0 D-2.5).
+    ("v1.momentum", "config/strategies/top10_momentum_h1.toml"),
+    ("v1.5a.pairs", "config/strategies/pairs_mr_h1.toml"),
+    ("v2.5.tcn", "config/strategies/tcn_overlay_momentum.toml"),
+    (
+        "v2.5.tcn.weights",
+        "config/strategies/tcn_overlay_momentum.toml",
+    ),
+];
+
 /// Build the cold-start strategy id.
 #[must_use]
 pub fn cold_start_strategy() -> StrategyId {

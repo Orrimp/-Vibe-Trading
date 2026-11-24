@@ -53,6 +53,26 @@
 //! E3-RE-P1): the old file stays GREEN under E3-RE-P1 and prints its
 //! "report_path=None … skipped" line under `--nocapture`; under E3-RE-P2 it
 //! stays GREEN through its `NotImplemented` skip.
+//!
+//! ## bug-log #212 — every Lab chip's run is read back
+//!
+//! [`inner::every_lab_chip_run_is_read_back_from_its_write_root`] runs each
+//! chip `cockpit_live` seeds (`ui::lab::defaults::LAB_SEED_STRATEGIES`)
+//! through the real engine (Synthetic, `Last30d`, BTCUSDT, `write_report`,
+//! `reports_dir` = a tempdir) and reads it back through `EquityCache`. Per
+//! chip: the written report's `id:` line, scanned from its frontmatter here,
+//! equals `backtest::engine::report_strategy_id(chip)`; and for each of the
+//! Lab's 10 pairs (`ui::lab::universe::XRP_FIRST_UNIVERSE`) the cold read
+//! resolves the written file iff the report states that coin (its Summary
+//! `| Symbol |` row or its `## Universe`, scanned here), else `NoReport`. So
+//! the pairs arm, whose universe is 4 coins, is pinned two-sided: BTCUSDT
+//! resolves, XRPUSDT does not (ADR-0055 D9). `v2.5.tcn.weights` is asserted
+//! to return its "requires --features candle" error and write nothing: no ui
+//! build enables `backtest/candle` (a declared outcome, not a skip; its
+//! read-back is `lab::equity_loader`'s M8, from the committed reports' id).
+//! H3 above stays green only because the cross-sectional arms' Lab scenario
+//! names carry their range since #212 (`v1.momentum-last90d-synthetic`); the
+//! #212 probe table is in `lab_buy_sell_overlay_render.rs`.
 
 #[cfg(feature = "live")]
 mod inner {
@@ -183,5 +203,131 @@ mod inner {
             "H3: PASS — {} equity points equal between in-memory and cached-disk",
             in_memory.len()
         );
+    }
+
+    /// The `id:` value(s) in a report's frontmatter (between its first two
+    /// `---` lines), scanned without the Lab's parser: the engine writes the
+    /// `strategy:` block's `id:` unindented, a hand-written report indents it.
+    fn frontmatter_ids(text: &str) -> Vec<String> {
+        text.lines()
+            .skip_while(|l| l.trim() != "---")
+            .skip(1)
+            .take_while(|l| l.trim() != "---")
+            .filter_map(|l| l.trim_start().strip_prefix("id: "))
+            .map(|v| v.trim().to_string())
+            .collect()
+    }
+
+    /// The coins a report states, scanned without the Lab's parser: the value
+    /// of a `| Symbol | … |` table row, and every `- <coin>` line of its
+    /// `## Universe` section.
+    fn stated_coins(text: &str) -> Vec<String> {
+        let mut coins: Vec<String> = text
+            .lines()
+            .filter_map(|l| {
+                let cells: Vec<&str> = l.split('|').map(str::trim).collect();
+                (cells.len() >= 3 && cells[1] == "Symbol").then(|| cells[2].to_string())
+            })
+            .collect();
+        coins.extend(
+            text.lines()
+                .skip_while(|l| !l.starts_with("## Universe"))
+                .skip(1)
+                .take_while(|l| !l.starts_with("## "))
+                .filter_map(|l| l.strip_prefix("- "))
+                .map(|c| c.trim().to_string()),
+        );
+        coins
+    }
+
+    /// bug-log #212 — every Lab chip's persisted run is read back from the
+    /// root the engine wrote it to, for exactly the coins its report states
+    /// (module doc § bug-log #212).
+    #[tokio::test]
+    async fn every_lab_chip_run_is_read_back_from_its_write_root() {
+        use ui::lab::equity_loader::EquityLoadError;
+        for (chip, _) in ui::lab::defaults::LAB_SEED_STRATEGIES {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let mut cfg = test_config(tmp.path());
+            cfg.strategy = StrategyId(chip.into());
+            cfg.pair = (Venue::Binance, Symbol::new("BTCUSDT"));
+            cfg.range = EngDateRange::Last30d;
+            let (_handle, cancel_rx) = backtest::cancel::cancellation_pair();
+            let progress_tx = backtest::progress::ProgressSender::disabled();
+            let result = backtest::engine::run_scenario(cfg, cancel_rx, progress_tx).await;
+
+            if chip == "v2.5.tcn.weights" {
+                let err = result
+                    .err()
+                    .unwrap_or_else(|| panic!("{chip}: without backtest/candle the run must fail"));
+                assert!(
+                    err.to_string().contains("requires --features candle"),
+                    "{chip}: the declared outcome is the candle error, got: {err}"
+                );
+                assert_eq!(
+                    std::fs::read_dir(tmp.path()).expect("read tmp").count(),
+                    0,
+                    "{chip}: a failed run writes nothing"
+                );
+                continue;
+            }
+
+            let report = result.unwrap_or_else(|e| panic!("{chip}: run_scenario failed: {e}"));
+            let path = report
+                .report_path
+                .clone()
+                .unwrap_or_else(|| panic!("{chip}: write_report=true must return a report_path"));
+            let read_root = path
+                .parent()
+                .and_then(Path::parent)
+                .and_then(Path::parent)
+                .expect("a <root>/<slug>/reports/<file> report path");
+            assert_eq!(read_root, tmp.path(), "{chip}: write-root == read-root");
+            let text = std::fs::read_to_string(&path).expect("read the written report");
+            let ids = frontmatter_ids(&text);
+            assert_eq!(
+                ids.iter().map(String::as_str).collect::<Vec<_>>(),
+                backtest::engine::report_strategy_id(chip)
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                "{chip}: the written `id:` must be the one report_strategy_id names"
+            );
+            let coins = stated_coins(&text);
+            assert!(
+                coins.iter().any(|c| c == "BTCUSDT"),
+                "{chip}: the BTCUSDT run states BTCUSDT; got {coins:?}"
+            );
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .expect("utf-8 report name")
+                .to_string();
+
+            let mut cache = EquityCache::new();
+            for (_, coin) in ui::lab::universe::XRP_FIRST_UNIVERSE {
+                let tuple = LabTuple {
+                    strategy: SmolStr::new(chip),
+                    symbol: SmolStr::new(coin),
+                    range: DateRange::Preset(Preset::Last30d),
+                    source: LabDataSource::Synthetic,
+                };
+                let got = cache.get_or_load(&tuple, read_root);
+                if coins.iter().any(|c| c == coin) {
+                    let series =
+                        got.unwrap_or_else(|e| panic!("{chip} × {coin}: must read back: {e}"));
+                    assert_eq!(
+                        series.source_report.as_str(),
+                        name,
+                        "{chip} × {coin}: the cold read must be the written report"
+                    );
+                } else {
+                    assert!(
+                        matches!(got, Err(EquityLoadError::NoReport { .. })),
+                        "{chip} × {coin}: the report does not state the coin, so NoReport; \
+                         got {got:?}"
+                    );
+                }
+            }
+        }
     }
 }

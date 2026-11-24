@@ -341,66 +341,108 @@ pub const COMPARE_CELL_H: f32 = crate::widgets::matrix::CELL_MIN_H;
 /// [`synthetic_candles`] (`fixtures::fixed_ts(n * 60)`, 2024-01-15 12:00Z +
 /// `n` minutes), so the chart's equity overlay draws over those bars.
 ///
-/// `scenario` becomes the front-matter `scenario:` (the Lab's range match
-/// reads it); `symbol` is the single `## Universe` entry (the Lab's symbol
-/// match). `level` shifts the whole curve vertically — the six values are
-/// `level + {0, +3000, +1000, -3000, +4000, +8000}` — so two runs can be put
-/// in disjoint y-bands. Shared by the Lab overlay render tests
-/// (`live_equity_render.rs`, `lab_buy_sell_overlay_render.rs`).
+/// `strategy_id` becomes the `strategy:` block's `id:` (the Lab's strategy
+/// match, bug-log #212); `scenario` becomes the front-matter `scenario:` (the
+/// Lab's range match reads its span token); `symbol` is the single
+/// `## Universe` entry (the Lab's coin match). `level` shifts the whole curve
+/// vertically — the six values are `level + {0, +3000, +1000, -3000, +4000,
+/// +8000}` — so two runs can be put in disjoint y-bands. Shared by the Lab
+/// overlay render tests (`live_equity_render.rs`,
+/// `lab_buy_sell_overlay_render.rs`). [`lab_report`] builds the general form.
 #[must_use]
-pub fn lab_runs_report_at(scenario: &str, symbol: &str, level: i64) -> String {
-    let bar_ms = |n: i64| crate::fixtures::fixed_ts(n * 60).unix_millis();
-    let p = |off: i64| level + off;
-    format!(
-        r"---
-scenario: {scenario}
-seed: 0xC0FFEE
-generated: 2026-06-01T12:00:00Z
-wall_clock_s: 0.0
-data_source: synthetic
----
-
-# Backtest Report — {scenario}
-
-## Summary
-
-| Metric          | Value             |
-|-----------------|-------------------|
-| Scenario        | {scenario}        |
-| Initial capital | ${} USDT          |
-| Final equity    | ${} USDT          |
-| Max drawdown    | 18.00%            |
-
-## Universe
-
-- {symbol}
-
-## Equity curve
-
-| Timestamp (ms) | Equity (USDT) |
-|----------------|---------------|
-| {}    | {}.00     |
-| {}    | {}.00     |
-| {}    | {}.00     |
-| {}    | {}.00     |
-| {}    | {}.00     |
-| {}    | {}.00     |
-",
+pub fn lab_runs_report_at(strategy_id: &str, scenario: &str, symbol: &str, level: i64) -> String {
+    lab_report(&LabReportFixture {
+        strategy_id: Some(strategy_id),
+        scenario,
+        symbol_row: None,
+        universe: &[symbol],
+        generated: "2026-06-01T12:00:00Z",
+        data_source: "synthetic",
         level,
-        p(8000),
-        bar_ms(0),
-        p(0),
-        bar_ms(10),
-        p(3000),
-        bar_ms(20),
-        p(1000),
-        bar_ms(30),
-        p(-3000),
-        bar_ms(40),
-        p(4000),
-        bar_ms(50),
-        p(8000),
-    )
+        falling: false,
+    })
+}
+
+/// The inputs of [`lab_report`] (bug-log #212).
+#[derive(Debug, Clone, Copy)]
+pub struct LabReportFixture<'a> {
+    /// The `strategy:` block's `id:`, written unindented as the engine writes
+    /// it; `None` writes no `strategy:` block.
+    pub strategy_id: Option<&'a str>,
+    /// The front-matter `scenario:` (and the Summary's `Scenario` row).
+    pub scenario: &'a str,
+    /// A `## Summary` `| Symbol |` row, the coin every single-symbol engine
+    /// report states; `None` writes no such row.
+    pub symbol_row: Option<&'a str>,
+    /// The `## Universe` entries; empty writes no `## Universe` section.
+    pub universe: &'a [&'a str],
+    /// The front-matter `generated:` value.
+    pub generated: &'a str,
+    /// The front-matter `data_source:` value.
+    pub data_source: &'a str,
+    /// The first equity sample; the curve is shifted to start here.
+    pub level: i64,
+    /// `false`: the six samples are `level + {0, +3000, +1000, -3000, +4000,
+    /// +8000}` (rising, as [`lab_runs_report_at`]); `true`: the same offsets
+    /// negated (falling), so two runs of one tuple differ on screen.
+    pub falling: bool,
+}
+
+/// A backtest report with the given strategy, coin, span, write time and
+/// curve, whose six `## Equity curve` samples sit at the open times of bars
+/// 0, 10, …, 50 of [`synthetic_candles`] (see [`lab_runs_report_at`]). The
+/// Lab's report lookup reads its `strategy:` `id:`, Summary `| Symbol |` row,
+/// `## Universe`, `scenario:` span token and `data_source:` (ADR-0055 D9,
+/// bug-log #212).
+#[must_use]
+pub fn lab_report(f: &LabReportFixture<'_>) -> String {
+    use std::fmt::Write as _;
+    let bar_ms = |n: i64| crate::fixtures::fixed_ts(n * 60).unix_millis();
+    let sign = if f.falling { -1 } else { 1 };
+    let offsets = [0_i64, 3000, 1000, -3000, 4000, 8000].map(|o| sign * o);
+    let p = |off: i64| f.level + off;
+    let mut out = String::new();
+    let _ = write!(
+        out,
+        "---\nscenario: {}\nseed: 0xC0FFEE\ngenerated: {}\nwall_clock_s: 0.0\ndata_source: {}\n",
+        f.scenario, f.generated, f.data_source
+    );
+    if let Some(id) = f.strategy_id {
+        let _ = write!(out, "strategy:\nid: {id}\n");
+    }
+    let _ = write!(
+        out,
+        "---\n\n# Backtest Report — {sc}\n\n## Summary\n\n\
+         | Metric          | Value             |\n\
+         |-----------------|-------------------|\n\
+         | Scenario        | {sc}        |\n",
+        sc = f.scenario
+    );
+    if let Some(sym) = f.symbol_row {
+        let _ = writeln!(out, "| Symbol          | {sym}           |");
+    }
+    let _ = write!(
+        out,
+        "| Initial capital | ${} USDT          |\n\
+         | Final equity    | ${} USDT          |\n\
+         | Max drawdown    | 18.00%            |\n\n",
+        f.level,
+        p(offsets[5])
+    );
+    if !f.universe.is_empty() {
+        out.push_str("## Universe\n\n");
+        for sym in f.universe {
+            let _ = writeln!(out, "- {sym}");
+        }
+        out.push('\n');
+    }
+    out.push_str(
+        "## Equity curve\n\n| Timestamp (ms) | Equity (USDT) |\n|----------------|---------------|\n",
+    );
+    for (i, off) in (0_i64..).zip(offsets) {
+        let _ = writeln!(out, "| {}    | {}.00     |", bar_ms(i * 10), p(off));
+    }
+    out
 }
 
 /// bug-log #211 — the chart's equity-range padding: `RANGE_PAD_FRACTION` of

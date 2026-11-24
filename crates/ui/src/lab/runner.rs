@@ -982,6 +982,30 @@ async fn fetch_with_backoff(
 
 // ── LabRunConfig → ScenarioConfig mapper (T-D-N9 / R3.1–R3.5) ───────────────
 
+/// A Lab `Custom` range's epoch-millisecond bounds, from its ISO-8601 strings:
+/// full RFC 3339, or a date-only `YYYY-MM-DD` read as midnight UTC. The one
+/// parse the run mapper ([`lab_config_to_scenario`]) and the Lab's report
+/// lookup (`lab::equity_loader`, which matches a report's
+/// `custom<start_ms>to<end_ms>` token against it, bug-log #212) share.
+///
+/// # Errors
+///
+/// `Err("invalid custom date '<s>': …")` when either bound parses as neither.
+pub(crate) fn custom_range_ms(start_raw: &str, end_raw: &str) -> Result<(i64, i64), SmolStr> {
+    let parse_ms = |s: &str| -> Result<i64, SmolStr> {
+        // Accept full ISO-8601 or date-only "YYYY-MM-DD".
+        let dt = time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .or_else(|_| {
+                // Try date-only: append T00:00:00Z
+                let padded = format!("{s}T00:00:00Z");
+                time::OffsetDateTime::parse(&padded, &time::format_description::well_known::Rfc3339)
+            })
+            .map_err(|e| SmolStr::new(format!("invalid custom date '{s}': {e}")))?;
+        Ok(dt.unix_timestamp() * 1000)
+    };
+    Ok((parse_ms(start_raw)?, parse_ms(end_raw)?))
+}
+
 /// Map a `LabRunConfig` to a `backtest::ScenarioConfig`.
 ///
 /// The `range_label` `SmolStr` maps to `backtest::engine::DateRange` presets.
@@ -1010,25 +1034,7 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
             if let Some(rest) = other.strip_prefix("Custom:") {
                 let parts: Vec<&str> = rest.splitn(2, ':').collect();
                 if parts.len() == 2 {
-                    let parse_ms = |s: &str| -> Result<i64, SmolStr> {
-                        // Accept full ISO-8601 or date-only "YYYY-MM-DD".
-                        let dt = time::OffsetDateTime::parse(
-                            s,
-                            &time::format_description::well_known::Rfc3339,
-                        )
-                        .or_else(|_| {
-                            // Try date-only: append T00:00:00Z
-                            let padded = format!("{s}T00:00:00Z");
-                            time::OffsetDateTime::parse(
-                                &padded,
-                                &time::format_description::well_known::Rfc3339,
-                            )
-                        })
-                        .map_err(|e| SmolStr::new(format!("invalid custom date '{s}': {e}")))?;
-                        Ok(dt.unix_timestamp() * 1000)
-                    };
-                    let start_ms = parse_ms(parts[0])?;
-                    let end_ms = parse_ms(parts[1])?;
+                    let (start_ms, end_ms) = custom_range_ms(parts[0], parts[1])?;
                     DateRange::Custom { start_ms, end_ms }
                 } else {
                     return Err(SmolStr::new(format!("unknown range: {other}")));

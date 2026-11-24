@@ -184,12 +184,13 @@ DECLARED: dict[str, dict] = {
                "(macOS listed 0).",
     },
     "lab_run_engine": {
-        "macos": 1,
-        "windows": 1,
-        "why": "`inner::h3_in_memory_equals_cached_disk` under `#[cfg(feature = "
-               "\"live\")] mod inner`. Wave E3 deleted the always-passing "
-               "`#[cfg(not(feature = \"live\"))]` stub, so a build without `live` "
-               "lists 0, not 1.",
+        "macos": 2,
+        "windows": 2,
+        "why": "`inner::h3_in_memory_equals_cached_disk` + (bug-log #212, 1 -> 2) "
+               "`inner::every_lab_chip_run_is_read_back_from_its_write_root`, both "
+               "under `#[cfg(feature = \"live\")] mod inner`, no OS cfg. Wave E3 "
+               "deleted the always-passing `#[cfg(not(feature = \"live\"))]` stub, "
+               "so a build without `live` lists 0, not 2.",
     },
     # ── Wave F (the Yahoo preload arm, called off-runtime) ───────────────────
     "spawn_lab_run_yahoo_harness": {

@@ -11,6 +11,15 @@ use anyhow::Result;
 use crate::cli_types::TcnScenarioInput;
 use crate::scenarios::tcn_overlay::TcnOverlayRunResult;
 
+/// The `strategy:` `id:` a real-weights TCN run's report carries:
+/// `tcn_overlay_momentum_weights/<config_id>`. Outside the `candle` gate so
+/// `backtest::engine::report_strategy_id` is pinned against it in every build
+/// (bug-log #212); the `candle` run takes its `strategy_id` from here.
+#[must_use]
+pub fn strategy_id_for(config_id: &str) -> String {
+    format!("tcn_overlay_momentum_weights/{config_id}")
+}
+
 // ── Run function ──────────────────────────────────────────────────────────────
 
 /// Run the v2.5 TCN overlay momentum backtest with real anchor weights.
@@ -69,7 +78,7 @@ pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResu
         let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
             .with_context(|| format!("load momentum config: {}", rel_path.display()))?;
         let universe_list: Vec<String> = cfg.universe.iter().map(ToString::to_string).collect();
-        let strategy_id_str = format!("tcn_overlay_momentum_weights/{}", input.config_id);
+        let strategy_id_str = strategy_id_for(&input.config_id);
 
         let base = strategy::MomentumStrategy::from_config(
             cfg,
