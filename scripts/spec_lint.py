@@ -25,8 +25,16 @@ artifacts:
   - `story-done-changelog-missing` — every `Status: done` story must be
     indexed in the root `CHANGELOG.md` (by slug / REQ-id / rollup allowlist).
 
+The triad's join key is guarded by two rules of its own (bug-log `#216`),
+because the first two legs SKIP a story whose key they cannot read, and a
+skip reads as a pass:
+  - `trace-ref-unparsed`          — a story with no column-0 `- Trace:` line,
+    more than one, or one in neither accepted form (see below).
+  - `trace-ref-dangling`          — a parsed REQ-id with no `[[req]]` row in
+    `trace.toml`.
+
 Story ↔ trace-row resolution is via the REQ-id embedded in the story's own
-`### References` block (a "- Trace: `REQ-XXX` (state=`...`)" line), NOT by
+`### References` block (its `- Trace:` line; contract below), NOT by
 slug-string matching — story filenames sanitize dots to hyphens
 (`v0.2.0` → `v0-2-0`) and disambiguate nested slugs (lumen phases gain a
 `lumen-` prefix), so filename-derived slugs do not always equal the
@@ -37,6 +45,13 @@ citation at all (`- Trace: none — known trace-coverage gap`) and for the
 `~18` iteration/follow-up trace rows that intentionally have NO dedicated
 story (they fold as `Tasks/Subtasks` bullets under their base story per the
 `CHANGELOG_ROLLUP_ALLOWLIST` convention — reused here for that fold too).
+
+The `- Trace:` line contract: every story has EXACTLY ONE line starting at
+column 0 with `- Trace:`, in one of two forms —
+    - Trace: `REQ-XXX-001` (state=`shipped`)      (text may follow the `)`)
+    - Trace: none — <reason>                       (the declared gap)
+Anything else (a bare id, a missing or doubled line, a word between the
+state's closing backtick and the `)`) is `trace-ref-unparsed`.
 
 Exit code = number of violation CATEGORIES that triggered (0 = clean).
 Pass --all to print every violation regardless of category count.
@@ -114,6 +129,8 @@ CATEGORIES = (
     "status-drift",
     "story-done-trace-drift",
     "story-done-changelog-missing",
+    "trace-ref-unparsed",
+    "trace-ref-dangling",
     "trace-broken-path",
     "adr-not-registered",
     "dead-cargo-citation",
@@ -178,7 +195,7 @@ def parse_frontmatter(text: str) -> dict[str, str] | None:
 #   Status: {backlog|ready-for-dev|in-progress|review|done|retired}
 #   ...
 #   ### References
-#   - Trace: `REQ-XXX-001` (state=`shipped`)
+#   - Trace: `REQ-XXX-001` (state=`shipped`)     <- or: - Trace: none — <reason>
 #   ...
 #   - Source feature folder: `spec/[v1/|v2/|v3/]<slug>/` - frontmatter status
 #     **`shipped`** (verbatim), ...
@@ -187,7 +204,16 @@ def parse_frontmatter(text: str) -> dict[str, str] | None:
 STORY_FILENAME_RE = re.compile(r"^(\d+)-(\d+)-(.+)\.md$")
 STATUS_LINE_RE = re.compile(r"^Status:\s*(\S+)", re.MULTILINE)
 TRACE_REF_RE = re.compile(r"^- Trace:\s*`([^`]+)`\s*\(state=`([^`]*)`\)", re.MULTILINE)
+# The declared-gap form, reason required (bug-log `#216`). Matched one LINE at a
+# time by `_trace_line_problems`, never searched over a whole file.
+TRACE_NONE_RE = re.compile(r"^- Trace:[ \t]*none[ \t]+—[ \t]*\S")
 SOURCE_FOLDER_RE = re.compile(r"Source feature folder:\s*`spec/([^`]+?)/?`")
+
+# The two accepted `- Trace:` forms, spelled out for violation messages.
+TRACE_FORMS_HINT = (
+    "``- Trace: `REQ-…` (state=`…`)`` (text may follow the `)`) or "
+    "`- Trace: none — <reason>`"
+)
 
 
 @dataclass
@@ -199,6 +225,45 @@ class Story:
     status: str | None
     trace_req_id: str | None       # REQ-id cited by "- Trace:" line, if any
     trace_embedded_state: str | None  # the (state=`...`) annotation on that same line
+    # Line number (1-based) of the line `trace_req_id` was read from, or None.
+    trace_line_no: int | None = None
+    # Every way this story's `- Trace:` lines break the one-line contract;
+    # empty = the contract holds. Reported by `trace-ref-unparsed` (bug-log #216).
+    trace_line_problems: list[str] = field(default_factory=list)
+
+
+def _trace_line_problems(text: str) -> list[str]:
+    """Classify every column-0 `- Trace:` line against the two accepted forms.
+
+    bug-log `#216`: the triad's join key comes from ONE `TRACE_REF_RE.search`
+    over the whole file, and a failure to parse folds into the same `None` as
+    the declared gap. The downstream rules read `None` as "not my concern", so a
+    garbled, missing or doubled line was skipped with no output at all.
+
+    `split("\\n")`, not `splitlines()`: the `^` of `re.MULTILINE` only matches
+    after `\\n`, and `splitlines()` also breaks on \\x0b, \\x0c, \\x1c-\\x1e,
+    \\x85 and U+2028/2029, so the two could disagree about what a line is.
+    """
+    lines = [
+        (n, line) for n, line in enumerate(text.split("\n"), 1) if line.startswith("- Trace:")
+    ]
+    if not lines:
+        return ["no `- Trace:` line"]
+    out: list[str] = []
+    if len(lines) > 1:
+        out.append(
+            f"{len(lines)} `- Trace:` lines (lines {', '.join(str(n) for n, _ in lines)}); "
+            "the triad reads only the first line in the backticked-id form, and nothing "
+            "if that one is `none`"
+        )
+    for n, line in lines:
+        m = TRACE_REF_RE.match(line)
+        # `!= "none"` mirrors parse_story's `trace_req_id` predicate exactly, so
+        # "accepted" means "visible to the triad, or a declared gap with a reason".
+        if (m and m.group(1) != "none") or TRACE_NONE_RE.match(line):
+            continue
+        out.append(f"line {n} is in neither accepted form: {line[:120]!r}")
+    return out
 
 
 def parse_story(path: Path) -> Story | None:
@@ -216,6 +281,8 @@ def parse_story(path: Path) -> Story | None:
         status=sm.group(1) if sm else None,
         trace_req_id=tm.group(1) if (tm and tm.group(1) != "none") else None,
         trace_embedded_state=tm.group(2) if tm else None,
+        trace_line_no=text.count("\n", 0, tm.start()) + 1 if tm else None,
+        trace_line_problems=_trace_line_problems(text),
     )
 
 
@@ -781,6 +848,79 @@ def check_story_done_no_tests(report: Report, evidence_dir: Path | None = None) 
 
 
 # ---------------------------------------------------------------------------
+# Check: trace-ref-unparsed / trace-ref-dangling — the triad's join key
+# ---------------------------------------------------------------------------
+#
+# bug-log `#216`. `status-drift` and `story-done-trace-drift` key on the REQ-id
+# a story's `- Trace:` line names, and both SKIP a story whose id is None or
+# resolves to no row — by design, since "no row" is also the declared gap. So
+# a line they cannot read (a bare id, story 2-63's `(state=`in-progress` since
+# …)`, a `- **Trace:**` variant, a second line, no line at all) and an id with
+# a typo were both skipped with no output: the rule could not see its subject,
+# and that read as a pass (the `#188` family). These two rules make each such
+# story a violation of its own. The remaining leg, story-done-changelog-missing,
+# falls back to the filename slug and so never skipped; it needs no guard.
+
+def check_trace_ref_unparsed(report: Report) -> None:
+    for story in iter_stories():
+        for problem in story.trace_line_problems:
+            # The stock create-story template has no `- Trace:` line, so a fresh
+            # story lands here until its author adds one; say so where it bites.
+            fresh = (
+                " (a fresh bmad-create-story output has none until it is added)"
+                if problem.startswith("no ") else ""
+            )
+            # Say what the triad actually reads: a doubled line, or one broken
+            # across `\n` that the whole-file search still matches, leaves the
+            # story PARTLY visible, not invisible.
+            seen = (
+                f"status-drift and story-done-trace-drift read only line "
+                f"{story.trace_line_no} ({story.trace_req_id})"
+                if story.trace_req_id is not None
+                else "status-drift and story-done-trace-drift cannot see this story"
+            )
+            report.add(
+                "trace-ref-unparsed",
+                story.path,
+                f"{problem} — a story needs exactly one column-0 `- Trace:` line (by "
+                f"convention under ### References), in one of the two accepted forms: "
+                f"{TRACE_FORMS_HINT}{fresh}. Until it does, {seen} (bug-log #216)",
+            )
+
+
+def check_trace_ref_dangling(report: Report) -> None:
+    ids = {r.get("id") for r in load_trace_rows()}
+    missing_ledger = "" if TRACE_TOML.exists() else " (trace.toml itself was not found)"
+    for story in iter_stories():
+        if story.trace_req_id is None or story.trace_req_id in ids:
+            continue
+        report.add(
+            "trace-ref-dangling",
+            story.path,
+            f"line {story.trace_line_no} names {story.trace_req_id}, which has no [[req]] "
+            f"row in trace.toml{missing_ledger} — status-drift and story-done-trace-drift "
+            f"skip an id they cannot resolve, so they cannot see this story until the id "
+            f"is corrected or its row is added (bug-log #216)",
+        )
+
+
+def run_story_triad(report: Report) -> None:
+    """The ADR-0082 triad plus the two guards on its join key, in one call.
+
+    main() calls THIS and nothing else for the triad, and the self-tests drive
+    the same function — so dropping any call below turns a self-test red, and
+    `_self_test_main_runs_story_triad` asserts all five categories through
+    main()'s printed report, so a main() that drops this call, or inlines only
+    some of the five again, is red too (bug-log `#216`, the `#190` wiring rule).
+    """
+    check_trace_ref_unparsed(report)
+    check_trace_ref_dangling(report)
+    check_status_drift(report)
+    check_story_done_trace_drift(report)
+    check_story_done_changelog_missing(report)
+
+
+# ---------------------------------------------------------------------------
 # Check: status-drift — story `Status:` <-> trace `[[req]]` `state=`
 # ---------------------------------------------------------------------------
 #
@@ -795,7 +935,11 @@ def check_story_done_no_tests(report: Report, evidence_dir: Path | None = None) 
 # arch-done->ready-for-dev; candidate/draft/reserved->backlog"). Degrades
 # gracefully (skips silently) for any `state=` value not in the table, and
 # for stories with no resolvable trace row — this is deliberate: an
-# unrecognised value should not manufacture false positives.
+# unrecognised value should not manufacture false positives. The skip is NOT
+# silent for the tree, though: a missing, doubled or unparseable `- Trace:`
+# line is reported by `trace-ref-unparsed`, and an id with no row by
+# `trace-ref-dangling` (bug-log `#216`); only the declared gap
+# (`- Trace: none — <reason>`) and an unmapped `state=` are skipped unreported.
 STATE_TO_STORY_STATUS: dict[str, str] = {
     "shipped": "done",
     "shipped-partial": "done",
@@ -823,10 +967,12 @@ def check_status_drift(report: Report) -> None:
     rows_by_id = {r.get("id"): r for r in load_trace_rows()}
     for story in iter_stories():
         if story.trace_req_id is None or story.status is None:
-            continue  # no resolvable trace row, or malformed story — not this rule's concern
+            # Declared gap, or a line trace-ref-unparsed reports (#216); a missing
+            # Status: is reported as missing-frontmatter.
+            continue
         row = rows_by_id.get(story.trace_req_id)
         if row is None:
-            continue  # dangling REQ-id — a trace-broken-path concern, not status-drift
+            continue  # dangling REQ-id — reported by trace-ref-dangling (#216)
         state = row.get("state")
         expected = STATE_TO_STORY_STATUS.get(state)
         if expected is None:
@@ -909,7 +1055,7 @@ def check_story_done_trace_drift(report: Report) -> None:
             continue
         row = rows_by_id.get(story.trace_req_id)
         if row is None:
-            continue  # dangling REQ-id — a trace-broken-path concern
+            continue  # dangling REQ-id — reported by trace-ref-dangling (#216)
         state = row.get("state")
         if state not in _DONE_TERMINAL_STATES:
             shown = "<missing state= field>" if state is None else repr(state)
@@ -1391,16 +1537,300 @@ def _gitignored_not_walked_probe(sentinel: Path, sentinel_before: bytes) -> bool
     return ok
 
 
-def self_test() -> int:
-    """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass."""
-    results = [
-        _self_test_status_drift(),
-        _self_test_story_done_trace_drift(),
-        _self_test_story_done_changelog_missing(),
-        _self_test_dead_cargo_citation(),
-        _self_test_root_markdown_scanned(),
-        _self_test_gitignored_not_walked(),
+_TRIAD_COUNTED = (
+    "trace-ref-unparsed",
+    "trace-ref-dangling",
+    "status-drift",
+    "story-done-trace-drift",
+    "story-done-changelog-missing",
+)
+
+
+def _self_test_trace_ref_unparsed() -> bool:
+    """Fixture table for the triad's join-key guards (bug-log `#216`).
+
+    One story (`Status: done`), one trace.toml, one CHANGELOG. The forms differ
+    in exactly one thing, the story's `- Trace:` line — except J, which keeps
+    B's line and drops the slug from the CHANGELOG. Every count is taken from
+    `run_story_triad`, the function main() calls, as the tuple
+    (trace-ref-unparsed, trace-ref-dangling, status-drift,
+    story-done-trace-drift, story-done-changelog-missing) — so removing any of
+    its five calls turns a row red.
+
+    The expectations are DERIVED from the construction, not measured off the
+    subject: the row's `passed` maps to `review` (not the story's `done`) and is
+    not shipped-terminal, so a story the downstream rules CAN see trips both
+    status-drift and story-done-trace-drift, and one they cannot see trips
+    neither. Both facts are asserted as preconditions first, so a later mapping
+    change reports "fixture invalid" instead of passing for the wrong reason.
+    A is story 2-63's pre-Close line (the incident); A/B is the requested pair.
+
+    D is the declared gap, the one skip the triad allows on purpose, so its
+    regex is pinned from the REJECTING side too: K, L and M each differ from D
+    in one dimension (no dash and no reason; an ASCII hyphen; an em dash with no
+    reason) and must fire. Without them any loosening of TRACE_NONE_RE stays
+    green (the `#161` two-fixture rule). Every fixture's trace line is line 7,
+    and the detail substrings carry that number, so an off-by-one in either
+    rule's line count is red too.
+    """
+    import tempfile
+
+    indexed = "# Changelog\n\n- **fixture** — a fixture feature.\n"
+    unindexed = "# Changelog\n\n- **something-else** — another feature.\n"
+    parsed = "- Trace: `REQ-FIXTURE-001` (state=`passed`)"
+    # The fixture's `- Trace:` line is line 7: heading, blank, Status, blank,
+    # `### References`, blank, line.
+    neither = "line 7 is in neither accepted form"
+    # name: (the `- Trace:` line(s), CHANGELOG, expected counts, detail substring)
+    forms: dict[str, tuple[str, str, tuple[int, ...], str | None]] = {
+        "A": ("- Trace: `REQ-FIXTURE-001` (state=`passed` since 2026-11-10)",
+              indexed, (1, 0, 0, 0, 0), neither),
+        "B": (parsed, indexed, (0, 0, 1, 1, 0), None),
+        "C": (parsed + " — `in-progress` from 2026-11-10; `shipped` at Close.",
+              indexed, (0, 0, 1, 1, 0), None),
+        "D": ("- Trace: none — known trace-coverage gap", indexed, (0, 0, 0, 0, 0), None),
+        "E": ("- Trace: REQ-FIXTURE-001 (state=passed)", indexed, (1, 0, 0, 0, 0), neither),
+        "F": ("", indexed, (1, 0, 0, 0, 0), "no `- Trace:` line"),
+        "G": (parsed + "\n- Trace: `REQ-OTHER-001` (state=`shipped`)",
+              indexed, (1, 0, 1, 1, 0), "2 `- Trace:` lines (lines 7, 8)"),
+        "H": ("- Trace: `none` (state=`passed`)", indexed, (1, 0, 0, 0, 0), neither),
+        "I": ("- Trace: `REQ-MISSING-001` (state=`passed`)",
+              indexed, (0, 1, 0, 0, 0), "line 7 names REQ-MISSING-001, which has no [[req]] row"),
+        "J": (parsed, unindexed, (0, 0, 1, 1, 1), None),
+        # Near misses of D, each one dimension off; all must fire.
+        "K": ("- Trace: none", indexed, (1, 0, 0, 0, 0), neither),
+        "L": ("- Trace: none - known trace-coverage gap", indexed, (1, 0, 0, 0, 0), neither),
+        "M": ("- Trace: none —", indexed, (1, 0, 0, 0, 0), neither),
+    }
+
+    fixture_valid = (
+        STATE_TO_STORY_STATUS.get("passed") not in (None, "done")
+        and "passed" not in _DONE_TERMINAL_STATES
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        story_dir = root / "stories"
+        story_dir.mkdir()
+        story = story_dir / "1-1-fixture.md"
+        trace_path = root / "trace.toml"
+        trace_path.write_text(
+            '[[req]]\nid = "REQ-FIXTURE-001"\nfeature = "fixture"\nstate = "passed"\n\n'
+            '[[req]]\nid = "REQ-OTHER-001"\nfeature = "other"\nstate = "shipped"\n',
+            encoding="utf-8",
+        )
+        changelog_path = root / "CHANGELOG.md"
+
+        def hits_for(line: str, changelog: str) -> tuple[int, tuple[int, ...], list[str]]:
+            story.write_text(
+                f"# Story 1.1: fixture\n\nStatus: done\n\n### References\n\n{line}\n",
+                encoding="utf-8",
+            )
+            changelog_path.write_text(changelog, encoding="utf-8")
+            global STORY_DIR, TRACE_TOML, CHANGELOG_PATH
+            orig = (STORY_DIR, TRACE_TOML, CHANGELOG_PATH)
+            STORY_DIR, TRACE_TOML, CHANGELOG_PATH = story_dir, trace_path, changelog_path
+            try:
+                candidates = len(iter_stories())
+                rep = Report()
+                run_story_triad(rep)
+            finally:
+                STORY_DIR, TRACE_TOML, CHANGELOG_PATH = orig
+            counts = tuple(
+                sum(1 for v in rep.violations if v.category == c) for c in _TRIAD_COUNTED
+            )
+            details = [v.detail for v in rep.violations if v.category in _TRIAD_COUNTED[:2]]
+            return candidates, counts, details
+
+        got = {name: hits_for(line, cl) for name, (line, cl, _, _) in forms.items()}
+
+    not_candidate = sorted(n for n, (c, _, _) in got.items() if c != 1)
+    table_wrong = {
+        n: (got[n][1], exp) for n, (_, _, exp, _) in forms.items() if got[n][1] != exp
+    }
+    misclassified = sorted(
+        n for n, (_, _, _, sub) in forms.items()
+        if sub is not None and not any(sub in d for d in got[n][2])
+    )
+    silent = sorted(n for n in forms if n != "D" and sum(got[n][1]) == 0)
+    unlisted_cats = [c for c in _TRIAD_COUNTED[:2] if c not in CATEGORIES]
+
+    checks = [
+        ("fixture valid (passed -> non-done, non-terminal)", fixture_valid),
+        ("every form a candidate (1 story)", not not_candidate),
+        ("table exact", not table_wrong),
+        ("classification pinned per form", not misclassified),
+        ("never silent except the declared gap", not silent),
+        ("both categories in CATEGORIES", not unlisted_cats),
     ]
+    ok = all(passed for _, passed in checks)
+    detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)
+    if not ok:
+        detail += (
+            f" | not-candidate={not_candidate} table (got, expected)={table_wrong} "
+            f"misclassified={misclassified} silent={silent} missing-categories={unlisted_cats}"
+        )
+    print(
+        "spec-lint --self-test (trace-ref-unparsed): "
+        + (f"PASS — {len(forms)} forms {min(forms)}-{max(forms)}, {detail}" if ok
+           else f"FAIL — {detail}")
+    )
+    return ok
+
+
+def _self_test_main_runs_story_triad() -> bool:
+    """Pin main()'s wiring end to end (bug-log `#216`; the `#190` wiring rule).
+
+    Every other triad self-test calls `run_story_triad` directly, so deleting
+    its call from main() would leave them all green while the hook and CI —
+    which run main() — went blind, and the live tree (0 malformed lines) would
+    still print PASS. So this copies THIS file into a throwaway repository
+    layout and runs it the way the hook does, with every `GIT_*` variable
+    removed from the child's environment (the `#195` leak: a hook hands its
+    children an absolute GIT_INDEX_FILE), then reads the printed report.
+
+    Two runs, the two sides differing only in story 1-1's `- Trace:` line:
+    story 2-63's pre-Close form must print a `trace-ref-unparsed (1):` section
+    naming the story; the parsed form must print no such section, and must print
+    the status-drift and story-done-trace-drift sections (the row says
+    `passed`, the story says `done`). Both sides also carry story 1-2, `done`,
+    whose line names `REQ-TYPO-001` (no such row, slug not in the CHANGELOG), so
+    both must print `trace-ref-dangling (1):` and
+    `story-done-changelog-missing (1):`. Every one of `run_story_triad`'s five
+    categories is therefore asserted through main(): a main() that inlines some
+    of the calls again instead of calling `run_story_triad` is red, not only one
+    that drops the call. The printer walks CATEGORIES, so this also proves each
+    category is printed, not only counted. The temp directory is a repository
+    LAYOUT, not a git repository; the child's gitignore filter notes exit 128 on
+    stderr and drops nothing, which the triad does not depend on.
+    """
+    import shutil
+    import tempfile
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+    def run(line: str) -> tuple[int, list[str], str]:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            (root / "scripts").mkdir()
+            shutil.copyfile(Path(__file__).resolve(), root / "scripts" / "spec_lint.py")
+            stories = root / "_bmad-output" / "implementation-artifacts"
+            stories.mkdir(parents=True)
+            planning = root / "_bmad-output" / "planning-artifacts"
+            planning.mkdir()
+            (stories / "1-1-fixture.md").write_text(
+                f"# Story 1.1: fixture\n\nStatus: done\n\n### References\n\n{line}\n",
+                encoding="utf-8",
+            )
+            (stories / "1-2-typo.md").write_text(
+                "# Story 1.2: typo\n\nStatus: done\n\n### References\n\n"
+                "- Trace: `REQ-TYPO-001` (state=`shipped`)\n",
+                encoding="utf-8",
+            )
+            (stories / "sprint-status.yaml").write_text(
+                "development_status:\n  1-1-fixture: done\n  1-2-typo: done\n",
+                encoding="utf-8",
+            )
+            (planning / "trace.toml").write_text(
+                '[[req]]\nid = "REQ-FIXTURE-001"\nfeature = "fixture"\nstate = "passed"\n',
+                encoding="utf-8",
+            )
+            (root / "CHANGELOG.md").write_text(
+                "# Changelog\n\n- **fixture** — a fixture feature.\n", encoding="utf-8"
+            )
+            proc = subprocess.run(
+                [sys.executable, "-I", str(root / "scripts" / "spec_lint.py")],
+                cwd=str(root), env=env, capture_output=True, text=True,
+                check=False, timeout=120,
+            )
+            return proc.returncode, proc.stdout.splitlines(), proc.stderr
+
+    def section(out: list[str], cat: str) -> tuple[str | None, str]:
+        for i, line in enumerate(out):
+            if line.startswith(f"{cat} ("):
+                return line, (out[i + 1] if i + 1 < len(out) else "")
+        return None, ""
+
+    try:
+        rc_bad, out_bad, err_bad = run(
+            "- Trace: `REQ-FIXTURE-001` (state=`passed` since 2026-11-10)"
+        )
+        rc_good, out_good, err_good = run("- Trace: `REQ-FIXTURE-001` (state=`passed`)")
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"spec-lint --self-test (main-wiring): FAIL — could not run the copy ({exc})")
+        return False
+
+    head, first = section(out_bad, "trace-ref-unparsed")
+    story_rel = "_bmad-output/implementation-artifacts/1-1-fixture.md"
+    both = (out_bad, out_good)
+    checks = [
+        ("unparsed line -> `trace-ref-unparsed (1):` printed",
+         head == "trace-ref-unparsed (1):"),
+        ("...naming the story", f"[trace-ref-unparsed] {story_rel}:" in first),
+        ("...and a non-zero exit", rc_bad != 0),
+        ("parsed line -> no trace-ref-unparsed section",
+         section(out_good, "trace-ref-unparsed")[0] is None),
+        ("...status-drift (1) printed", section(out_good, "status-drift")[0] == "status-drift (1):"),
+        ("...story-done-trace-drift (1) printed",
+         section(out_good, "story-done-trace-drift")[0] == "story-done-trace-drift (1):"),
+        ("both sides: trace-ref-dangling (1) printed",
+         all(section(o, "trace-ref-dangling")[0] == "trace-ref-dangling (1):" for o in both)),
+        ("both sides: story-done-changelog-missing (1) printed",
+         all(section(o, "story-done-changelog-missing")[0] == "story-done-changelog-missing (1):"
+             for o in both)),
+    ]
+    ok = all(passed for _, passed in checks)
+    detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)
+    if not ok:
+        # stderr too: a crashed copy must read as a crash, not as a wiring
+        # regression with an empty stdout (the `#189` hazard).
+        detail += (
+            f" | unparsed side rc={rc_bad} stdout={out_bad[:6]}"
+            f" stderr={err_bad[-300:]!r}"
+            f" | parsed side rc={rc_good} stdout={out_good[:8]}"
+            f" stderr={err_good[-300:]!r}"
+        )
+    print(
+        "spec-lint --self-test (main-wiring): "
+        + (f"PASS — {detail}" if ok else f"FAIL — {detail}")
+    )
+    return ok
+
+
+def self_test() -> int:
+    """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass.
+
+    The registry guard at the end is the `#190` wiring rule applied to this
+    function itself: a `_self_test_*` that is defined but not listed here runs
+    nowhere, and nothing else would notice (bug-log `#216`). It is two-sided:
+    every test that just ran must also be visible to its scan, because a scan
+    that sees nothing finds "nothing unlisted" and would print PASS (`#187`).
+    """
+    tests = [
+        _self_test_status_drift,
+        _self_test_story_done_trace_drift,
+        _self_test_story_done_changelog_missing,
+        _self_test_dead_cargo_citation,
+        _self_test_root_markdown_scanned,
+        _self_test_gitignored_not_walked,
+        _self_test_trace_ref_unparsed,
+        _self_test_main_runs_story_triad,
+    ]
+    results = [t() for t in tests]
+    defined = sorted(
+        n for n, f in globals().items() if n.startswith("_self_test_") and callable(f)
+    )
+    listed = {t.__name__ for t in tests}
+    unlisted = sorted(set(defined) - listed)
+    unseen = sorted(listed - set(defined))  # a blind scan proves nothing (#187)
+    print(
+        "spec-lint --self-test (registry): "
+        + (f"PASS — all {len(defined)} defined _self_test_* functions ran"
+           if not unlisted and not unseen
+           else f"FAIL — defined but never run: {unlisted}; "
+                f"ran but invisible to the scan: {unseen}")
+    )
+    results.append(not unlisted and not unseen)
     return 0 if all(results) else 1
 
 
@@ -1584,9 +2014,9 @@ def main(argv: list[str]) -> int:
         check_trace(report, anchors)
         check_story_done_no_tests(report)
         cargo_cites = check_cargo_citations(roots, report)
-        check_status_drift(report)
-        check_story_done_trace_drift(report)
-        check_story_done_changelog_missing(report)
+        # The triad and its join-key guards — pinned by
+        # `_self_test_main_runs_story_triad` (bug-log #216).
+        run_story_triad(report)
 
     grouped = report.by_category()
     failed_categories = [c for c, vs in grouped.items() if vs]

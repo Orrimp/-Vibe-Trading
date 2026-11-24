@@ -40,11 +40,17 @@ gates: one for content stability (anchors) and one for shape stability
    uv run scripts/spec_lint.py _bmad-output/implementation-artifacts
    ```
 
-4. To prove the triad rules themselves (synthetic fixtures):
+4. To prove the rules themselves (synthetic fixtures, plus two runs of a copy
+   of the script against a throwaway repository layout — a temp directory, not
+   a git repo — which pin `main()`'s wiring):
 
    ```bash
-   python3 scripts/spec_lint.py --self-test   # 3/3 PASS expected
+   python3 scripts/spec_lint.py --self-test   # every line PASS, exit 0
    ```
+
+   On 2026-11-24 that is 9 lines: 8 rule self-tests, then `(registry)`, which
+   FAILs if a `_self_test_*` function is defined but `self_test()` never runs
+   it (bug-log `#216`).
 
 ## What it checks
 
@@ -59,8 +65,11 @@ gates: one for content stability (anchors) and one for shape stability
 | `status-drift` | Story `Status:` disagrees with the value its trace row's `state=` maps to (full vocabulary mapping). |
 | `story-done-trace-drift` | The ADR-0082 terminal invariant: `Status: done` but the trace row's `state=` is not `shipped`/`shipped-partial`. |
 | `story-done-changelog-missing` | A `Status: done` story not indexed in root `CHANGELOG.md` (by slug / REQ-id / rollup allowlist). |
+| `trace-ref-unparsed` | A story with no `- Trace:` line, more than one, or one in neither accepted form (`` `REQ-…` (state=`…`) ``, text may follow the `)`; or `none — <reason>`); such a story is invisible, or only partly visible, to `status-drift` / `story-done-trace-drift` (bug-log `#216`). The line starts at column 0, anywhere in the file (by convention under `### References`; placement is not checked). The stock create-story template has none, so `_bmad/custom/bmad-create-story.toml` states the contract. |
+| `trace-ref-dangling` | A story's `- Trace:` line names a REQ-id with no `[[req]]` row in `trace.toml`; that story is just as invisible to `status-drift` / `story-done-trace-drift` (bug-log `#216`). |
 | `trace-broken-path` | A `trace.toml` row references a path or feature slug that doesn't resolve. |
-| `adr-not-registered` | An ADR file without its Registry row (see also `scripts/adr_registry_check.py` for the atomic pre-commit form). |
+| `dead-cargo-citation` | A `cargo test -p <pkg> --test <target>` cited in a walked `.md` or `CHANGELOG.md` whose package is not in `crates/`, or whose target is neither `tests/<target>.rs` nor a `[[test]]` of that crate (bug-log `#168`). A deliberately quoted dead command is exempt with a `dead-citation-ok` marker on its line or up to two lines above. |
+| `adr-not-registered` | Reserved: listed in `CATEGORIES`, but `spec_lint.py` emits it nowhere. ADR registration is enforced by `scripts/adr_registry_check.py` (the atomic pre-commit form). |
 
 ## Routing
 
@@ -70,6 +79,11 @@ gates: one for content stability (anchors) and one for shape stability
   seam for PRD/story-content issues; architect seam for ADR/architecture;
   dev seam for `trace-broken-path` source paths; the orchestrator for
   board/triad bookkeeping).
+- **`trace-ref-unparsed` / `trace-ref-dangling`** → the story's author (the
+  session or workflow that last wrote its `- Trace:` line), else the
+  orchestrator. Fix the story's line, or add the missing `trace.toml` row;
+  never loosen the rule. While the violation stands, the triad cannot check
+  that story.
 
 ## When to invoke
 
