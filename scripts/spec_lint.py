@@ -32,6 +32,9 @@ skip reads as a pass:
     more than one, or one in neither accepted form (see below).
   - `trace-ref-dangling`          — a parsed REQ-id with no `[[req]]` row in
     `trace.toml`.
+A third rule keeps the line's own copy of the row honest (bug-log `#219`):
+  - `trace-state-annotation-drift` — the line's `(state=…)` annotation differs
+    from its row's `state=`. The annotation is a copy; it moves with the row.
 
 Story ↔ trace-row resolution is via the REQ-id embedded in the story's own
 `### References` block (its `- Trace:` line; contract below), NOT by
@@ -131,6 +134,7 @@ CATEGORIES = (
     "story-done-changelog-missing",
     "trace-ref-unparsed",
     "trace-ref-dangling",
+    "trace-state-annotation-drift",
     "trace-broken-path",
     "adr-not-registered",
     "dead-cargo-citation",
@@ -224,7 +228,9 @@ class Story:
     filename_slug: str  # derived straight from the filename; may be dot-sanitized/prefixed
     status: str | None
     trace_req_id: str | None       # REQ-id cited by "- Trace:" line, if any
-    trace_embedded_state: str | None  # the (state=`...`) annotation on that same line
+    # The (state=`...`) annotation on that same line; must equal the row's
+    # `state=` (trace-state-annotation-drift, bug-log #219).
+    trace_embedded_state: str | None
     # Line number (1-based) of the line `trace_req_id` was read from, or None.
     trace_line_no: int | None = None
     # Every way this story's `- Trace:` lines break the one-line contract;
@@ -848,7 +854,8 @@ def check_story_done_no_tests(report: Report, evidence_dir: Path | None = None) 
 
 
 # ---------------------------------------------------------------------------
-# Check: trace-ref-unparsed / trace-ref-dangling — the triad's join key
+# Check: trace-ref-unparsed / trace-ref-dangling / trace-state-annotation-drift
+#   — the triad's join key, and the line's copy of its row's state
 # ---------------------------------------------------------------------------
 #
 # bug-log `#216`. `status-drift` and `story-done-trace-drift` key on the REQ-id
@@ -904,17 +911,56 @@ def check_trace_ref_dangling(report: Report) -> None:
         )
 
 
+def check_trace_state_annotation_drift(report: Report) -> None:
+    """A story's `(state=…)` annotation must equal its row's `state=` (bug-log `#219`).
+
+    `parse_story` has read the annotation into `trace_embedded_state` since the
+    Phase-5b re-founding, and until this rule nothing compared it with anything:
+    on 2026-11-24, 11 of 141 parsed lines disagreed with their rows (`scoped` or
+    `tester-done` against `shipped`/`retired`). A reader takes the annotation for
+    the requirement's state, so a copy that is neither checked nor dropped is the
+    exact drift ADR-0082 exists to prevent. Only a story whose id resolves to a
+    row is checked: an unreadable line is `trace-ref-unparsed`, an id with no row
+    `trace-ref-dangling`, and the declared gap carries no annotation.
+    """
+    rows_by_id = {r.get("id"): r for r in load_trace_rows()}
+    for story in iter_stories():
+        if story.trace_req_id is None:
+            continue
+        row = rows_by_id.get(story.trace_req_id)
+        if row is None:
+            continue  # reported by trace-ref-dangling
+        state = row.get("state")
+        if story.trace_embedded_state == state:
+            continue
+        fix = (
+            f"change the backticked state on that line to `{state}`"
+            if state is not None
+            else "the row has no state= field; give it one, then copy it here"
+        )
+        report.add(
+            "trace-state-annotation-drift",
+            story.path,
+            f"line {story.trace_line_no} annotates {story.trace_req_id} as "
+            f"(state=`{story.trace_embedded_state}`), but its trace.toml row says "
+            f"state={state!r} — the annotation is a copy of the row's state and moves "
+            f"with it: {fix} (bug-log #219)",
+        )
+
+
 def run_story_triad(report: Report) -> None:
-    """The ADR-0082 triad plus the two guards on its join key, in one call.
+    """The ADR-0082 triad plus the three guards on its join key, in one call.
 
     main() calls THIS and nothing else for the triad, and the self-tests drive
     the same function — so dropping any call below turns a self-test red, and
-    `_self_test_main_runs_story_triad` asserts all five categories through
+    `_self_test_main_runs_story_triad` asserts all six categories through
     main()'s printed report, so a main() that drops this call, or inlines only
-    some of the five again, is red too (bug-log `#216`, the `#190` wiring rule).
+    some of the six again, is red too (bug-log `#216`/`#219`, the `#190` wiring
+    rule).
     """
     check_trace_ref_unparsed(report)
     check_trace_ref_dangling(report)
+    check_trace_state_annotation_drift(report)
     check_status_drift(report)
     check_story_done_trace_drift(report)
     check_story_done_changelog_missing(report)
@@ -1540,28 +1586,40 @@ def _gitignored_not_walked_probe(sentinel: Path, sentinel_before: bytes) -> bool
 _TRIAD_COUNTED = (
     "trace-ref-unparsed",
     "trace-ref-dangling",
+    "trace-state-annotation-drift",
     "status-drift",
     "story-done-trace-drift",
     "story-done-changelog-missing",
 )
+# The join-key guards, whose details the table below checks by substring.
+_TRIAD_GUARDS = _TRIAD_COUNTED[:3]
 
 
 def _self_test_trace_ref_unparsed() -> bool:
-    """Fixture table for the triad's join-key guards (bug-log `#216`).
+    """Fixture table for the triad's join-key guards (bug-log `#216`, `#219`).
 
-    One story (`Status: done`), one trace.toml, one CHANGELOG. The forms differ
-    in exactly one thing, the story's `- Trace:` line — except J, which keeps
-    B's line and drops the slug from the CHANGELOG. Every count is taken from
+    One story (`Status: done`, except O and P), one trace.toml, one CHANGELOG.
+    The forms differ in exactly one thing, the story's `- Trace:` line — except
+    J, which keeps B's line and drops the slug from the CHANGELOG, and O/P,
+    which are N/B on a `Status: review` story. Every count is taken from
     `run_story_triad`, the function main() calls, as the tuple
-    (trace-ref-unparsed, trace-ref-dangling, status-drift,
-    story-done-trace-drift, story-done-changelog-missing) — so removing any of
-    its five calls turns a row red.
+    (trace-ref-unparsed, trace-ref-dangling, trace-state-annotation-drift,
+    status-drift, story-done-trace-drift, story-done-changelog-missing) — so
+    removing any of its six calls turns a row red.
+
+    B/N is the `#219` pair: the same line, differing only in the annotation —
+    B's `passed` equals the row's and is silent, N's `shipped` does not and
+    fires. Every other parsed form also annotates `passed`, so each is a
+    further silent case. P/O is the same pair on a `review` story, where no
+    other rule fires: O isolates the annotation rule, and the pair pins that it
+    reads every story, not only done ones.
 
     The expectations are DERIVED from the construction, not measured off the
     subject: the row's `passed` maps to `review` (not the story's `done`) and is
-    not shipped-terminal, so a story the downstream rules CAN see trips both
-    status-drift and story-done-trace-drift, and one they cannot see trips
-    neither. Both facts are asserted as preconditions first, so a later mapping
+    not shipped-terminal, so a done story the downstream rules CAN see trips
+    both status-drift and story-done-trace-drift, one they cannot see trips
+    neither, and a `review` story trips neither (and no changelog check, which
+    reads done stories only). Both facts are asserted as preconditions first, so a later mapping
     change reports "fixture invalid" instead of passing for the wrong reason.
     A is story 2-63's pre-Close line (the incident); A/B is the requested pair.
 
@@ -1584,27 +1642,39 @@ def _self_test_trace_ref_unparsed() -> bool:
     # name: (the `- Trace:` line(s), CHANGELOG, expected counts, detail substring)
     forms: dict[str, tuple[str, str, tuple[int, ...], str | None]] = {
         "A": ("- Trace: `REQ-FIXTURE-001` (state=`passed` since 2026-11-10)",
-              indexed, (1, 0, 0, 0, 0), neither),
-        "B": (parsed, indexed, (0, 0, 1, 1, 0), None),
+              indexed, (1, 0, 0, 0, 0, 0), neither),
+        "B": (parsed, indexed, (0, 0, 0, 1, 1, 0), None),
         "C": (parsed + " — `in-progress` from 2026-11-10; `shipped` at Close.",
-              indexed, (0, 0, 1, 1, 0), None),
-        "D": ("- Trace: none — known trace-coverage gap", indexed, (0, 0, 0, 0, 0), None),
-        "E": ("- Trace: REQ-FIXTURE-001 (state=passed)", indexed, (1, 0, 0, 0, 0), neither),
-        "F": ("", indexed, (1, 0, 0, 0, 0), "no `- Trace:` line"),
+              indexed, (0, 0, 0, 1, 1, 0), None),
+        "D": ("- Trace: none — known trace-coverage gap", indexed, (0, 0, 0, 0, 0, 0), None),
+        "E": ("- Trace: REQ-FIXTURE-001 (state=passed)", indexed, (1, 0, 0, 0, 0, 0), neither),
+        "F": ("", indexed, (1, 0, 0, 0, 0, 0), "no `- Trace:` line"),
         "G": (parsed + "\n- Trace: `REQ-OTHER-001` (state=`shipped`)",
-              indexed, (1, 0, 1, 1, 0), "2 `- Trace:` lines (lines 7, 8)"),
-        "H": ("- Trace: `none` (state=`passed`)", indexed, (1, 0, 0, 0, 0), neither),
-        "I": ("- Trace: `REQ-MISSING-001` (state=`passed`)",
-              indexed, (0, 1, 0, 0, 0), "line 7 names REQ-MISSING-001, which has no [[req]] row"),
-        "J": (parsed, unindexed, (0, 0, 1, 1, 1), None),
+              indexed, (1, 0, 0, 1, 1, 0), "2 `- Trace:` lines (lines 7, 8)"),
+        "H": ("- Trace: `none` (state=`passed`)", indexed, (1, 0, 0, 0, 0, 0), neither),
+        "I": ("- Trace: `REQ-MISSING-001` (state=`passed`)", indexed, (0, 1, 0, 0, 0, 0),
+              "line 7 names REQ-MISSING-001, which has no [[req]] row"),
+        "J": (parsed, unindexed, (0, 0, 0, 1, 1, 1), None),
         # Near misses of D, each one dimension off; all must fire.
-        "K": ("- Trace: none", indexed, (1, 0, 0, 0, 0), neither),
-        "L": ("- Trace: none - known trace-coverage gap", indexed, (1, 0, 0, 0, 0), neither),
-        "M": ("- Trace: none —", indexed, (1, 0, 0, 0, 0), neither),
+        "K": ("- Trace: none", indexed, (1, 0, 0, 0, 0, 0), neither),
+        "L": ("- Trace: none - known trace-coverage gap", indexed, (1, 0, 0, 0, 0, 0), neither),
+        "M": ("- Trace: none —", indexed, (1, 0, 0, 0, 0, 0), neither),
+        # B with a stale annotation: the row says `passed` (bug-log #219).
+        "N": ("- Trace: `REQ-FIXTURE-001` (state=`shipped`)", indexed, (0, 0, 1, 1, 1, 0),
+              "line 7 annotates REQ-FIXTURE-001 as (state=`shipped`), but its trace.toml "
+              "row says state='passed'"),
+        # The same pair on a `Status: review` story, which `passed` maps to: no
+        # other rule fires, so O isolates the annotation rule, and the pair pins
+        # that the rule reads every story, not only done ones.
+        "O": ("- Trace: `REQ-FIXTURE-001` (state=`shipped`)", indexed, (0, 0, 1, 0, 0, 0),
+              "line 7 annotates REQ-FIXTURE-001 as (state=`shipped`)"),
+        "P": (parsed, indexed, (0, 0, 0, 0, 0, 0), None),
     }
+    status_of = {"O": "review", "P": "review"}  # every other form: done
+    compliant = {"D", "P"}  # the only forms expected to be silent
 
     fixture_valid = (
-        STATE_TO_STORY_STATUS.get("passed") not in (None, "done")
+        STATE_TO_STORY_STATUS.get("passed") == "review"
         and "passed" not in _DONE_TERMINAL_STATES
     )
 
@@ -1621,9 +1691,11 @@ def _self_test_trace_ref_unparsed() -> bool:
         )
         changelog_path = root / "CHANGELOG.md"
 
-        def hits_for(line: str, changelog: str) -> tuple[int, tuple[int, ...], list[str]]:
+        def hits_for(
+            line: str, changelog: str, status: str
+        ) -> tuple[int, tuple[int, ...], list[str]]:
             story.write_text(
-                f"# Story 1.1: fixture\n\nStatus: done\n\n### References\n\n{line}\n",
+                f"# Story 1.1: fixture\n\nStatus: {status}\n\n### References\n\n{line}\n",
                 encoding="utf-8",
             )
             changelog_path.write_text(changelog, encoding="utf-8")
@@ -1639,10 +1711,13 @@ def _self_test_trace_ref_unparsed() -> bool:
             counts = tuple(
                 sum(1 for v in rep.violations if v.category == c) for c in _TRIAD_COUNTED
             )
-            details = [v.detail for v in rep.violations if v.category in _TRIAD_COUNTED[:2]]
+            details = [v.detail for v in rep.violations if v.category in _TRIAD_GUARDS]
             return candidates, counts, details
 
-        got = {name: hits_for(line, cl) for name, (line, cl, _, _) in forms.items()}
+        got = {
+            name: hits_for(line, cl, status_of.get(name, "done"))
+            for name, (line, cl, _, _) in forms.items()
+        }
 
     not_candidate = sorted(n for n, (c, _, _) in got.items() if c != 1)
     table_wrong = {
@@ -1652,16 +1727,16 @@ def _self_test_trace_ref_unparsed() -> bool:
         n for n, (_, _, _, sub) in forms.items()
         if sub is not None and not any(sub in d for d in got[n][2])
     )
-    silent = sorted(n for n in forms if n != "D" and sum(got[n][1]) == 0)
-    unlisted_cats = [c for c in _TRIAD_COUNTED[:2] if c not in CATEGORIES]
+    silent = sorted(n for n in forms if n not in compliant and sum(got[n][1]) == 0)
+    unlisted_cats = [c for c in _TRIAD_GUARDS if c not in CATEGORIES]
 
     checks = [
-        ("fixture valid (passed -> non-done, non-terminal)", fixture_valid),
+        ("fixture valid (passed -> review, non-terminal)", fixture_valid),
         ("every form a candidate (1 story)", not not_candidate),
         ("table exact", not table_wrong),
         ("classification pinned per form", not misclassified),
-        ("never silent except the declared gap", not silent),
-        ("both categories in CATEGORIES", not unlisted_cats),
+        ("never silent except the declared gap and P", not silent),
+        ("all three guard categories in CATEGORIES", not unlisted_cats),
     ]
     ok = all(passed for _, passed in checks)
     detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)
@@ -1716,16 +1791,26 @@ def _run_copy_on_fixture(line: str, source: str | None = None) -> tuple[int, lis
             "- Trace: `REQ-TYPO-001` (state=`shipped`)\n",
             encoding="utf-8",
         )
+        # 1-3: a done story whose annotation is stale against its shipped row,
+        # which nothing else in the fixture flags (bug-log #219).
+        (stories / "1-3-stale.md").write_text(
+            "# Story 1.3: stale\n\nStatus: done\n\n### References\n\n"
+            "- Trace: `REQ-STALE-001` (state=`scoped`)\n",
+            encoding="utf-8",
+        )
         (stories / "sprint-status.yaml").write_text(
-            "development_status:\n  1-1-fixture: done\n  1-2-typo: done\n",
+            "development_status:\n  1-1-fixture: done\n  1-2-typo: done\n  1-3-stale: done\n",
             encoding="utf-8",
         )
         (planning / "trace.toml").write_text(
-            '[[req]]\nid = "REQ-FIXTURE-001"\nfeature = "fixture"\nstate = "passed"\n',
+            '[[req]]\nid = "REQ-FIXTURE-001"\nfeature = "fixture"\nstate = "passed"\n\n'
+            '[[req]]\nid = "REQ-STALE-001"\nfeature = "stale"\nstate = "shipped"\n',
             encoding="utf-8",
         )
         (root / "CHANGELOG.md").write_text(
-            "# Changelog\n\n- **fixture** — a fixture feature.\n", encoding="utf-8"
+            "# Changelog\n\n- **fixture** — a fixture feature.\n"
+            "- **stale** — a shipped fixture feature.\n",
+            encoding="utf-8",
         )
         proc = subprocess.run(
             [sys.executable, "-I", str(script)],
@@ -1760,7 +1845,10 @@ def _self_test_main_runs_story_triad() -> bool:
     `passed`, the story says `done`). Both sides also carry story 1-2, `done`,
     whose line names `REQ-TYPO-001` (no such row, slug not in the CHANGELOG), so
     both must print `trace-ref-dangling (1):` and
-    `story-done-changelog-missing (1):`. Every one of `run_story_triad`'s five
+    `story-done-changelog-missing (1):`. And both carry story 1-3, `done`,
+    annotated `scoped` against its `shipped` row and flagged by nothing else, so
+    both must print `trace-state-annotation-drift (1):` naming it (bug-log
+    `#219`). Every one of `run_story_triad`'s six
     categories is therefore asserted through main(): a main() that inlines some
     of the calls again instead of calling `run_story_triad` is red, not only one
     that drops the call. Each header is matched exactly, so this also proves
@@ -1778,6 +1866,7 @@ def _self_test_main_runs_story_triad() -> bool:
 
     head, first = section(out_bad, "trace-ref-unparsed")
     story_rel = "_bmad-output/implementation-artifacts/1-1-fixture.md"
+    stale_rel = "_bmad-output/implementation-artifacts/1-3-stale.md"
     both = (out_bad, out_good)
     checks = [
         ("unparsed line -> `trace-ref-unparsed (1):` printed",
@@ -1794,6 +1883,10 @@ def _self_test_main_runs_story_triad() -> bool:
         ("both sides: story-done-changelog-missing (1) printed",
          all(section(o, "story-done-changelog-missing")[0] == "story-done-changelog-missing (1):"
              for o in both)),
+        ("both sides: trace-state-annotation-drift (1) printed, naming 1-3",
+         all(sad[0] == "trace-state-annotation-drift (1):"
+             and f"[trace-state-annotation-drift] {stale_rel}:" in sad[1]
+             for sad in (section(o, "trace-state-annotation-drift") for o in both))),
     ]
     ok = all(passed for _, passed in checks)
     detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)

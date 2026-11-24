@@ -218,7 +218,7 @@ against a parser that can never succeed. `threshold_sweep_readonly` → 2 passed
 
 ### References
 
-- Trace: `REQ-THRESHOLD-SWEEP-DRIFT-BISECT-001` (state=`scoped`)
+- Trace: `REQ-THRESHOLD-SWEEP-DRIFT-BISECT-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
 - Measurement: `docs/dev-notes/129-threshold-sweep-measurement-2026-09-27.md`
 - Disclosures: `docs/dev-notes/bug-log.md` § `#129`, § `#128`, § `#130`

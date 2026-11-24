@@ -101,5 +101,5 @@ healthy corpus. Resolving `#93` belongs to story 1-26.
 
 - ADR: [`0097-one-figure-reproduces-from-a-fresh-clone.md`](../planning-artifacts/architecture/decisions/0097-one-figure-reproduces-from-a-fresh-clone.md)
 - Runbook: [`docs/runbooks/evidence-reproducibility-sample.md`](../../docs/runbooks/evidence-reproducibility-sample.md)
-- Trace: `REQ-EVIDENCE-REPRODUCIBILITY-SAMPLE-001` (state=`scoped`)
+- Trace: `REQ-EVIDENCE-REPRODUCIBILITY-SAMPLE-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 6 (Remediation, Infra & Governance)

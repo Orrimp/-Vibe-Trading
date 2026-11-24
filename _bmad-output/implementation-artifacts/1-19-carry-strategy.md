@@ -30,7 +30,7 @@ so that the strategy/backtest engine is deterministic, real-data-grounded, and h
 
 ### References
 
-- Trace: `REQ-CARRY-STRATEGY-001` (state=`tester-done`)
+- Trace: `REQ-CARRY-STRATEGY-001` (state=`retired`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
 
 ## Dev Agent Record

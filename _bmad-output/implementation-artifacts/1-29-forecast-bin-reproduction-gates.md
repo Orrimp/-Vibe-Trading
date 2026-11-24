@@ -393,7 +393,7 @@ gates + the candle-invariance measurement); the three read-only guards → 7 pas
 
 ### References
 
-- Trace: `REQ-FORECAST-BIN-REPRODUCTION-GATES-001` (state=`scoped`)
+- Trace: `REQ-FORECAST-BIN-REPRODUCTION-GATES-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
 - Recipes: `docs/dev-notes/forecast-bin-repro-recipes-2026-09-27.md`
 - Coverage audit: `docs/dev-notes/anchor-gate-coverage-audit-2026-09-26.md`

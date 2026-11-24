@@ -54,7 +54,7 @@ Probes CLEAR: **chain — verified at the producing code, do NOT route to 1-25**
 
 ### References
 
-- Trace: `REQ-COCKPIT-BASELINE-001` (state=`tester-done`)
+- Trace: `REQ-COCKPIT-BASELINE-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 2 (Cockpit & UI (Lumen shell, Live, Lab, charts, quality gates))
 
 ## Dev Agent Record

@@ -481,7 +481,7 @@ No finding blocks the story. Nothing routes to 1-25.
 
 ### References
 
-- Trace: `REQ-PWSD-FIDELITY-RELOCK-001` (state=`scoped`)
+- Trace: `REQ-PWSD-FIDELITY-RELOCK-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
 
 

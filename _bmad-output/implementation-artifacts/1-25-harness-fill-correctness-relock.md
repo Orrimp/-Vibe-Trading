@@ -330,7 +330,7 @@ bodies and so per `#110` can never be cleared by a re-lock alone; (4) at flip ti
 
 ### References
 
-- Trace: `REQ-HARNESS-FILL-CORRECTNESS-001` (state=`scoped`)
+- Trace: `REQ-HARNESS-FILL-CORRECTNESS-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
 
 ## Code review — 2026-10-11 — VERDICT: PASS

@@ -252,7 +252,7 @@ once in anger.
 
 ### References
 
-- Trace: `REQ-MN-RUIN-FILL-PROVENANCE-001` (state=`scoped`)
+- Trace: `REQ-MN-RUIN-FILL-PROVENANCE-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
 - Predecessor: `_bmad-output/implementation-artifacts/1-21-perp-basis-mn-spread.md` (lines 94-98, the not-delivered record)
 - Protocol: `_bmad-output/planning-artifacts/architecture/decisions/0038-vol-forecast-verdict-shape.md` § D6.b

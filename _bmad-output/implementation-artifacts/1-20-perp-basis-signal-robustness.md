@@ -69,7 +69,7 @@ The honest figure is the **2024 ~22×**, not the 2023 ~36× a single-surface rea
 
 ### References
 
-- Trace: `REQ-PERP-BASIS-SIGNAL-ROBUSTNESS-001` (state=`tester-done`)
+- Trace: `REQ-PERP-BASIS-SIGNAL-ROBUSTNESS-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
 
 ## Dev Agent Record

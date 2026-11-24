@@ -72,6 +72,7 @@ gates: one for content stability (anchors) and one for shape stability
 | `story-done-changelog-missing` | A `Status: done` story not indexed in root `CHANGELOG.md` (by slug / REQ-id / rollup allowlist). |
 | `trace-ref-unparsed` | A story with no `- Trace:` line, more than one, or one in neither accepted form (`` `REQ-…` (state=`…`) ``, text may follow the `)`; or `none — <reason>`); such a story is invisible, or only partly visible, to `status-drift` / `story-done-trace-drift` (bug-log `#216`). The line starts at column 0, anywhere in the file (by convention under `### References`; placement is not checked). The stock create-story template has none, so `_bmad/custom/bmad-create-story.toml` states the contract. |
 | `trace-ref-dangling` | A story's `- Trace:` line names a REQ-id with no `[[req]]` row in `trace.toml`; that story is just as invisible to `status-drift` / `story-done-trace-drift` (bug-log `#216`). |
+| `trace-state-annotation-drift` | A story's `- Trace:` line resolves to a row, but its `(state=…)` annotation differs from that row's `state=`. The annotation is a copy of the row's state and moves with it in the same edit (bug-log `#219`). |
 | `trace-broken-path` | A `trace.toml` row references a path or feature slug that doesn't resolve. |
 | `dead-cargo-citation` | A `cargo test -p <pkg> --test <target>` cited in a walked `.md` or `CHANGELOG.md` whose package is not in `crates/`, or whose target is neither `tests/<target>.rs` nor a `[[test]]` of that crate (bug-log `#168`). A deliberately quoted dead command is exempt with a `dead-citation-ok` marker on its line or up to two lines above. |
 | `adr-not-registered` | Reserved: listed in `CATEGORIES`, but `spec_lint.py` emits it nowhere. ADR registration is enforced by `scripts/adr_registry_check.py` (the atomic pre-commit form). |
@@ -84,11 +85,12 @@ gates: one for content stability (anchors) and one for shape stability
   seam for PRD/story-content issues; architect seam for ADR/architecture;
   dev seam for `trace-broken-path` source paths; the orchestrator for
   board/triad bookkeeping).
-- **`trace-ref-unparsed` / `trace-ref-dangling`** → the story's author (the
-  session or workflow that last wrote its `- Trace:` line), else the
-  orchestrator. Fix the story's line, or add the missing `trace.toml` row;
-  never loosen the rule. While the violation stands, the triad cannot check
-  that story.
+- **`trace-ref-unparsed` / `trace-ref-dangling` / `trace-state-annotation-drift`**
+  → the story's author (the session or workflow that last wrote its
+  `- Trace:` line or moved its row), else the orchestrator. Fix the story's
+  line, add the missing `trace.toml` row, or copy the row's current `state=`
+  into the annotation; never loosen the rule. While an unparsed or dangling
+  violation stands, the triad cannot check that story.
 
 ## When to invoke
 

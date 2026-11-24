@@ -132,5 +132,5 @@ source of truth.
 
 ### References
 
-- Trace: `REQ-ADVISOR-HONESTY-SURFACE-001` (state=`scoped`)
+- Trace: `REQ-ADVISOR-HONESTY-SURFACE-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 3 (Advisor MVP)

@@ -53,7 +53,7 @@ Probes CLEAR: **chain** — no anchored evidence produced or consumed (`evidence
 
 ### References
 
-- Trace: `REQ-COCKPIT-LIVE-DASHBOARD-001` (state=`tester-done`)
+- Trace: `REQ-COCKPIT-LIVE-DASHBOARD-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 2 (Cockpit & UI (Lumen shell, Live, Lab, charts, quality gates))
 
 ## Dev Agent Record
