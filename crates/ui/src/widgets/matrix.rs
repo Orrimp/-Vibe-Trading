@@ -11,6 +11,8 @@
 //! Layout primitive: `iced::Column<Row>` — no new `grid` widget (R2.5).
 //! The row count = `model.strategies_config.strategies.len()` (Q7=a).
 //! The column count = per-strategy universe length (Q8=b).
+//! The row labels share one fixed column, `ROW_LABEL_W`, with the header
+//! row's corner cell; an id too wide for it wraps inside it (bug-log #214).
 //!
 //! **Zero string literals** — copy via `crate::strings`.
 //! **Zero hex colours** — tokens via `crate::theme`.
@@ -97,7 +99,14 @@ fn strategy_universe(config: &StrategyConfigEntry) -> Option<Vec<(Venue, Symbol)
 /// viewport with headroom (10 cols × 100 px = 1000 px + headers + gutters).
 const CELL_MIN_W: f32 = 90.0;
 /// Minimum cell height in logical pixels.
-const CELL_MIN_H: f32 = 60.0;
+pub(crate) const CELL_MIN_H: f32 = 60.0;
+/// Width of the strategy-label column in logical pixels: every row header and
+/// the header row's corner cell, so the two cannot drift apart (bug-log #214).
+pub(crate) const ROW_LABEL_W: f32 = 120.0;
+/// A row header's padding, `[vertical, horizontal]`. Inside
+/// [`ROW_LABEL_W`] × [`CELL_MIN_H`] it leaves the label a 104 × 48 px content
+/// box: three `text::SMALL` lines (bug-log #214).
+pub(crate) const ROW_LABEL_PADDING: [u16; 2] = [space::XS as u16, space::S as u16];
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
@@ -168,15 +177,28 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
         let mut row = Row::new().spacing(1);
 
         // Row header (strategy ID label — non-interactive at v0.1.0).
+        //
+        // bug-log #214: an id has no space to break at, so the default word
+        // wrap kept it on one line and it drew over the first value cell. It
+        // now wraps per glyph and shows in full on up to 3 lines (about 48
+        // characters). The inner container is the content box and clips the
+        // rest; on the outer container the clip edge would be the border box,
+        // so a long label would draw into the padding.
         row = row.push(
             Container::new(
-                Text::new(strat.id.to_string())
-                    .size(text::SMALL)
-                    .color(color::FG_2.current(mode)),
+                Container::new(
+                    Text::new(strat.id.to_string())
+                        .size(text::SMALL)
+                        .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+                        .color(color::FG_2.current(mode)),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .clip(true),
             )
-            .width(Length::Fixed(120.0))
+            .width(Length::Fixed(ROW_LABEL_W))
             .height(Length::Fixed(CELL_MIN_H))
-            .padding(Padding::from([space::XS as u16, space::S as u16]))
+            .padding(Padding::from(ROW_LABEL_PADDING))
             .style(move |_| container::Style {
                 border: Border {
                     color: color::BORDER_1.current(mode),
@@ -240,7 +262,7 @@ fn build_header_row<'a>(column_symbols: &[Symbol], mode: ThemeMode) -> Element<'
     // Corner cell (empty — aligns with the strategy-label column).
     row = row.push(
         Container::new(iced::widget::Space::new())
-            .width(Length::Fixed(120.0))
+            .width(Length::Fixed(ROW_LABEL_W))
             .height(Length::Fixed(24.0)),
     );
 

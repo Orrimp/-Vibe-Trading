@@ -326,6 +326,82 @@
 //! | P6-7 the scan lists its own files | `compare/cache.rs` `scan_one_root` | `        for report_path in layout::backtest_files(&rd.dir) {` → an inline `fs::read_dir(&rd.dir)` walk that keeps `backtest-*` files whose extension `eq_ignore_ascii_case("md")`, sorted (HEAD's file test) | lib: CS6 (discovered 1, admitted 1 ≠ 0, 0) | lib 701 of 702 (CS4c: the inline walk sorts by path too); this file 25 of 25 | measured |
 //! | P6-8 roots forget each other's names | `compare/cache.rs` `scan_report_roots` | `        scan_one_root(root, &mut cache, &mut seen_filenames, &mut tally);` → `        scan_one_root(root, &mut cache, &mut BTreeSet::new(), &mut tally);` | lib: CS7 (admitted 2 ≠ 1, no `DuplicateFilename`) | lib 701 of 702 (CS4a: its duplicate is inside one root); this file 25 of 25 | measured |
 //! | P6-9 the reset is `Ok`-only again | `state.rs` `Message::LabRunCompleted` arm | two replaces: drop `            model.compare_screen_state.last_indexed_at = None;\n` before `            // Bug #54`, and add it after `                    model.lab_state.last_run_notice = None;\n` at the end of the `Ok` arm | lib: ST2 | lib 701 of 702 (ST1: the `Ok` arm still resets); this file 25 of 25 | measured |
+//!
+//! ## bug-log #214 — a long Compare row label stays inside its column (PHASE 4e)
+//!
+//! `widgets/matrix.rs` gave every row label a fixed 120 px column: a 104 × 48
+//! px content box at `text::SMALL`, the default word wrap, and no clip. An id
+//! has no space to break at, so `btc_bbands_mean_revert` (142.3 px, MEASURED
+//! from the embedded Inter's advance widths) stayed on one line and drew over
+//! its first value cell's `-32.89`. The label now wraps per glyph
+//! (`Wrapping::WordOrGlyph`) inside an inner container that clips to the
+//! content box, and the column width is one constant, `ROW_LABEL_W`, which the
+//! header row's corner cell shares. The tests derive their geometry from
+//! `test_support::{COMPARE_ROW_LABEL_W, COMPARE_ROW_LABEL_PADDING,
+//! COMPARE_CELL_H}` and the screen body's `space::M` padding: the label column
+//! ends at x = 132, its content box ends at x = 124 and is 48 px tall, and a
+//! `SMALL` line is 15.6 px. Each test renders the real Compare screen body with
+//! `fake_strategies_config()` (the config the fixtures `cockpit` sets), its
+//! `btc_bbands_mean_revert` row renamed, against the reference frame S, the
+//! same scene with the row renamed `btc_bb` (one line):
+//!
+//! - **ML1** [`compare_matrix_long_row_label_leaves_the_value_columns_untouched`]
+//!   — L (`btc_bbands_mean_revert`) and S differ in 0 px at x ≥ 132.
+//!   Preconditions: `-32.89` drew at x ≥ 132 in both frames (≥
+//!   `KPI_DREW_MIN` `DOWN_500`-class px; 46 and 46; it is the only `DOWN_500`
+//!   text on screen, so a frame without that cell has 0); the long label drew
+//!   (L adds ≥ 16 ink px over S inside the label column, one per added glyph;
+//!   400). PNGs `/tmp/compare_214_long.png`, `/tmp/compare_214_short.png`.
+//! - **ML2** [`compare_matrix_long_row_label_wraps_onto_a_second_line`] — the
+//!   L-vs-S diff box is taller than one line: 26 px > 15.6.
+//! - **ML3** [`compare_matrix_overlong_row_label_stays_inside_its_content_box`]
+//!   — a 68-character id against S. Precondition, derived: iced's own
+//!   paragraph at the content width and unbounded height lays the id out on 5
+//!   lines (78 px), more than the 3 the 48 px box holds, so the clip has a
+//!   line to cut (the fourth, laid out because its top is inside the buffer,
+//!   its ink about 2 px below the box). Assertions: the diff box ends at or
+//!   left of x = 124 (123); it is at most 48 px tall (41), measured from the
+//!   first line's ink top, about 3 px below the box's top, so the label may
+//!   reach at most 3 px into the 6 px bottom padding but never leaves its
+//!   cell; and it is taller than two lines (31.2), so the widget drew the id
+//!   wrapped. PNG `/tmp/compare_214_overlong.png`. `diff_bbox` returns `None`
+//!   on an empty diff, and ML2 and ML3 fail on it.
+//!
+//! **Before the fix** (P214-0 below, measured 2026-11-24; its frames of the L
+//! and 68-character scenes are byte-identical to those of HEAD `0fa64fbc`'s
+//! row-header code): RED ML1 (151 px differ at x ≥ 132; 13 `FG_2`-class px
+//! there in L, 0 in S), ML2 (one line: the diff box is 10 px tall), ML3 (the
+//! diff box runs to x = 438 and is 13 px tall); GREEN this file's other 25
+//! tests and the 12 `compare__*` byte baselines.
+//!
+//! Those 12 baselines in `visual_snapshots.rs` (macOS, ADR-0057) draw one-line
+//! ids only (the widest, `top10_momentum`, is 101.1 px of 104), and they pass
+//! on the fix with no file under `tests/visual-baselines/` moved: a one-line
+//! label renders byte-identically.
+//!
+//! ML1-ML3 print `#214 pixel margin …` on stderr; run with `--nocapture`.
+//!
+//! ### T-T4 probe table (bug-log #214)
+//!
+//! Same protocol as the tables above. P214-0 to P214-5 edit
+//! `crates/ui/src/widgets/matrix.rs` and P214-6 this file; every OLD occurs
+//! exactly once in its file (P214-3's second edit and P214-4 carry the line
+//! after `.width(Length::Fixed(ROW_LABEL_W))`, which occurs twice). Measured
+//! 2026-11-24 after ML3's derived precondition landed: applied, run, both
+//! files restored byte-identical (`cmp`), strictly one probe at a time. Every
+//! probe ran this file (28 tests) and `cargo test -p ui --test
+//! visual_snapshots compare__` (12 tests, "baselines").
+//!
+//! | Probe | OLD → NEW | RED | GREEN | Measured |
+//! |---|---|---|---|---|
+//! | P214-0 HEAD's behaviour | P214-1 and P214-2 together | ML1 (151 px at x ≥ 132), ML2 (10 px tall), ML3 (right edge 438, 13 px tall) | this file 25 of 28; baselines 12 of 12 | measured |
+//! | P214-1 word wrap | `.wrapping(iced::widget::text::Wrapping::WordOrGlyph)` → `.wrapping(iced::widget::text::Wrapping::Word)` | ML2 (10 px tall), ML3 (10 px tall, not past two lines) | ML1 (the clip holds the one line: 0 px at x ≥ 132; ML3's right edge is 124 ≤ 124); this file 26 of 28; baselines 12 of 12 | measured |
+//! | P214-2 no clip | `.clip(true),` → `.clip(false),` | ML3 (59 px tall > 48: a fourth line draws below the cell) | ML1, ML2 (26 px); this file 27 of 28; baselines 12 of 12 | measured |
+//! | P214-3 the clip on the outer container | `.clip(true),` → `.clip(false),`, and `.width(Length::Fixed(ROW_LABEL_W))\n            .height(Length::Fixed(CELL_MIN_H))` → the same plus `\n            .clip(true)` | ML3 (51 px tall > 48: the fourth line draws into the bottom padding; a thin 3 px margin, since ML3's height runs from the first line's ink top, about 3 px below the box) | ML1, ML2; this file 27 of 28; baselines 12 of 12 | measured |
+//! | P214-4 the corner cell drifts | `.width(Length::Fixed(ROW_LABEL_W))\n            .height(Length::Fixed(24.0))` → `.width(Length::Fixed(ROW_LABEL_W - 20.0))\n            .height(Length::Fixed(24.0))` | baselines 12 of 12 (the existing pin) | this file 28 of 28 | measured |
+//! | P214-5 a wider column | `pub(crate) const ROW_LABEL_W: f32 = 120.0;` → `pub(crate) const ROW_LABEL_W: f32 = 160.0;` | ML2 (the 144 px box holds 142.3 px: 10 px tall), ML3 at its precondition (the 144 px box holds the id in 3 lines, 46.8 px, so there is nothing to clip; its bounds hold, 43 px, right edge 162 ≤ 164); baselines 12 of 12 | ML1 (0 px at x ≥ 172, derived); this file 26 of 28 | measured |
+//! | P214-6 a 3-line id | `const OVERLONG_ID: &str = "btc_bbands_mean_revert_20_2_with_volume_filter_and_atr_stop_v2_tuned";` → `const OVERLONG_ID: &str = "btc_bbands_mean_revert_20_2_with_volume_filter_an";` (its first 49 characters) | ML3 at its precondition (3 lines, 46.8 px: no more than the box holds) | ML3's three bounds hold (41 px, right edge 123); this file 27 of 28; baselines 12 of 12 | measured |
+//! | P214-6′ a 3-line id, no clip | P214-6 plus P214-2 | ML3 at its precondition alone | ML3's three bounds hold with no clip (41 px, right edge 123): without the precondition this pair is green, the gap the precondition closes; this file 27 of 28; baselines 12 of 12 | measured |
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::cast_precision_loss)]
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -2370,5 +2446,411 @@ fn compare_screen_overlay_draws_nothing_from_a_container_depth_2_root() {
         accent < OVERLAY_DREW_MIN && accent2 < OVERLAY_DREW_MIN,
         "CR2: nothing may draw from a container-depth-2 report, but ACCENT {accent} px and \
          ACCENT_2 {accent2} px (threshold < {OVERLAY_DREW_MIN}). PNG: {CR2_PNG}"
+    );
+}
+
+// ── PHASE 4e — bug-log #214: a long row label stays inside its column ───────
+
+use ui::test_support::{COMPARE_CELL_H, COMPARE_ROW_LABEL_PADDING, COMPARE_ROW_LABEL_W};
+
+/// The subject: `fake_strategies_config()`'s id that the `#206` AD-10 PNG
+/// showed running over its `BTCUSDT` Sharpe (142.3 px at 12 px, MEASURED from
+/// the embedded Inter's advance widths, against a 104 px content box).
+const LONG_ID: &str = "btc_bbands_mean_revert";
+/// The reference id: the same `btc` universe (so the same one-column matrix)
+/// and one line wide.
+const SHORT_ID: &str = "btc_bb";
+/// ML3's id: 68 characters, more than the content box's three lines hold.
+const OVERLONG_ID: &str = "btc_bbands_mean_revert_20_2_with_volume_filter_and_atr_stop_v2_tuned";
+/// The renamed row's Sharpe: the sighting's value, and the only `DOWN_500`
+/// value on screen (the other two rows are `UP_500`).
+const LONG_ROW_SHARPE: f64 = -32.89;
+
+/// ML1 and ML2's PNGs (read by a human; a failed save never fails the test).
+const ML_LONG_PNG: &str = "/tmp/compare_214_long.png";
+/// The reference frame S.
+const ML_SHORT_PNG: &str = "/tmp/compare_214_short.png";
+/// ML3's PNG.
+const ML_OVERLONG_PNG: &str = "/tmp/compare_214_overlong.png";
+
+/// New for #214. A floor, not a calibration: the fewest `DOWN_500`-class
+/// pixels (by [`is_down_500`]) that prove `-32.89` drew in the value column.
+/// The value is six glyphs; a frame without it holds no `DOWN_500` text at all
+/// (the other cells are `UP_500` and the labels `FG_2`), so 10 is clear of
+/// zero yet far below a drawn value (the measured count is printed as
+/// `#214 pixel margin ML1`).
+const KPI_DREW_MIN: usize = 10;
+
+/// Max squared RGB distance for a pixel to count as a token colour: the same
+/// ≈30-per-channel ball as [`CURVE_MATCH_R2`], so only near-full-coverage
+/// text pixels match, never an antialiased blend with the `PANEL` background.
+const TEXT_MATCH_R2: i32 = CURVE_MATCH_R2;
+
+/// A token's dark-mode colour as 8-bit RGB.
+fn token_rgb(token: ui::theme::color::ModeColor) -> (i32, i32, i32) {
+    let c = token.current(ThemeMode::Dark);
+    (
+        (c.r * 255.0).round() as i32,
+        (c.g * 255.0).round() as i32,
+        (c.b * 255.0).round() as i32,
+    )
+}
+
+/// `true` for a pixel within [`TEXT_MATCH_R2`] of `DOWN_500` (clay), the
+/// negative-Sharpe KPI colour (tolerance classifier, the `classify_curve`
+/// pattern).
+fn is_down_500(p: &[u8]) -> bool {
+    let q = (i32::from(p[0]), i32::from(p[1]), i32::from(p[2]));
+    dist2(q, token_rgb(color::DOWN_500)) <= TEXT_MATCH_R2
+}
+
+/// `true` for a pixel within [`TEXT_MATCH_R2`] of `FG_2`, the row label's
+/// colour: the entry's negative control (label-colour pixels in a value cell).
+fn is_fg_2(p: &[u8]) -> bool {
+    let q = (i32::from(p[0]), i32::from(p[1]), i32::from(p[2]));
+    dist2(q, token_rgb(color::FG_2)) <= TEXT_MATCH_R2
+}
+
+/// `true` for a pixel visibly off the `PANEL` background (farther than
+/// [`TEXT_MATCH_R2`]): ink of some kind, never a background pixel.
+fn is_ink(p: &[u8]) -> bool {
+    let q = (i32::from(p[0]), i32::from(p[1]), i32::from(p[2]));
+    dist2(q, token_rgb(color::PANEL)) > TEXT_MATCH_R2
+}
+
+/// The label column's right edge in physical px, `M + ROW_LABEL_W` (132): the
+/// Compare screen body pads the matrix by `space::M` (`screens/compare.rs`),
+/// and every value cell starts at or right of it.
+fn label_column_right() -> u32 {
+    ((ui::theme::space::M as f32 + COMPARE_ROW_LABEL_W) * SCALE) as u32
+}
+
+/// The label content box's right edge in physical px (124): the column's
+/// right edge less the row header's horizontal padding.
+fn content_box_right() -> u32 {
+    label_column_right() - (f32::from(COMPARE_ROW_LABEL_PADDING[1]) * SCALE) as u32
+}
+
+/// The label content box's height in physical px (48): the row height less
+/// the vertical padding on both sides, three `SMALL` lines.
+fn content_box_h() -> f32 {
+    (COMPARE_CELL_H - 2.0 * f32::from(COMPARE_ROW_LABEL_PADDING[0])) * SCALE
+}
+
+/// One `SMALL` line in physical px: iced's default line height at
+/// `text::SMALL`, 1.3 × 12 = 15.6.
+fn one_line_h() -> f32 {
+    iced::widget::text::LineHeight::default()
+        .to_absolute(iced::Pixels(ui::theme::text::SMALL as f32))
+        .0
+        * SCALE
+}
+
+/// The Compare screen with `fake_strategies_config()` (the subject) whose
+/// `btc_bbands_mean_revert` row is renamed to `id`. Asserts the config still
+/// holds that id first, so a renamed fixture fails here rather than testing
+/// something else. One cached `BTCUSDT` cell per row (`has_series` false, so
+/// no overlay chip): `btc_macd_trend` 1.42 and `btc_rsi_reversion` 0.87, both
+/// `UP_500`, and the renamed row the sighting's `-32.89`, the only `DOWN_500`.
+fn label_scene(id: &str) -> Cockpit {
+    let mut config = ui::fixtures::fake_strategies_config();
+    let entry = config
+        .strategies
+        .iter_mut()
+        .find(|s| s.id.0.as_str() == LONG_ID)
+        .expect("fake_strategies_config() must still hold btc_bbands_mean_revert, #214's subject");
+    entry.id = trading_core::StrategyId::new(id);
+
+    let mut c = Cockpit::new();
+    c.current_screen = Screen::Compare;
+    let range = c.compare_screen_state.range.clone();
+    for (strategy, sharpe) in [
+        ("btc_macd_trend", 1.42),
+        ("btc_rsi_reversion", 0.87),
+        (id, LONG_ROW_SHARPE),
+    ] {
+        c.compare_screen_state.cache.insert(
+            (
+                smol_str::SmolStr::new(strategy),
+                trading_core::Symbol::new("BTCUSDT"),
+                range.clone(),
+            ),
+            CachedCell {
+                sharpe,
+                total_return_pct: 0.0,
+                max_drawdown_pct: 0.0,
+                trade_count: 0,
+                equity_curve_tail: Vec::new(),
+                equity_series_ts: Vec::new(),
+                source_report_path: smol_str::SmolStr::new(
+                    "evidence/v1/x/reports/backtest-20260601-120000-x.md",
+                ),
+                generated_at: smol_str::SmolStr::new("2026-06-01T12:00:00Z"),
+                is_multi_symbol: false,
+            },
+        );
+    }
+    c.strategies_config = Some(config);
+    c
+}
+
+/// How tall `id` is in physical px with nothing to cut it: iced's own
+/// paragraph (the one the `Text` widget lays out) at the row label's content
+/// width (`ROW_LABEL_W` less both horizontal paddings, 104 px), its size
+/// (`text::SMALL`), font (the embedded Inter), wrap (`WordOrGlyph`) and the
+/// widget's other defaults, with an unbounded height.
+fn unbounded_label_h(id: &str) -> f32 {
+    use iced::advanced::text::Paragraph as _;
+    let content_w = COMPARE_ROW_LABEL_W - 2.0 * f32::from(COMPARE_ROW_LABEL_PADDING[1]);
+    let paragraph = iced::advanced::graphics::text::Paragraph::with_text(iced::advanced::Text {
+        content: id,
+        bounds: iced::Size::new(content_w, f32::INFINITY),
+        size: iced::Pixels(ui::theme::text::SMALL as f32),
+        line_height: iced::widget::text::LineHeight::default(),
+        font: ui::theme::font::embedded(),
+        align_x: iced::advanced::text::Alignment::Default,
+        align_y: iced::alignment::Vertical::Top,
+        shaping: iced::widget::text::Shaping::default(),
+        wrapping: iced::widget::text::Wrapping::WordOrGlyph,
+    });
+    paragraph.min_bounds().height * SCALE
+}
+
+/// Count the pixels at `x0 <= x < x1` (all rows) for which `pred` holds.
+fn count_in_columns(
+    shot: &iced::window::Screenshot,
+    (x0, x1): (u32, u32),
+    pred: impl Fn(&[u8]) -> bool,
+) -> usize {
+    let w = shot.size.width;
+    shot.rgba
+        .chunks_exact(4)
+        .enumerate()
+        .filter(|(i, p)| {
+            let x = (*i as u32) % w;
+            x >= x0 && x < x1 && pred(p)
+        })
+        .count()
+}
+
+/// Count the pixels at `x0 <= x < x1` (all rows) where `a` and `b` differ and
+/// `a`'s pixel satisfies `pred`.
+fn count_differing_in_columns(
+    a: &iced::window::Screenshot,
+    b: &iced::window::Screenshot,
+    (x0, x1): (u32, u32),
+    pred: impl Fn(&[u8]) -> bool,
+) -> usize {
+    assert_eq!(
+        a.size, b.size,
+        "frames must have the same size to be compared"
+    );
+    let w = a.size.width;
+    a.rgba
+        .chunks_exact(4)
+        .zip(b.rgba.chunks_exact(4))
+        .enumerate()
+        .filter(|(i, (p, q))| {
+            let x = (*i as u32) % w;
+            x >= x0 && x < x1 && p != q && pred(p)
+        })
+        .count()
+}
+
+/// A half-open pixel rectangle `[x0, x1) × [y0, y1)`.
+#[derive(Debug, Clone, Copy)]
+struct PxRect {
+    x0: u32,
+    y0: u32,
+    x1: u32,
+    y1: u32,
+}
+
+impl PxRect {
+    fn height(self) -> u32 {
+        self.y1 - self.y0
+    }
+}
+
+/// The bounding box of the pixels that differ between two same-size frames,
+/// or `None` when no pixel differs (the caller fails on `None`: an empty diff
+/// must never satisfy an upper bound).
+fn diff_bbox(a: &iced::window::Screenshot, b: &iced::window::Screenshot) -> Option<PxRect> {
+    assert_eq!(
+        a.size, b.size,
+        "frames must have the same size to be compared"
+    );
+    let w = a.size.width;
+    let mut rect: Option<PxRect> = None;
+    for (i, (p, q)) in a
+        .rgba
+        .chunks_exact(4)
+        .zip(b.rgba.chunks_exact(4))
+        .enumerate()
+    {
+        if p == q {
+            continue;
+        }
+        let (x, y) = ((i as u32) % w, (i as u32) / w);
+        rect = Some(match rect {
+            None => PxRect {
+                x0: x,
+                y0: y,
+                x1: x + 1,
+                y1: y + 1,
+            },
+            Some(r) => PxRect {
+                x0: r.x0.min(x),
+                y0: r.y0.min(y),
+                x1: r.x1.max(x + 1),
+                y1: r.y1.max(y + 1),
+            },
+        });
+    }
+    rect
+}
+
+/// **ML1 — bug-log #214 (the bug).** `btc_bbands_mean_revert` (frame L) and
+/// the one-line `btc_bb` (frame S) render the same Compare screen except for
+/// that row's label, so no pixel may differ at `x >= M + ROW_LABEL_W` (132):
+/// the long label stays in its column and leaves the value cells untouched.
+/// Preconditions, so the zero cannot be vacuous: `-32.89` drew in the value
+/// column of both frames (≥ `KPI_DREW_MIN` `DOWN_500` pixels at x ≥ 132; it
+/// is the only `DOWN_500` text on screen, so a frame without that cell has
+/// 0); and the long label drew (L adds at least one ink pixel per glyph it has
+/// beyond S, inside the label column). RED before the fix: the label ran to
+/// x ≈ 162 and covered `-32.89`.
+#[test]
+fn compare_matrix_long_row_label_leaves_the_value_columns_untouched() {
+    let shot_l = render_compare_screen(label_scene(LONG_ID));
+    let shot_s = render_compare_screen(label_scene(SHORT_ID));
+    dump_png(&shot_l, ML_LONG_PNG);
+    dump_png(&shot_s, ML_SHORT_PNG);
+
+    let col_right = label_column_right();
+    let values = (col_right, shot_l.size.width);
+    let label_col = (ui::theme::space::M, col_right);
+
+    let down_l = count_in_columns(&shot_l, values, is_down_500);
+    let down_s = count_in_columns(&shot_s, values, is_down_500);
+    let added_glyphs = LONG_ID.chars().count() - SHORT_ID.chars().count();
+    let label_added_ink = count_differing_in_columns(&shot_l, &shot_s, label_col, is_ink);
+    let differing = count_differing_in_columns(&shot_l, &shot_s, values, |_| true);
+    let fg2_l = count_in_columns(&shot_l, values, is_fg_2);
+    let fg2_s = count_in_columns(&shot_s, values, is_fg_2);
+    eprintln!(
+        "#214 pixel margin ML1: {differing} px differ at x >= {col_right} (expected 0); FG_2-class \
+         px there: L {fg2_l}, S {fg2_s}; DOWN_500 px there: L {down_l}, S {down_s} (floor \
+         {KPI_DREW_MIN}); the long label's added ink in x {}..{col_right}: {label_added_ink} px \
+         (floor {added_glyphs}, one per added glyph)",
+        ui::theme::space::M
+    );
+    assert!(
+        down_l >= KPI_DREW_MIN && down_s >= KPI_DREW_MIN,
+        "ML1 precondition: -32.89 must draw in the value column of both frames (DOWN_500 px at x \
+         >= {col_right}: L {down_l}, S {down_s}; floor {KPI_DREW_MIN}) (#214). PNGs: {ML_LONG_PNG}, \
+         {ML_SHORT_PNG}"
+    );
+    assert!(
+        label_added_ink >= added_glyphs,
+        "ML1 precondition: the long label must draw in its column (L adds {label_added_ink} ink px \
+         over S in x {}..{col_right}; floor {added_glyphs}) (#214). PNGs: {ML_LONG_PNG}, \
+         {ML_SHORT_PNG}",
+        ui::theme::space::M
+    );
+    assert_eq!(
+        differing, 0,
+        "ML1: the long row label changed {differing} px at x >= {col_right}, the value columns \
+         ({fg2_l} FG_2-class px there in L, {fg2_s} in S) (#214). PNGs: {ML_LONG_PNG}, \
+         {ML_SHORT_PNG}"
+    );
+}
+
+/// **ML2 — bug-log #214 (the full id is on screen).** The same L and S: the
+/// box around the pixels that differ (L's extra glyphs) is taller than one
+/// `SMALL` line (15.6 px), so the id went on to a second line instead of
+/// being cut at the column. One line's ink fits inside Inter's ascent plus
+/// descent (14.5 px at 12 px), so a single line cannot pass.
+#[test]
+fn compare_matrix_long_row_label_wraps_onto_a_second_line() {
+    let shot_l = render_compare_screen(label_scene(LONG_ID));
+    let shot_s = render_compare_screen(label_scene(SHORT_ID));
+    let line = one_line_h();
+    let bbox = diff_bbox(&shot_l, &shot_s).expect(
+        "ML2: btc_bbands_mean_revert and btc_bb must render differently: no pixel differs (#214)",
+    );
+    eprintln!(
+        "#214 pixel margin ML2: the diff box {bbox:?} is {} px tall (expected > one line, {line:.1} \
+         px)",
+        bbox.height()
+    );
+    assert!(
+        bbox.height() as f32 > line,
+        "ML2: the long label's diff box {bbox:?} is {} px tall, not more than one {line:.1} px \
+         line: the id did not wrap (#214). PNGs: {ML_LONG_PNG}, {ML_SHORT_PNG}",
+        bbox.height()
+    );
+}
+
+/// **ML3 — bug-log #214 (the clip backstop).** A 68-character id against S.
+///
+/// Precondition, derived rather than read off a frame: iced's own paragraph
+/// ([`unbounded_label_h`]) lays the id out on more lines than the 48 px content
+/// box holds (5 against 3), so the clip has at least one line to cut. Every
+/// line whose top lies inside the box is laid out and drawn (cosmic-text drops
+/// only lines whose top is below the 48 px buffer), so the fourth line, whose
+/// top is at 46.8 px and whose ink starts about 2 px below the box, reaches
+/// the clip; without the clip the diff box is 59 px tall (P214-2, measured).
+///
+/// Assertions: the diff box ends at or left of the content box's right edge
+/// (124), and it is at most the box's 48 px tall. That height is measured from
+/// the first line's ink top, about 3 px below the box's top, so the label may
+/// reach at most 3 px into the 6 px bottom padding but never leaves its cell.
+/// The box is also taller than two lines (31.2 px): the widget drew the id
+/// wrapped, so an empty or one-line label cannot meet the two bounds.
+#[test]
+fn compare_matrix_overlong_row_label_stays_inside_its_content_box() {
+    let (line, box_h) = (one_line_h(), content_box_h());
+    let needed_h = unbounded_label_h(OVERLONG_ID);
+    let lines_needed = (needed_h / line).round() as u32;
+    let lines_held = (box_h / line).floor() as u32;
+    let shot_o = render_compare_screen(label_scene(OVERLONG_ID));
+    let shot_s = render_compare_screen(label_scene(SHORT_ID));
+    dump_png(&shot_o, ML_OVERLONG_PNG);
+    let (right, two_lines) = (content_box_right(), 2.0 * line);
+    let bbox = diff_bbox(&shot_o, &shot_s)
+        .expect("ML3: the overlong id and btc_bb must render differently: no pixel differs (#214)");
+    eprintln!(
+        "#214 pixel margin ML3: the id needs {lines_needed} lines ({needed_h:.1} px unbounded) \
+         against the {lines_held} its {box_h} px content box holds (expected more); the diff box \
+         {bbox:?} is {} px tall (expected > {two_lines:.1} and <= {box_h}), right edge {} \
+         (expected <= {right})",
+        bbox.height(),
+        bbox.x1
+    );
+    assert!(
+        lines_needed > lines_held,
+        "ML3 precondition: iced lays the overlong id out on {lines_needed} line(s) \
+         ({needed_h:.1} px), no more than the {lines_held} its {box_h} px content box holds, so \
+         the clip has nothing to cut and this test cannot show it (#214)"
+    );
+    assert!(
+        bbox.x1 <= right,
+        "ML3: the overlong label drew to x = {} past its content box's right edge {right} (#214). \
+         PNG: {ML_OVERLONG_PNG}",
+        bbox.x1
+    );
+    assert!(
+        bbox.height() as f32 <= box_h,
+        "ML3: the overlong label's diff box {bbox:?} is {} px tall, past its {box_h} px content \
+         box (#214). PNG: {ML_OVERLONG_PNG}",
+        bbox.height()
+    );
+    assert!(
+        bbox.height() as f32 > two_lines,
+        "ML3: the overlong label's diff box {bbox:?} is only {} px tall, not past two lines \
+         ({two_lines:.1} px): the widget did not draw the id wrapped past two lines (#214). PNG: \
+         {ML_OVERLONG_PNG}",
+        bbox.height()
     );
 }

@@ -289,6 +289,26 @@ pub fn chart_overlay_program(
 pub const EQUITY_GUTTER_WIDENING_PX: f32 =
     crate::widgets::chart::AXIS_GUTTER_EQUITY_PX - crate::theme::layout::AXIS_GUTTER_RIGHT_PX;
 
+/// bug-log #214 — the Compare matrix's strategy-label column width in logical
+/// px: `widgets::matrix::ROW_LABEL_W`, shared by every row header and the
+/// header row's corner cell. Re-exported so a pixel test derives where the
+/// first value column starts instead of reading it off a rendered frame. On
+/// the Compare screen body the matrix sits inside `screens/compare.rs`'s
+/// `space::M` padding, so the column spans `M .. M + COMPARE_ROW_LABEL_W`.
+pub const COMPARE_ROW_LABEL_W: f32 = crate::widgets::matrix::ROW_LABEL_W;
+
+/// bug-log #214 — a Compare row header's padding `[vertical, horizontal]` in
+/// logical px: `widgets::matrix::ROW_LABEL_PADDING`. With
+/// [`COMPARE_ROW_LABEL_W`] × [`COMPARE_CELL_H`] it bounds the label's content
+/// box (104 × 48 px today), the clip a long id must stay inside. Same
+/// `space::M` screen padding as [`COMPARE_ROW_LABEL_W`].
+pub const COMPARE_ROW_LABEL_PADDING: [u16; 2] = crate::widgets::matrix::ROW_LABEL_PADDING;
+
+/// bug-log #214 — the Compare matrix's row height in logical px:
+/// `widgets::matrix::CELL_MIN_H`, the height of every row header and value
+/// cell. Same `space::M` screen padding as [`COMPARE_ROW_LABEL_W`].
+pub const COMPARE_CELL_H: f32 = crate::widgets::matrix::CELL_MIN_H;
+
 /// A `lab-runs/`-style backtest report (`data_source: synthetic`) whose
 /// `## Equity curve` timestamps lie INSIDE the fixtures' 60-bar window: six
 /// samples at the open times of bars 0, 10, 20, 30, 40 and 50 of
