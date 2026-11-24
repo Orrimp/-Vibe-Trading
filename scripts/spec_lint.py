@@ -1678,16 +1678,80 @@ def _self_test_trace_ref_unparsed() -> bool:
     return ok
 
 
+def _run_copy_on_fixture(line: str, source: str | None = None) -> tuple[int, list[str], str]:
+    """Run a copy of this script, as the hook does, over a throwaway repo layout.
+
+    `line` is story 1-1's `- Trace:` line; the rest of the fixture is fixed (see
+    `_self_test_main_runs_story_triad`). `source` replaces the copied script's
+    text — only `_self_test_unlisted_category_printed` passes it, to run a copy
+    whose CATEGORIES omits one emitted category. Every `GIT_*` variable is
+    removed from the child's environment (the `#195` leak: a hook hands its
+    children an absolute GIT_INDEX_FILE). The temp directory is a repository
+    LAYOUT, not a git repository; the child's gitignore filter notes exit 128
+    on stderr and drops nothing, which the story rules do not depend on.
+    Returns (exit code, stdout lines, stderr).
+    """
+    import shutil
+    import tempfile
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        (root / "scripts").mkdir()
+        script = root / "scripts" / "spec_lint.py"
+        if source is None:
+            shutil.copyfile(Path(__file__).resolve(), script)
+        else:
+            script.write_text(source, encoding="utf-8")
+        stories = root / "_bmad-output" / "implementation-artifacts"
+        stories.mkdir(parents=True)
+        planning = root / "_bmad-output" / "planning-artifacts"
+        planning.mkdir()
+        (stories / "1-1-fixture.md").write_text(
+            f"# Story 1.1: fixture\n\nStatus: done\n\n### References\n\n{line}\n",
+            encoding="utf-8",
+        )
+        (stories / "1-2-typo.md").write_text(
+            "# Story 1.2: typo\n\nStatus: done\n\n### References\n\n"
+            "- Trace: `REQ-TYPO-001` (state=`shipped`)\n",
+            encoding="utf-8",
+        )
+        (stories / "sprint-status.yaml").write_text(
+            "development_status:\n  1-1-fixture: done\n  1-2-typo: done\n",
+            encoding="utf-8",
+        )
+        (planning / "trace.toml").write_text(
+            '[[req]]\nid = "REQ-FIXTURE-001"\nfeature = "fixture"\nstate = "passed"\n',
+            encoding="utf-8",
+        )
+        (root / "CHANGELOG.md").write_text(
+            "# Changelog\n\n- **fixture** — a fixture feature.\n", encoding="utf-8"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-I", str(script)],
+            cwd=str(root), env=env, capture_output=True, text=True,
+            check=False, timeout=120,
+        )
+        return proc.returncode, proc.stdout.splitlines(), proc.stderr
+
+
+def _report_section(out: list[str], cat: str) -> tuple[str | None, str]:
+    """(header line, the line after it) of `cat`'s section in printed output."""
+    for i, line in enumerate(out):
+        if line.startswith(f"{cat} ("):
+            return line, (out[i + 1] if i + 1 < len(out) else "")
+    return None, ""
+
+
 def _self_test_main_runs_story_triad() -> bool:
     """Pin main()'s wiring end to end (bug-log `#216`; the `#190` wiring rule).
 
     Every other triad self-test calls `run_story_triad` directly, so deleting
     its call from main() would leave them all green while the hook and CI —
     which run main() — went blind, and the live tree (0 malformed lines) would
-    still print PASS. So this copies THIS file into a throwaway repository
-    layout and runs it the way the hook does, with every `GIT_*` variable
-    removed from the child's environment (the `#195` leak: a hook hands its
-    children an absolute GIT_INDEX_FILE), then reads the printed report.
+    still print PASS. So this runs a copy of THIS file over a throwaway
+    repository layout the way the hook does (`_run_copy_on_fixture`), then
+    reads the printed report.
 
     Two runs, the two sides differing only in story 1-1's `- Trace:` line:
     story 2-63's pre-Close form must print a `trace-ref-unparsed (1):` section
@@ -1699,58 +1763,10 @@ def _self_test_main_runs_story_triad() -> bool:
     `story-done-changelog-missing (1):`. Every one of `run_story_triad`'s five
     categories is therefore asserted through main(): a main() that inlines some
     of the calls again instead of calling `run_story_triad` is red, not only one
-    that drops the call. The printer walks CATEGORIES, so this also proves each
-    category is printed, not only counted. The temp directory is a repository
-    LAYOUT, not a git repository; the child's gitignore filter notes exit 128 on
-    stderr and drops nothing, which the triad does not depend on.
+    that drops the call. Each header is matched exactly, so this also proves
+    each category prints as a listed one, not only that it is counted.
     """
-    import shutil
-    import tempfile
-
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-
-    def run(line: str) -> tuple[int, list[str], str]:
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td).resolve()
-            (root / "scripts").mkdir()
-            shutil.copyfile(Path(__file__).resolve(), root / "scripts" / "spec_lint.py")
-            stories = root / "_bmad-output" / "implementation-artifacts"
-            stories.mkdir(parents=True)
-            planning = root / "_bmad-output" / "planning-artifacts"
-            planning.mkdir()
-            (stories / "1-1-fixture.md").write_text(
-                f"# Story 1.1: fixture\n\nStatus: done\n\n### References\n\n{line}\n",
-                encoding="utf-8",
-            )
-            (stories / "1-2-typo.md").write_text(
-                "# Story 1.2: typo\n\nStatus: done\n\n### References\n\n"
-                "- Trace: `REQ-TYPO-001` (state=`shipped`)\n",
-                encoding="utf-8",
-            )
-            (stories / "sprint-status.yaml").write_text(
-                "development_status:\n  1-1-fixture: done\n  1-2-typo: done\n",
-                encoding="utf-8",
-            )
-            (planning / "trace.toml").write_text(
-                '[[req]]\nid = "REQ-FIXTURE-001"\nfeature = "fixture"\nstate = "passed"\n',
-                encoding="utf-8",
-            )
-            (root / "CHANGELOG.md").write_text(
-                "# Changelog\n\n- **fixture** — a fixture feature.\n", encoding="utf-8"
-            )
-            proc = subprocess.run(
-                [sys.executable, "-I", str(root / "scripts" / "spec_lint.py")],
-                cwd=str(root), env=env, capture_output=True, text=True,
-                check=False, timeout=120,
-            )
-            return proc.returncode, proc.stdout.splitlines(), proc.stderr
-
-    def section(out: list[str], cat: str) -> tuple[str | None, str]:
-        for i, line in enumerate(out):
-            if line.startswith(f"{cat} ("):
-                return line, (out[i + 1] if i + 1 < len(out) else "")
-        return None, ""
-
+    run, section = _run_copy_on_fixture, _report_section
     try:
         rc_bad, out_bad, err_bad = run(
             "- Trace: `REQ-FIXTURE-001` (state=`passed` since 2026-11-10)"
@@ -1797,6 +1813,93 @@ def _self_test_main_runs_story_triad() -> bool:
     return ok
 
 
+def _self_test_unlisted_category_printed() -> bool:
+    """A stored category missing from CATEGORIES still prints (bug-log `#220`).
+
+    The pair, in process, through `render_report`: one report holds one
+    violation in a listed category and one in a category CATEGORIES does not
+    name; both sections must print, the unlisted one after every listed one and
+    marked UNLISTED_CATEGORY_MARK. The listed section, and the whole output of a
+    report holding only the listed violation, must equal what the pre-#220
+    printer produced: ``"", f"{cat} ({n}):"`` and then each `render` line, under
+    the unchanged summary line. That expectation is the old code's format,
+    quoted, not the new code's output.
+
+    And end to end, through main(): `_run_copy_on_fixture` runs a copy of this
+    file whose CATEGORIES omits `trace-ref-dangling` — the shape of `#216`'s
+    probe P9, which printed `spec-lint: FAIL (1 violations in 1 categories)` and
+    no section. The fixture's story 1-2 fires that category on purpose, so the
+    copy must print it, marked, while the listed status-drift section prints as
+    before. A main() that prints with its own CATEGORIES-only loop again is red.
+    """
+    listed, unlisted = "status-drift", "zz-unlisted-fixture-category"
+    fixture_valid = listed in CATEGORIES and unlisted not in CATEGORIES
+    root = REPO_ROOT
+    v_listed = Violation(listed, root / "a.md", "listed detail")
+    v_unlisted = Violation(unlisted, root / "b.md", "unlisted detail")
+
+    both_rep = Report([v_unlisted, v_listed])  # stored unlisted-first on purpose
+    both_lines, both_rc = render_report(both_rep, root)
+    only_rep = Report([v_listed])
+    only_lines, only_rc = render_report(only_rep, root)
+
+    old_listed_section = ["", f"{listed} (1):", v_listed.render(root)]
+    old_only_output = ["spec-lint: FAIL (1 violations in 1 categories)", *old_listed_section]
+    unlisted_head = f"{unlisted} (1) {UNLISTED_CATEGORY_MARK}:"
+
+    def at(lines: list[str], head: str) -> int:
+        return lines.index(head) if head in lines else -1
+
+    i_listed, i_unlisted = at(both_lines, f"{listed} (1):"), at(both_lines, unlisted_head)
+
+    # End to end: drop one emitted category from a copy's CATEGORIES.
+    src = Path(__file__).read_text(encoding="utf-8")
+    start = src.find("\nCATEGORIES = (\n")
+    end = src.find("\n)\n", start) if start >= 0 else -1
+    target = '\n    "trace-ref-dangling",'
+    edit_ok = start >= 0 and end > start and src[start:end].count(target) == 1
+    e2e_out: list[str] = []
+    e2e_err = ""
+    if edit_ok:
+        copy = src[:start] + src[start:end].replace(target, "", 1) + src[end:]
+        try:
+            _, e2e_out, e2e_err = _run_copy_on_fixture(
+                "- Trace: `REQ-FIXTURE-001` (state=`passed`)", source=copy
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            e2e_err = f"could not run the copy ({exc})"
+    e2e_head, e2e_first = _report_section(e2e_out, "trace-ref-dangling")
+    e2e_listed = _report_section(e2e_out, "status-drift")[0]
+    typo_rel = "_bmad-output/implementation-artifacts/1-2-typo.md"
+
+    checks = [
+        ("fixture valid (one listed, one unlisted category)", fixture_valid),
+        ("unlisted section printed, marked", i_unlisted >= 0
+         and both_lines[i_unlisted + 1:i_unlisted + 2] == [v_unlisted.render(root)]),
+        ("listed section printed as before",
+         i_listed >= 1 and both_lines[i_listed - 1:i_listed + 2] == old_listed_section),
+        ("unlisted after every listed section", 0 <= i_listed < i_unlisted),
+        ("summary + exit code count both", both_lines[0]
+         == "spec-lint: FAIL (2 violations in 2 categories)" and both_rc == 2),
+        ("listed-only output byte-identical to the old printer",
+         only_lines == old_only_output and only_rc == 1),
+        ("e2e: copy's CATEGORIES edit applied", edit_ok),
+        ("e2e: dropped category printed, marked, naming the story",
+         e2e_head == f"trace-ref-dangling (1) {UNLISTED_CATEGORY_MARK}:"
+         and f"[trace-ref-dangling] {typo_rel}:" in e2e_first),
+        ("e2e: listed status-drift printed as before", e2e_listed == "status-drift (1):"),
+    ]
+    ok = all(passed for _, passed in checks)
+    detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)
+    if not ok:
+        detail += f" | in-process={both_lines} | e2e stdout={e2e_out[:10]} stderr={e2e_err[-300:]!r}"
+    print(
+        "spec-lint --self-test (unlisted-category-printed): "
+        + (f"PASS — {detail}" if ok else f"FAIL — {detail}")
+    )
+    return ok
+
+
 def self_test() -> int:
     """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass.
 
@@ -1815,6 +1918,7 @@ def self_test() -> int:
         _self_test_gitignored_not_walked,
         _self_test_trace_ref_unparsed,
         _self_test_main_runs_story_triad,
+        _self_test_unlisted_category_printed,
     ]
     results = [t() for t in tests]
     defined = sorted(
@@ -1974,6 +2078,39 @@ def default_roots(repo_root: Path = REPO_ROOT) -> list[Path]:
     return roots
 
 
+UNLISTED_CATEGORY_MARK = "(category not in CATEGORIES)"
+
+
+def render_report(report: Report, root: Path = REPO_ROOT) -> tuple[list[str], int]:
+    """The lines main() prints for `report`, and its exit code.
+
+    bug-log `#220`: sections print in CATEGORIES order, and until this fix ONLY
+    those printed. `Report.add` stores any category and the summary and exit
+    code count every stored one, so a rule whose category was left out of
+    CATEGORIES failed the run with no line naming what failed — a gate that
+    reads as broken (`#189`), seen live by `#216`'s probe P9. Any other stored
+    category now prints after the listed ones, sorted, its header marked
+    UNLISTED_CATEGORY_MARK. A report with only listed categories prints exactly
+    what it printed before.
+    """
+    grouped = report.by_category()
+    failed_categories = [c for c, vs in grouped.items() if vs]
+    if not failed_categories:
+        return ["spec-lint: PASS (0 violations)"], 0
+
+    total = sum(len(vs) for vs in grouped.values())
+    lines = [f"spec-lint: FAIL ({total} violations in {len(failed_categories)} categories)"]
+    unlisted = sorted(c for c in failed_categories if c not in CATEGORIES)
+    for cat in [*CATEGORIES, *unlisted]:
+        vs = grouped.get(cat, [])
+        if not vs:
+            continue
+        mark = f" {UNLISTED_CATEGORY_MARK}" if cat in unlisted else ""
+        lines += ["", f"{cat} ({len(vs)}){mark}:"]
+        lines += [v.render(root) for v in vs]
+    return lines, len(failed_categories)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -2018,24 +2155,11 @@ def main(argv: list[str]) -> int:
         # `_self_test_main_runs_story_triad` (bug-log #216).
         run_story_triad(report)
 
-    grouped = report.by_category()
-    failed_categories = [c for c, vs in grouped.items() if vs]
-
-    if not failed_categories:
-        print("spec-lint: PASS (0 violations)")
-        return 0
-
-    total = sum(len(vs) for vs in grouped.values())
-    print(f"spec-lint: FAIL ({total} violations in {len(failed_categories)} categories)")
-    for cat in CATEGORIES:
-        vs = grouped.get(cat, [])
-        if not vs:
-            continue
-        print(f"\n{cat} ({len(vs)}):")
-        for v in vs:
-            print(v.render(REPO_ROOT))
-
-    return len(failed_categories)
+    # Pinned end to end by `_self_test_unlisted_category_printed` (bug-log #220).
+    lines, failed = render_report(report)
+    for line in lines:
+        print(line)
+    return failed
 
 
 if __name__ == "__main__":

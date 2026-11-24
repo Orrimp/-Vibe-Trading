@@ -28,6 +28,11 @@ gates: one for content stability (anchors) and one for shape stability
    exit code equals the number of categories with at least one violation
    (so `1` means one category failed, not one file).
 
+   Sections print in `CATEGORIES` order. A category the script emits but
+   does not list there prints after them, its header marked
+   `(category not in CATEGORIES)`; the marker is a `spec_lint.py` bug (add
+   the category to the tuple), not a finding about the tree (bug-log `#220`).
+
 2. To see all violations even after early failures, pass `--all`:
 
    ```bash
@@ -40,15 +45,15 @@ gates: one for content stability (anchors) and one for shape stability
    uv run scripts/spec_lint.py _bmad-output/implementation-artifacts
    ```
 
-4. To prove the rules themselves (synthetic fixtures, plus two runs of a copy
-   of the script against a throwaway repository layout — a temp directory, not
-   a git repo — which pin `main()`'s wiring):
+4. To prove the rules themselves (synthetic fixtures, plus three runs of a
+   copy of the script against a throwaway repository layout — a temp
+   directory, not a git repo — which pin `main()`'s wiring and its printer):
 
    ```bash
    python3 scripts/spec_lint.py --self-test   # every line PASS, exit 0
    ```
 
-   On 2026-11-24 that is 9 lines: 8 rule self-tests, then `(registry)`, which
+   On 2026-11-24 that is 10 lines: 9 rule self-tests, then `(registry)`, which
    FAILs if a `_self_test_*` function is defined but `self_test()` never runs
    it (bug-log `#216`).
 
