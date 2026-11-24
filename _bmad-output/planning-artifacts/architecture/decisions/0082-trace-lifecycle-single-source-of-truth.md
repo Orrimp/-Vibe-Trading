@@ -178,3 +178,9 @@ inline.
   subprocess `--self-test` that asserts all five categories in the printed
   report. An enforcement extension, not a new normative decision: hence an
   amendment here, not a new ADR.
+- 2026-11-24 (bug-log `#219` fix, `bdac41193820`): amendment — the `- Trace:` line's
+  `(state=…)` annotation is a derived copy of its row's `state` and is now
+  checked: `spec_lint.py` category `trace-state-annotation-drift`
+  (resolved stories only). The 11 stale copies found at amendment time were
+  re-synced in the same change; the baseline afterwards is 0. An enforcement
+  extension inside D1, not a new decision.

@@ -11073,7 +11073,9 @@ CI does not see this. Its runners start from a cache that rust-cache cleans of w
 
 ### `#219` — `spec_lint` parses each story's `(state=…)` annotation into `trace_embedded_state` and no rule reads it: 11 of 141 parsed Trace lines disagree with their trace row
 
-**Status**: **`open`** 2026-11-24. Found by the `#216` design pass (its adjacent finding D3). MEASURED at HEAD `07b698f8`: HEAD's `spec_lint.parse_story` run over the committed story files, joined against the committed `trace.toml`. Anchor-impacting: **no**. Paper/sim only.
+**Status**: **`fixed` 2026-11-24 — `bdac41193820`** (option 1, by orchestrator ruling: a new rule `trace-state-annotation-drift` requires a resolved story's `(state=…)` to equal its row's `state`; the 11 stale annotations were re-synced in the same change; anchor-neutral).
+
+History: filed **`open`** 2026-11-24. Found by the `#216` design pass (its adjacent finding D3). MEASURED at HEAD `07b698f8`: HEAD's `spec_lint.parse_story` run over the committed story files, joined against the committed `trace.toml`. Anchor-impacting: **no**. Paper/sim only. The sections up to Fix describe the code before the fix.
 
 **The code.** In `scripts/spec_lint.py`, `parse_story` sets `Story.trace_embedded_state` from `TRACE_REF_RE`'s second group, and no rule reads it. `status-drift` and `story-done-trace-drift` compare the story's `Status:` with the row's `state`, never with the annotation.
 
@@ -11084,18 +11086,35 @@ CI does not see this. Its runners start from a cache that rust-cache cleans of w
 
 **Why it matters.** Anyone who opens the story reads the annotation as the requirement's state, and for these 11 it is stale. ADR-0082's invariant is that a derived copy is either checked or not kept; this one is neither. Since the `#216` fix, the annotation is also part of the required line form, so every new story carries one.
 
-**Fix (proposed; its own change):** either
-1. add a rule `trace-state-annotation-drift` (the annotation must equal the row's `state`), with its self-test pair, and re-sync the 11 lines in the same change; or
-2. drop the annotation from the contract: `TRACE_REF_RE` and the create-story fact ignore anything after the id, and the annotation is stripped from every story, leaving the row as the single source.
+**Fix (landed in `bdac41193820`; option 1):**
+- **`trace-state-annotation-drift`.** It follows `trace-ref-dangling` in `CATEGORIES`, and `check_trace_state_annotation_drift` is the sixth call in `run_story_triad`. For every story whose id resolves to a row, the annotation must equal the row's `state`. The message names the line, both values and the fix. Unresolved stories stay with the other guards (`trace-ref-unparsed`, `trace-ref-dangling`; the declared gap has no annotation).
+- **Re-sync.** The 11 annotations were re-synced to their rows' current states, re-measured against the working-tree `trace.toml` first; each file changes one token: 1-19 `tester-done`→`retired`; 1-20, 2-15, 2-18 `tester-done`→`shipped`; 1-24, 1-25, 1-28, 1-29, 1-30, 3-20, 6-12 `scoped`→`shipped`. 6-13 (`in-progress` on both its line and its row) is untouched.
+- **What stays the same.** `trace_req_id` and `trace_embedded_state` are derived as before; the identity dump changes on exactly those 11 rows' embedded state and on 0 paths or ids.
+- **The root cause.** `_bmad/custom/bmad-create-story.toml` now states that the annotation must equal the row's state and moves with it in the same edit. ADR-0082 § Changelog records the amendment.
 
-Option 1 keeps the line form the `#216` fix just made required, and the workflows already move the annotation with the row. Option 2 removes the copy outright. Either way, the change amends ADR-0082 § Changelog.
+**Pin / T-T4.**
+- **Real tree.** With the rule in place and before the re-sync, the live lint printed `FAIL (11 violations in 1 categories)`, exactly the 11 above; after it, PASS (0 violations).
+- **Fixture table.** Two pairs differ only in the annotation: B/N on a done story (B silent, N fires) and P/O on a `review` story (P silent, O fires this rule alone; O pins that the rule reads every story, not only done ones). The detail substring pins the line number.
+- **Wiring.** main-wiring carries a story annotated `scoped` against a `shipped` row on both sides; both must print `trace-state-annotation-drift (1):` naming it.
+- **Probes**, each one edit on a scratch copy, all red: R1 the comparison no-op'd (N, O, main-wiring); R2 the call deleted (N, O, main-wiring); R3 dropped from `CATEGORIES` (membership, main-wiring); R4 main() inlining every call but this one (main-wiring); R5 the annotation compared with itself (N, O, main-wiring); R6 done stories only (O). The 30 `#216`/`#220` probes, re-run on the final script, are red too.
+- **Gates.** `--self-test`: 10 lines, all PASS. Anchors 119/119.
 
 ### `#220` — `spec_lint` prints only the categories listed in `CATEGORIES`: a violation in any other category fails the run with no detail line
 
-**Status**: **`open`** 2026-11-24. Found by the `#216` design pass (its adjacent finding D3) and seen live by that fix's probe P9: with `trace-ref-unparsed` removed from `CATEGORIES`, the child run printed `spec-lint: FAIL (1 violations in 1 categories)` and no section. Anchor-impacting: **no**. Paper/sim only.
+**Status**: **`fixed` 2026-11-24 — `a67a2bdfa8d1`** (main()'s printer prints the `CATEGORIES` sections first, then every other stored category, sorted, marked `(category not in CATEGORIES)`; a report with only listed categories prints byte-identically to before; pinned in process and end to end; anchor-neutral).
+
+History: filed **`open`** 2026-11-24. Found by the `#216` design pass (its adjacent finding D3) and seen live by that fix's probe P9: with `trace-ref-unparsed` removed from `CATEGORIES`, the child run printed `spec-lint: FAIL (1 violations in 1 categories)` and no section. Anchor-impacting: **no**. Paper/sim only. The sections up to Fix describe the code before the fix.
 
 **The code.** In `scripts/spec_lint.py`, `main()`'s printer iterates `for cat in CATEGORIES`. `Report.add` stores any category with `setdefault`, and the FAIL summary and the exit code count every stored category. So a rule whose category is missing from `CATEGORIES` fails the run, and no line says what failed.
 
 **Why it matters.** A gate that fails without naming its subject reads as broken (`#189`), which invites `--no-verify`. Nothing is hidden at HEAD: every category that is emitted is listed, and the `#216` self-test asserts membership for its own two. The next rule that forgets the list would be hidden.
 
-**Fix (proposed; its own change):** print the `CATEGORIES` sections first, then any other stored category in sorted order, marked `(category not in CATEGORIES)`. Add a self-test pair: a report with one violation in an unlisted category prints that category's section, and a listed one prints as before.
+**Fix (landed in `a67a2bdfa8d1`):**
+- **`render_report(report, root) -> (lines, exit code)`** is the printer; main() prints its lines. Sections print in `CATEGORIES` order, then every other stored category, sorted, its header marked `(category not in CATEGORIES)`. The summary line and the exit code are unchanged.
+- **What stays the same.** A report with only listed categories prints exactly what it printed before: the `22ab3a20^` replay's stdout is byte-identical under the old printer and `render_report`.
+- The `#216` main-wiring fixture runner becomes a shared helper, so a self-test can run a copy whose `CATEGORIES` differs.
+
+**Pin / T-T4.**
+- **Self-test.** `_self_test_unlisted_category_printed`, registered. In process: a listed and an unlisted violation both print, the unlisted section after every listed one and marked, and the listed format equals the old printer's. End to end through main(): a copy whose `CATEGORIES` omits `trace-ref-dangling` prints that section, marked, naming the story.
+- **Probes**, all red: Q1 the unlisted loop dropped (in process and end to end); Q2 main() reverted to the old printer (end to end only); Q3 the mark dropped; Q4 unlisted printed first; Q5 the test unregistered (registry). `#216`'s P9 re-run now prints `trace-ref-unparsed (1) (category not in CATEGORIES):` instead of a bare FAIL, and stays red on the membership check.
+- **Gates.** `--self-test`: 10 lines, all PASS, on the commit's own tree too. Anchors 119/119.
