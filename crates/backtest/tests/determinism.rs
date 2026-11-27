@@ -224,6 +224,67 @@ async fn run_mini() -> RunResult {
     }
 }
 
+// ── The backtest binary under test (bug-log #229) ─────────────────────────────
+
+/// bug-log #229: the `backtest` binary cargo built for THIS test invocation, checked on
+/// every call.
+///
+/// `CARGO_BIN_EXE_backtest` is the path cargo uplifts the bin to before it runs any
+/// integration test of this crate (the bin has no `required-features`). It carries the
+/// invocation's profile (`<target-dir>/debug/` under `cargo test`, `<target-dir>/release/`
+/// under `cargo test --release`), its `--features`, its target dir and the platform's
+/// `.exe`. Nothing to find and nothing to build. It replaces `<ws>/target/debug/backtest`
+/// built only `if !exists()`: under `--release` (ADR-0045 § D7.2) that ran whatever debug
+/// binary was on disk, and on Windows `exists()` never saw `backtest.exe`.
+///
+/// The check, made at every spawn so every pin makes it in either profile: the NAME of this
+/// test binary's profile directory (`current_exe()`'s grandparent, read at run time from
+/// `<target-dir>/<profile>/deps/<exe>`) equals the name of the binary's (`env!`, compile
+/// time). Two derivations that share no code. It assumes cargo's `<profile>/deps/` layout
+/// for test binaries (the cargo of the 1.94.1 pin; it holds under `--target`, `--profile`
+/// and cargo-llvm-cov). If a toolchain bump or a `build.build-dir` layout moves test
+/// binaries, every pin panics here: fix this check, not the pins.
+///
+/// It pins the PATH. Under a no-feature invocation nothing in this target rewrites that file
+/// (R-REAL builds only under `--features`); another test binary of the same `cargo test`
+/// run may re-link it before this one starts (ADR-0045 § D7.2a). Under `--features` the
+/// featured builders below re-link it while these spawns run (bug-log #236, open).
+///
+/// # Panics
+/// When the file is missing (a test binary run outside cargo, a removed `target/`) or the
+/// two profile names differ. Neither path runs cargo or writes a file (bug-log #187).
+fn backtest_bin() -> std::path::PathBuf {
+    let bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_backtest"));
+    assert!(
+        bin.is_file(),
+        "bug-log #229: CARGO_BIN_EXE_backtest names no file: {} (run this target through cargo)",
+        bin.display()
+    );
+    let test_exe = std::env::current_exe().expect("current_exe");
+    let ours = test_exe
+        .parent()
+        .and_then(|deps| deps.parent())
+        .and_then(|profile| profile.file_name());
+    let its = bin.parent().and_then(|profile| profile.file_name());
+    assert!(
+        ours.is_some() && ours == its,
+        "bug-log #229: this test runs from profile dir {ours:?} ({}) but would spawn {} \
+         (profile dir {its:?}): the pins would run another build's code",
+        test_exe.display(),
+        bin.display()
+    );
+    bin
+}
+
+/// bug-log #229: a `Command` for `backtest_bin()`. Every spawn in this file that T3
+/// (`t229_every_spawn_takes_cargos_binary_or_a_builders`) sees goes through here, except a
+/// builder's own and the two parameterised sites (`run_realdata_scenario_once` / `_try`,
+/// which spawn the `bin` they are passed); `multi_pair_determinism.rs` spawns the same
+/// `env!` inline. T3 sees only the spellings its doc lists.
+fn backtest_cmd() -> std::process::Command {
+    std::process::Command::new(backtest_bin())
+}
+
 // ── T33 report sha256 — real binary-level determinism ─────────────────────────
 
 /// Verify that the backtest binary produces byte-identical report bodies across
@@ -234,38 +295,16 @@ async fn run_mini() -> RunResult {
 /// deterministic-content hash (body only, excluding the `generated:` line in
 /// the YAML front matter), and assert the two hashes are equal.
 ///
-/// This test is marked `#[ignore]` only when the binary cannot be located (CI
-/// environments that have not run `cargo build`).  In the default `cargo test
-/// --workspace` run the binary is always built first, so the test runs.
+/// Spawns `backtest_cmd()` (bug-log #229): the binary cargo built for this invocation.
 #[test]
 fn t33_report_sha256_deterministic() {
-    // Locate the backtest binary.  `cargo test` is invoked from the workspace
-    // root, so we look in the standard `target/debug` path.
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    // Walk up from the crate manifest to the workspace root (two levels).
-    let workspace_root = std::path::Path::new(manifest_dir)
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("could not locate workspace root");
-
-    let bin_path = workspace_root.join("target/debug/backtest");
-    if !bin_path.exists() {
-        // Binary not built yet — build it first.
-        let status = std::process::Command::new("cargo")
-            .args(["build", "--bin", "backtest"])
-            .current_dir(workspace_root)
-            .status()
-            .expect("cargo build failed");
-        assert!(status.success(), "cargo build --bin backtest failed");
-    }
-
     // Use a temp directory for report output so we don't pollute evidence/reports.
     let tmp = tempfile::tempdir().expect("create tempdir");
     let reports_dir = tmp.path().join("evidence/reports");
     std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
 
     let run_backtest = || -> String {
-        let output = std::process::Command::new(&bin_path)
+        let output = backtest_cmd()
             .args(["--scenario", "btc-2023-1m-sma-cross", "--seed", "0xC0FFEE"])
             .current_dir(tmp.path())
             .output()
@@ -323,6 +362,420 @@ fn t33_report_sha256_deterministic() {
     );
 }
 
+// ── T229 — the spawned binary is this invocation's own build (bug-log #229) ──
+
+/// bug-log #229: the binary every non-builder spawn takes is this profile's own build.
+///
+/// `backtest_bin()` makes the check at every spawn; this test makes it once under a name the
+/// D7.2 filter selects (`t229_`) and prints the path, so the success path is visible with
+/// `--show-output`. Two-sided across the two invocations that run it (bug-log #161): CI's
+/// `cargo test` (both legs) expects `…/debug/backtest`, the D7.2 command
+/// `cargo test --release …` expects `…/release/backtest`. An accessor hard-coded to debug
+/// (the pre-fix path) passes the first and fails the second (probe P2); one hard-coded to
+/// release, the reverse (P2b).
+#[test]
+fn t229_spawned_backtest_is_this_profiles_build() {
+    let bin = backtest_bin();
+    eprintln!("t229: every non-builder spawn takes {}", bin.display());
+}
+
+/// bug-log #229: the only fns in `crates/backtest/tests/` allowed to name a fixed
+/// `target/<profile>/backtest` path, each because it needs a binary whose declared condition
+/// differs from the invocation's. T2 checks exactly this for each: a `Command::new("cargo")`
+/// line; in the string literals from that line up to the fn's first fixed-path line, a
+/// `"build"` and the pair `"--bin", "backtest"` in sequence (the build names the bin); that
+/// first fixed-path line after the cargo line; and no file-existence probe (`.exists()`,
+/// `.is_file()`, `try_exists(`, `metadata(`) before the cargo line. That the fn then spawns or
+/// copies what it built is read, not checked. They read the DEFAULT target dir
+/// (`<ws>/target`; bug-log #235). The other spawns T3 sees take `backtest_cmd()` (multi_pair:
+/// its inline `env!`) or are the two parameterised sites in `BINARY_SPAWN_SITES`. Exact both
+/// ways.
+const BUILD_THEN_RUN_FNS: &[&str] = &[
+    "run_scenario_once_candle",       // debug, --features candle (M3)
+    "ensure_realdata_binary",         // debug, --features realdata (T-D-13/14)
+    "ensure_realdata_release_binary", // release, --features realdata[,candle] (R-REPRO, #121)
+    "ensure_realdata_candle_binary",  // debug, --features realdata,candle (T-D-15)
+    "run_scenario_realdata_cwd",      // debug, no features, built only when featured (R-REAL)
+];
+
+/// bug-log #229: every fn of the two determinism targets with a `Command::new(` call on a
+/// computed program path (not a string literal), as `"<file> <fn>"`. Exact both ways.
+/// `backtest_cmd` and multi_pair's helper spawn cargo's own build, in exactly the accessor
+/// form; `run_scenario_once_candle` and `run_scenario_realdata_cwd` spawn their own build;
+/// `run_realdata_scenario_once` and `run_realdata_scenario_try` spawn the `bin` their caller
+/// passes, at every call today an `ensure_realdata_*` result (read 2026-11-27, not pinned).
+const BINARY_SPAWN_SITES: &[&str] = &[
+    "determinism.rs backtest_cmd",
+    "determinism.rs run_scenario_once_candle",
+    "determinism.rs run_realdata_scenario_once",
+    "determinism.rs run_realdata_scenario_try",
+    "determinism.rs run_scenario_realdata_cwd",
+    "multi_pair_determinism.rs run_pairs_scenario_once",
+];
+
+/// bug-log #229: the name a line declares as a `fn`, through any visibility (`pub`,
+/// `pub(crate)`, `pub(super)`, `pub(in …)`) and any run of `const`, `async`, `unsafe` and
+/// `extern "…"` in any order; `None` for every other line. T3 self-checks it.
+fn fn_decl_name(line: &str) -> Option<String> {
+    let mut t = line.trim_start();
+    if let Some(rest) = t.strip_prefix("pub") {
+        if let Some(inner) = rest.strip_prefix('(') {
+            t = inner[inner.find(')')? + 1..].trim_start();
+        } else if rest.starts_with(char::is_whitespace) {
+            t = rest.trim_start();
+        }
+    }
+    loop {
+        let before = t;
+        for qualifier in ["const ", "async ", "unsafe "] {
+            if let Some(rest) = t.strip_prefix(qualifier) {
+                t = rest.trim_start();
+            }
+        }
+        if let Some(rest) = t.strip_prefix("extern ") {
+            t = rest.trim_start();
+            if let Some(abi) = t.strip_prefix('"') {
+                t = abi[abi.find('"')? + 1..].trim_start();
+            }
+        }
+        if t == before {
+            break;
+        }
+    }
+    let name: String = t
+        .strip_prefix("fn ")?
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    (!name.is_empty()).then_some(name)
+}
+
+/// bug-log #229: `(fn, 1-based line number, line)` for every line of a `tests/` source that
+/// is not a `//` comment, each under the `fn` declared last above it ("(file scope)" before
+/// the first; `fn_decl_name` reads the declaration). It does not parse nesting: a nested `fn`
+/// takes over the lines after it. MEASURED 2026-11-25: both determinism targets declare every
+/// fn at top level.
+fn lines_by_fn(path: &std::path::Path) -> Vec<(String, usize, String)> {
+    let src =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let mut current = String::from("(file scope)");
+    let mut out = Vec::new();
+    for (i, line) in src.lines().enumerate() {
+        let t = line.trim_start();
+        if t.starts_with("//") {
+            continue;
+        }
+        if let Some(name) = fn_decl_name(t) {
+            current = name;
+        }
+        out.push((current.clone(), i + 1, line.to_string()));
+    }
+    out
+}
+
+/// bug-log #229: every `*.rs` file under `dir`, walked recursively and sorted. A subdirectory
+/// is walked, never refused (the `#227` design proposes a `tests/support/` helper); a
+/// symlinked directory is not followed.
+fn rs_files_under(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+        .map(|e| e.expect("read a tests/ entry"))
+        .collect();
+    entries.sort_by_key(std::fs::DirEntry::path);
+    let mut out = Vec::new();
+    for entry in entries {
+        let path = entry.path();
+        if entry.file_type().expect("a tests/ entry's type").is_dir() {
+            out.extend(rs_files_under(&path));
+        } else if path.extension().is_some_and(|x| x == "rs") {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// bug-log #229, the fixed-path wiring (#190). The check in `backtest_bin()` sees a
+/// regression only under `--release`; this sees a helper reverted to the old literal in CI's
+/// debug run too, in any `*.rs` under `crates/backtest/tests/` (walked recursively), and holds
+/// the builders to the order `BUILD_THEN_RUN_FNS` states. It catches the two literal spellings
+/// in `needles`; a path built another way (a `join` chain) is T3's to catch, in the two
+/// determinism targets.
+#[test]
+fn t229_only_build_then_run_helpers_name_a_fixed_profile_path() {
+    let needles = [
+        concat!("target/", "debug/backtest"),
+        concat!("target/", "release/backtest"),
+    ];
+    let cargo = concat!("Command", "::new(\"cargo\")");
+    let file_probes = [".exists()", ".is_file()", "try_exists(", "metadata("];
+    let tests_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let files = rs_files_under(&tests_dir);
+    let names: Vec<String> = files
+        .iter()
+        .map(|p| {
+            p.strip_prefix(&tests_dir)
+                .expect("a path under tests/")
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .collect();
+    for subject in ["determinism.rs", "multi_pair_determinism.rs"] {
+        assert!(
+            names.iter().any(|n| n == subject),
+            "t229 scan did not read {subject} under {} (it read {} files)",
+            tests_dir.display(),
+            names.len()
+        );
+    }
+    let mut offenders: Vec<String> = Vec::new();
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (path, file) in files.iter().zip(&names) {
+        for (f, n, line) in lines_by_fn(path) {
+            if !needles.iter().any(|x| line.contains(x)) {
+                continue;
+            }
+            if file == "determinism.rs" && BUILD_THEN_RUN_FNS.contains(&f.as_str()) {
+                seen.insert(f);
+            } else {
+                offenders.push(format!("{file}:{n} fn {f}: {}", line.trim()));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "bug-log #229: a fixed target/<profile>/backtest path outside BUILD_THEN_RUN_FNS; spawn backtest_cmd():\n{}",
+        offenders.join("\n")
+    );
+    let declared: std::collections::BTreeSet<String> = BUILD_THEN_RUN_FNS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    assert_eq!(
+        seen, declared,
+        "bug-log #229: BUILD_THEN_RUN_FNS must equal the fns that name the path"
+    );
+    let own = lines_by_fn(&tests_dir.join("determinism.rs"));
+    for f in BUILD_THEN_RUN_FNS {
+        let body: Vec<&(String, usize, String)> = own.iter().filter(|(g, _, _)| g == f).collect();
+        let build = body
+            .iter()
+            .position(|(_, _, l)| l.contains(cargo))
+            .unwrap_or_else(|| {
+                panic!("bug-log #229: {f} names a fixed profile path but runs no cargo build")
+            });
+        let path_at = body
+            .iter()
+            .position(|(_, _, l)| needles.iter().any(|x| l.contains(x)))
+            .expect("an allowlisted fn names the path (seen == declared above)");
+        assert!(
+            path_at > build,
+            "bug-log #229: determinism.rs:{} fn {f} names the fixed path before its cargo build at :{}",
+            body[path_at].1,
+            body[build].1
+        );
+        // The string literals from the cargo line up to the first fixed-path line, in order
+        // (the odd pieces of a split on `"`; these lines hold no escaped quote).
+        let literals: Vec<&str> = body[build..path_at]
+            .iter()
+            .flat_map(|(_, _, l)| l.split('"').skip(1).step_by(2))
+            .collect();
+        for (what, ok) in [
+            ("`cargo build`", literals.contains(&"build")),
+            (
+                "`--bin backtest`",
+                literals.windows(2).any(|w| w == ["--bin", "backtest"]),
+            ),
+        ] {
+            assert!(
+                ok,
+                "bug-log #229: fn {f}'s cargo call at determinism.rs:{} never names {what} before its fixed path at :{}",
+                body[build].1, body[path_at].1
+            );
+        }
+        if let Some((_, n, l)) = body[..build]
+            .iter()
+            .find(|(_, _, l)| file_probes.iter().any(|p| l.contains(p)))
+        {
+            panic!(
+                "bug-log #229: determinism.rs:{n} fn {f} probes the file before its cargo build: {}",
+                l.trim()
+            );
+        }
+    }
+    let nested = names.iter().filter(|n| n.contains('/')).count();
+    eprintln!(
+        "t229 scan: {} files under {} ({nested} in subdirectories); fixed-path sites only in {:?}",
+        names.len(),
+        tests_dir.display(),
+        BUILD_THEN_RUN_FNS
+    );
+}
+
+/// bug-log #229, the spawn sites (#190, #191), in the two determinism targets only (#188).
+/// The static scans catch these spellings and no others: a `Command::new(` call on a computed
+/// program path in a fn outside `BINARY_SPAWN_SITES` (any spelling of the path, a `join`
+/// chain included); an accessor site not in its exact accessor form; a `Command` alias
+/// (`Command as`); a `Command::new` that is not called where it is named; and a `mod`
+/// declaration or `#[path]` attribute that pulls another file into a target. They do not
+/// follow a `type` alias, a `<Command>::new(` call, a macro, a path handed to a declared
+/// site, a new computed-path spawn inside a declared builder or parameterised site, or a
+/// spawn in a file they do not read. The dynamic guard is the per-spawn check in
+/// `backtest_bin()` plus T1:
+/// every spawn that goes through the accessor is checked, in either profile. This test also
+/// self-checks `fn_decl_name`, which both scans use to attribute a line to its fn.
+#[test]
+fn t229_every_spawn_takes_cargos_binary_or_a_builders() {
+    for (decl, want) in [
+        ("fn a(", Some("a")),
+        ("pub fn b(", Some("b")),
+        ("pub(crate) fn c(", Some("c")),
+        ("pub(super) async fn d(", Some("d")),
+        ("const fn e(", Some("e")),
+        ("unsafe fn f(", Some("f")),
+        ("pub(crate) const unsafe fn g<T>(", Some("g")),
+        ("pub async unsafe fn h(", Some("h")),
+        ("extern \"C\" fn i(", Some("i")),
+        ("const X: u8 = 0;", None),
+        ("let fnord = 1;", None),
+    ] {
+        assert_eq!(
+            fn_decl_name(decl).as_deref(),
+            want,
+            "bug-log #229: fn_decl_name misreads `{decl}`"
+        );
+    }
+    let spawn = concat!("Command", "::new(");
+    let named_new = concat!("Command", "::new");
+    let alias = concat!("Command", " as ");
+    let path_attr = concat!("#[", "path");
+    let accessor = concat!("env!(\"CARGO_BIN_EXE_", "backtest\")");
+    let forms = [
+        (
+            "determinism.rs backtest_cmd",
+            concat!("Command", "::new(backtest_bin())"),
+        ),
+        (
+            "multi_pair_determinism.rs run_pairs_scenario_once",
+            concat!("Command", "::new(env!(\"CARGO_BIN_EXE_", "backtest\"))"),
+        ),
+    ];
+    let tests_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut wrong: Vec<String> = Vec::new();
+    let mut evasions: Vec<String> = Vec::new();
+    for file in ["determinism.rs", "multi_pair_determinism.rs"] {
+        for (f, n, line) in lines_by_fn(&tests_dir.join(file)) {
+            let t = line.trim();
+            let mut why: Vec<&str> = Vec::new();
+            if t.contains(alias) {
+                why.push("a Command alias");
+            }
+            if t.match_indices(named_new)
+                .any(|(at, _)| !t[at + named_new.len()..].starts_with('('))
+            {
+                why.push("a Command constructor named but not called");
+            }
+            if t.contains(path_attr) {
+                why.push("a `path` attribute");
+            }
+            let code = t.find("//").map_or(t, |at| t[..at].trim_end());
+            if code.ends_with(';') && code.split_whitespace().rev().nth(1) == Some("mod") {
+                why.push("a mod declaration that pulls in another file");
+            }
+            for reason in why {
+                evasions.push(format!("{file}:{n} fn {f}: {reason}: {t}"));
+            }
+            let Some(at) = line.find(spawn) else { continue };
+            if line[at + spawn.len()..].starts_with('"') {
+                continue; // a program named by a literal, such as cargo: not a binary path
+            }
+            let site = format!("{file} {f}");
+            if let Some((_, form)) = forms.iter().find(|(s, _)| *s == site)
+                && !line.contains(form)
+            {
+                wrong.push(format!("{file}:{n} fn {f}: {t}"));
+            }
+            seen.insert(site);
+        }
+    }
+    assert!(
+        evasions.is_empty(),
+        "bug-log #229: a spelling the spawn scan cannot follow; spawn through backtest_cmd():\n{}",
+        evasions.join("\n")
+    );
+    assert!(
+        wrong.is_empty(),
+        "bug-log #229: these spawns must take cargo's own build in the accessor form:\n{}",
+        wrong.join("\n")
+    );
+    let declared: std::collections::BTreeSet<String> = BINARY_SPAWN_SITES
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    assert_eq!(
+        seen, declared,
+        "bug-log #229: a binary spawn changed in the determinism targets: take backtest_cmd() (multi_pair: env! of CARGO_BIN_EXE_backtest), or declare a builder's here and in BUILD_THEN_RUN_FNS"
+    );
+    assert!(
+        lines_by_fn(&tests_dir.join("determinism.rs"))
+            .iter()
+            .any(|(f, _, l)| f == "backtest_bin" && l.contains(accessor)),
+        "bug-log #229: backtest_bin() no longer reads CARGO_BIN_EXE_backtest"
+    );
+    eprintln!("t229 spawns: {BINARY_SPAWN_SITES:?}");
+}
+
+/// bug-log #229: R-REAL's declared binary is the no-feature `backtest`. Under a no-feature
+/// invocation that is cargo's own build, and `run_scenario_realdata_cwd` builds it itself
+/// only when this compilation has a `backtest` feature. So its `cfg!(any(…))` must name
+/// EVERY feature in `crates/backtest/Cargo.toml`: a missing one would hand R-REAL a featured
+/// binary in silence. (A listed name that is not a feature fails `-D warnings` through
+/// `unexpected_cfgs`, so only this direction needs a test.)
+#[test]
+fn t229_real_rows_build_under_every_backtest_feature() {
+    let crate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml"))
+        .expect("read crates/backtest/Cargo.toml");
+    let mut in_features = false;
+    let mut declared: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for line in manifest.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_features = t == "[features]";
+        } else if in_features
+            && !t.starts_with('#')
+            && let Some((key, _)) = t.split_once('=')
+        {
+            declared.insert(key.trim().to_string());
+        }
+    }
+    assert!(
+        !declared.is_empty(),
+        "read no [features] keys from crates/backtest/Cargo.toml"
+    );
+    let key = "feature = \"";
+    let mut listed: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (f, _, line) in lines_by_fn(&crate_dir.join("tests/determinism.rs")) {
+        if f != "run_scenario_realdata_cwd" {
+            continue;
+        }
+        let mut rest = line.as_str();
+        while let Some(at) = rest.find(key) {
+            rest = &rest[at + key.len()..];
+            if let Some(end) = rest.find('"') {
+                listed.insert(rest[..end].to_string());
+            }
+        }
+    }
+    assert_eq!(
+        listed, declared,
+        "bug-log #229: run_scenario_realdata_cwd's cfg!(any(...)) must list every backtest feature"
+    );
+    eprintln!("t229: R-REAL builds its own binary under any of {listed:?}");
+}
+
 // ── T521 — extended determinism gate for v0.5 composed-strategy scenarios ────
 
 /// bug-log #210 — the committed baselines' FILE NAMES, as empty stubs in a sandbox.
@@ -357,16 +810,6 @@ fn assert_scenario_deterministic(scenario: &str) {
         .and_then(|p| p.parent())
         .expect("could not locate workspace root");
 
-    let bin_path = workspace_root.join("target/debug/backtest");
-    if !bin_path.exists() {
-        let status = std::process::Command::new("cargo")
-            .args(["build", "--bin", "backtest"])
-            .current_dir(workspace_root)
-            .status()
-            .expect("cargo build failed");
-        assert!(status.success(), "cargo build --bin backtest failed");
-    }
-
     let tmp = tempfile::tempdir().expect("create tempdir");
     let reports_dir = tmp.path().join("evidence/reports");
     std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
@@ -387,7 +830,7 @@ fn assert_scenario_deterministic(scenario: &str) {
     seed_baseline_stubs(tmp.path());
 
     let run = || -> String {
-        let output = std::process::Command::new(&bin_path)
+        let output = backtest_cmd()
             .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
             .current_dir(tmp.path())
             .output()
@@ -475,16 +918,6 @@ fn run_scenario_once(scenario: &str) -> String {
         .and_then(|p| p.parent())
         .expect("could not locate workspace root");
 
-    let bin_path = workspace_root.join("target/debug/backtest");
-    if !bin_path.exists() {
-        let status = std::process::Command::new("cargo")
-            .args(["build", "--bin", "backtest"])
-            .current_dir(workspace_root)
-            .status()
-            .expect("cargo build failed");
-        assert!(status.success(), "cargo build --bin backtest failed");
-    }
-
     let tmp = tempfile::tempdir().expect("create tempdir");
     let reports_dir = tmp.path().join("evidence/reports");
     std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
@@ -501,7 +934,7 @@ fn run_scenario_once(scenario: &str) -> String {
     }
     seed_baseline_stubs(tmp.path());
 
-    let output = std::process::Command::new(&bin_path)
+    let output = backtest_cmd()
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
         .current_dir(tmp.path())
         .output()
@@ -1587,7 +2020,10 @@ fn realdata_2024_fy_tcn_overlay_weights_determinism() {
 // actually produces. Invoke the corpus-gated ones explicitly:
 //
 //     cargo test -p backtest --test determinism --features realdata,candle \
-//         -- --ignored reproduces_anchor
+//         -- reproduces_anchor
+//
+// (Until 2026-11-27 this read `-- --ignored reproduces_anchor`. No test in this file is
+// `#[ignore]`d, so `--ignored` selected none; bug-log #236.)
 //
 // Per bug-log #113 requirement 6, a missing precondition is UNMEASURED, not a pass:
 // these panic with a loud message instead of returning green, because a test you
@@ -1658,7 +2094,10 @@ fn realdata_2024_fy_tcn_overlay_weights_reproduces_anchor() {
 // that mistake costing four months.
 //
 //     cargo test -p backtest --test determinism --features realdata,candle \
-//         -- --ignored reproduces_anchor
+//         -- reproduces_anchor
+//
+// (Until 2026-11-27 this read `-- --ignored reproduces_anchor`. No test in this file is
+// `#[ignore]`d, so `--ignored` selected none; bug-log #236.)
 
 /// R-REPRO-5 — `top10-2023-fy-momentum-realdata`.
 #[cfg(feature = "realdata")]
@@ -1809,15 +2248,17 @@ fn assert_reproduces_with_flags(scenario: &str, anchor: &str, declared_flags: &[
 // That is the anchor-gate coverage audit's "off-anchor pin" class.
 //
 // These four gates cover the real-data rows. Condition, declared: the plain `backtest`
-// binary (**no features**), CWD = the **workspace root** so `data/binance/` resolves, and
+// binary (**no features**; under a no-feature invocation that is cargo's own build
+// (`backtest_cmd()`, debug under CI's `cargo test`; bug-log #229), and only a featured
+// invocation builds it here), CWD = the **workspace root** so `data/binance/` resolves, and
 // `--reports-dir` to a tempdir so a run can never touch the corpus (#113). The bodies say
 // `Data source | real (Binance Vision)`, which is asserted before the SHA (#112 req 2) —
 // a silent fall back to the synthetic path must read as a condition mismatch, not as drift.
 
-/// Serialises the plain-binary build for the R-REAL gates. The `realdata`-gated
-/// `BACKTEST_BUILD_MU` above is not visible here (different cfg), and two of these tests
-/// building `target/debug/backtest` concurrently is the same output-path race its comment
-/// describes.
+/// Serialises the R-REAL runs and, under a featured invocation only (bug-log #229), their
+/// plain-binary build. The `realdata`-gated `BACKTEST_BUILD_MU` above is not visible here
+/// (different cfg), and two of these tests building `target/debug/backtest` concurrently is
+/// the same output-path race its comment describes.
 static REAL_ROW_BUILD_MU: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Run `scenario` from the WORKSPACE ROOT with the plain binary, so real parquets resolve.
@@ -1829,15 +2270,29 @@ fn run_scenario_realdata_cwd(scenario: &str) -> String {
         .expect("locate workspace root");
 
     let _guard = REAL_ROW_BUILD_MU.lock().unwrap_or_else(|p| p.into_inner());
-    let status = std::process::Command::new("cargo")
-        .args(["build", "--bin", "backtest"])
-        .current_dir(ws)
-        .status()
-        .expect("cargo build failed");
-    assert!(status.success(), "cargo build --bin backtest failed");
+    // bug-log #229: under a no-feature invocation (CI, the D7.2 command) cargo's own build
+    // IS the declared no-feature binary, so this target runs no nested build and nothing
+    // re-links the file the other tests are spawning. `CARGO_BIN_EXE_backtest` carries any
+    // `--features`, so only a featured invocation builds the plain binary here, as before
+    // (`BUILD_THEN_RUN_FNS`; the list is pinned by `t229_real_rows_build_under_every_*`).
+    let mut cmd = if cfg!(any(
+        feature = "candle",
+        feature = "realdata",
+        feature = "yahoo"
+    )) {
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--bin", "backtest"])
+            .current_dir(ws)
+            .status()
+            .expect("cargo build failed");
+        assert!(status.success(), "cargo build --bin backtest failed");
+        std::process::Command::new(ws.join("target/debug/backtest"))
+    } else {
+        backtest_cmd()
+    };
 
     let reports = tempfile::tempdir().expect("create reports tempdir");
-    let output = std::process::Command::new(ws.join("target/debug/backtest"))
+    let output = cmd
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
         .arg("--reports-dir")
         .arg(reports.path())

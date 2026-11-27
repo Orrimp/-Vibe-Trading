@@ -160,3 +160,11 @@ integration test `tests/cli_report_paths.rs` must call the same functions the bi
   path clause ("the same `spec/<feature>/reports/backtest-<stamp>-<scenario>.md` file at
   the same path"); its body-byte clause stands. Amends ADR-0055 D8's "readers outside D8"
   entry for the backtest CLI.
+- 2026-11-25 (orchestrator, bug-log `#229` fix): the Consequences bullet on the `--release`
+  determinism invocation ("those helpers run the hard-coded `target/debug/backtest`") is
+  historical: the determinism helpers spawn `CARGO_BIN_EXE_backtest`, the invocation's own
+  build (ADR-0045 § D7.2a). The next bullet now reads, for `determinism.rs`: its helpers
+  spawn that same path, and under a no-feature invocation nothing in that target rebuilds it
+  (R-REAL builds only under `--features`), so its "no race" premise holds by construction
+  there; under `--features` the builders re-link it while siblings spawn it (pre-existing,
+  open as bug-log `#236`). No decision of this ADR changes.

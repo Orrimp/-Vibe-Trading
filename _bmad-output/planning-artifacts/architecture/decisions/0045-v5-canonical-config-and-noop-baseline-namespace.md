@@ -192,7 +192,7 @@ under the namespace the default (no-feature) `cargo test` binary
 produces. Mapping rule:
 
 - The `determinism.rs` non-feature-gated tests build the binary with
-  **no `realdata` / `candle` feature**. Under
+  **no `realdata` / `candle` feature** [read with § D7.2a]. Under
   `build_slippage_model_for_scenario` (`crates/backtest/src/main.rs`)
   every scenario NOT in `REAL_DATA_SCENARIO_IDS` (and ALL scenarios when
   `realdata` is absent) takes the `Linear { bps: 8 }` synthetic
@@ -248,7 +248,9 @@ but not the full synthetic determinism suite let the drift through.
   strategy / audit / exec / backtest code. Amend that skill to ALSO run
   the synthetic determinism re-run tests in **release** mode after
   `verify_anchors.sh` passes:
-  `cargo test --release -p backtest --test determinism t622_ t717_ tt1_`.
+  `cargo test --release -p backtest --test determinism t622_ t717_ tt1_`
+  [amended by § D7.2a: the command that runs is
+  `cargo test --release -p backtest --test determinism -- t229_ t622_ t717_ tt1_ --show-output`].
   Release mode is mandatory for cost (see below). This is the
   belt-and-suspenders catch: D7.1 detects *constant-vs-file* drift
   statically; D7.2 detects *engine-vs-constant* drift (e.g. a code
@@ -272,7 +274,9 @@ free. D7.2 re-runs ≈14 synthetic scenario invocations. Measured on the
 canonical Apple-Silicon box, **debug** binary: sma-family ≈ 8.8 s/run,
 momentum ≈ 26 s/run → the full in-test set is multi-minute in debug.
 **Release** binary amortises this to well under a minute total after the
-one-time build. The recommendation runs D7.2 in **release only**, and
+one-time build [amended by § D7.2a: until the bug-log `#229` fix this
+command spawned the debug binary, so no release figure had been measured;
+the first is in § D7.2a]. The recommendation runs D7.2 in **release only**, and
 only inside the `verify-anchors` gate (which already gates on
 backtest-touching changes) — NOT on every `cargo test`. Net added
 wall-clock on a backtest-touching ship: < ~1 min (release) on top of an
@@ -373,6 +377,141 @@ BOTH the `determinism.rs` constant AND the map entry in one edit. This is a
 bounded, documented cost accepted in exchange for not growing the immutable
 file-anchor set.
 
+### D7.2a — The D7.2 command runs the code under test (amendment, 2026-11-25, bug-log `#229`)
+
+**What was wrong.** From `f089533e` (2026-05-31, the skill step) until the
+bug-log `#229` fix, the three helpers that spawned the binary
+(`t33_report_sha256_deterministic`, t521's `assert_scenario_deterministic`, and
+`run_scenario_once`, the one behind the 14 pins through `scenario_body_hex`)
+spawned the hard-coded `<ws>/target/debug/backtest` and built it only
+`if !exists()`. Under `--release` cargo builds
+`target/release/backtest` and a release test binary, and the pins were then
+compared against whatever debug binary was on disk: older code, or another
+branch's. MEASURED 2026-11-25 on the pre-fix tree, both directions:
+
+- with `crates/backtest/src/report/sma.rs`'s `{body_elapsed:.1}s` edited to
+  `{body_elapsed:.2}s` (it moves 10 of the 14 bodies), the D7.2 command passed
+  **14 of 14** while the debug run of the same filter failed exactly those 10;
+  the release run left the debug binary's SHA-256 and mtime unchanged;
+- with that edit reverted and the drifted debug binary still on disk, the D7.2
+  command failed the same 10 on correct code.
+
+The "release ≈ sma 9s, momentum 26s" in the skill were § D7's own **debug**
+figures. The command in § D7.2 lacks the `--` that hands libtest its
+filters. And R-REAL (`run_scenario_realdata_cwd`, bug-log `#125`) ran a
+nested no-`-p` `cargo build --bin backtest` on every call: no dev-dependencies
+and every member's features, so it re-linked the same file from inside the
+same test binary while sibling tests spawned it (MEASURED: a pre-fix debug run
+of this target recompiled 12 crates in 21.2 s mid-run and moved
+`target/debug/backtest`'s mtime; the next `cargo test` recompiled them back).
+
+**Decision.**
+
+1. Every determinism spawn whose declared binary is the invocation's own goes
+   through `backtest_bin()` / `backtest_cmd()` in `determinism.rs`:
+   `env!("CARGO_BIN_EXE_backtest")`, the binary cargo uplifts for this
+   invocation (its profile, `--features`, target dir and `.exe`), with no build
+   and no fallback. It is checked at every spawn: the name of the test
+   binary's profile directory (`current_exe()`'s grandparent, run time) must
+   equal the binary's (`env!`, compile time). A missing file or a mismatch
+   panics and builds nothing.
+2. R-REAL's declared no-feature binary is that same build under a no-feature
+   invocation. R-REAL builds the plain binary itself only when the compilation
+   has a `backtest` feature (`cfg!(any(feature = "candle", feature = "realdata",
+   feature = "yahoo"))`). So a no-feature run of this target nests no cargo.
+3. The four feature-gated builders keep building theirs; with R-REAL's featured
+   branch they are the `BUILD_THEN_RUN_FNS` allowlist, the only fns in
+   `crates/backtest/tests/` that may name a fixed `target/<profile>/backtest`.
+   They read the default target dir (bug-log `#235`, open).
+4. `multi_pair_determinism.rs` spawns `env!("CARGO_BIN_EXE_backtest")`
+   directly; its spawn line is the accessor, pinned in that exact form.
+
+Rejected: an explicit matching-profile `cargo build` from inside the test. It
+re-derives the profile and features by hand, runs a second feature resolution
+that re-links the shared path (the R-REAL defect above), and adds nested
+cargo-lock waits; cargo already reports the binary it built (bug-log `#114`'s
+lesson). A CI release leg is not added: the per-spawn check runs inside every
+release pin wherever one runs, and in CI's debug run the static scans below
+catch the spellings they list (and only those). The per-spawn check in
+`backtest_bin()` plus `t229_spawned_backtest_is_this_profiles_build` are the
+dynamic guard, for every spawn that goes through the accessor.
+
+**The gate command, superseding § D7.2's:**
+`cargo test --release -p backtest --test determinism -- t229_ t622_ t717_ tt1_ --show-output`
+→ `test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out`,
+with the captured line `t229: every non-builder spawn takes <ws>/target/release/backtest`
+(`--show-output` is required: libtest captures `eprintln!` from a passing test).
+
+**Enforced by:**
+
+- the per-spawn check in `backtest_bin()` (every pin, both profiles, so it holds
+  whatever the filter);
+- `t229_spawned_backtest_is_this_profiles_build`: the named, observable
+  instance; debug in CI on both legs, release in the gate command, the
+  two-sided pair (an accessor hard-coded to either profile fails one of them);
+- `t229_only_build_then_run_helpers_name_a_fixed_profile_path`: no literal
+  `target/debug/backtest` or `target/release/backtest` outside
+  `BUILD_THEN_RUN_FNS` in any `*.rs` under `crates/backtest/tests/` (walked
+  recursively), the allowlist exact both ways, and each builder's
+  `Command::new("cargo")` line comes first, then (among its string literals) a
+  `"build"` and the pair `"--bin", "backtest"`, then its first fixed-path line,
+  with no file probe before the cargo line;
+- `t229_every_spawn_takes_cargos_binary_or_a_builders`, in the two determinism
+  targets only: the fns with a `Command::new(` call on a computed path are
+  exactly the declared set, the two that take cargo's own build do so in the
+  accessor form, and a `Command` alias (`Command as`), a `Command::new` not
+  called where it is named, a `mod` declaration that pulls in a file and a
+  `#[path]` attribute are refused. It does not follow a `type` alias, a
+  `<Command>::new(` call, a macro, a path handed to a declared site, a new
+  computed-path spawn inside a declared builder or parameterised site, or a file
+  it does not read; it self-checks the fn-declaration reader both scans use;
+- `t229_real_rows_build_under_every_backtest_feature`: R-REAL's `cfg!(any(…))`
+  names every `[features]` key of `crates/backtest/Cargo.toml`.
+
+**What the check pins, exactly:** the PATH cargo uplifts for the invocation.
+Under a no-feature invocation nothing in `determinism.rs` rewrites it. Another
+test binary of the same `cargo test` run may re-link it before this one starts:
+`backtest_sharpe_emit_equity_bin.rs` runs `cargo run -p backtest --bin backtest`
+(debug, no dev-dependencies), from the same source, so the bodies are REASONED
+the same. Under `--features` the featured builders re-link it while the pins
+spawn it: pre-existing (before the fix the pins spawned the same file), never
+observed failing, and open as bug-log `#236`. No CI step compiles this target
+with features, but documented commands do: the "System-2 determinism gate"
+`cargo test -p backtest --test determinism --features candle,realdata` (bug-log
+`#176`/`#177`; `docs/dev-notes/reemission-2026-11-08-d6b-d6c.md:361`, recorded
+39 passed at `:390`; `docs/dev-notes/gross-cap-calibration-decision-2026-11-08.md:123`),
+which runs the 14 pins beside every builder; the R-REPRO invocation in
+`determinism.rs`'s own comments (`--features realdata,candle -- --ignored
+reproduces_anchor`), which as written selects no test (REASONED: no test in
+`determinism.rs` carries `#[ignore]`, MEASURED by grep, and the
+`*_reproduces_anchor` tests are only cfg-gated; the comments now drop
+`--ignored`); ADR-0032's
+`--features realdata --test determinism realdata_*` (as written its literal `*`
+matches no test name, REASONED); and the `rust-coverage`
+skill's `cargo llvm-cov --workspace --all-features`. The gate command runs this
+target alone with no features, so there the spawned file is the invocation's
+own build.
+
+**D6.1, read with this:** the clause "build the binary with **no `realdata` /
+`candle` feature**" holds only for an invocation that passes no `--features`
+(the gate command and CI), where the no-feature binary is cargo's own build.
+Under a featured invocation the synthetic pins (and t33, t521 and
+`multi_pair_determinism.rs`) run the featured build, or whatever a builder last
+linked to that path (bug-log `#236`); only R-REAL builds its own no-feature
+binary. The bodies of scenarios outside `REAL_DATA_SCENARIO_IDS` are REASONED
+the same under the featured build (the 2026-11-08 System-2 run recorded the pins
+green), but that is not the D6.1 condition.
+
+**Pins unchanged** (same code, a different binary). MEASURED 2026-11-25 on
+the fixed tree: the gate command 18 of 18, libtest 5.4 s (9.6 s wall with a
+3.4 s incremental compile); the whole target 28 of 28 in release (6.1 s) and
+in debug (13.7 s; 29.2 s before the fix, 21.2 s of it the nested build); the 4
+R-REAL rows green on the invocation's own build in both profiles, their first
+run on it; `multi_pair_determinism` 4 of 4. Re-run 2026-11-27 from a cold
+`target/` (after `cargo clean`): the same counts, the gate command 118 s wall.
+No pin and no `evidence/` byte moved; anchors 119/119 with
+`verify_anchors.sh --explain` byte-identical.
+
 ## Alternatives considered
 
 - **Add synthetic `anchors.toml` rows for macd/rsi/bbands (engine-drift 2b)**
@@ -436,6 +575,7 @@ file-anchor set.
 - Hash recompute — `scripts/hash_report.py`
 - Engine-drift diagnosis (D6 / D7 trigger) — [`docs/dev-notes/engine-drift-diagnosis-2026-05-30.md`](../../../../docs/dev-notes/archive/2026-Q2/engine-drift-diagnosis-2026-05-30.md) (commit `1cbe3d4`)
 - In-test re-run anchor gate — `crates/backtest/tests/determinism.rs` (`t622_*` / `t717_*` / `tt1_*`)
+- § D7.2a pins (bug-log `#229`) — `crates/backtest/tests/determinism.rs`: `t229_spawned_backtest_is_this_profiles_build`, `t229_only_build_then_run_helpers_name_a_fixed_profile_path`, `t229_every_spawn_takes_cargos_binary_or_a_builders`, `t229_real_rows_build_under_every_backtest_feature`, and the per-spawn check in `backtest_bin()`
 - D7.1 drift-linter — `scripts/check_determinism_anchors.py` (implemented 2026-05-30; pattern: `scripts/adr_registry_check.py`; § D7.1b adds the `SYNTHETIC_DETERMINISM_SHAS` override map for the 6 mixed-provenance constants)
 - Engine-drift fix dev spec (EX-1 corrected rows + BLOCKER resolution + EX-4 v2) — [`docs/dev-notes/engine-drift-fix-spec-2026-05-30.md`](../../../../docs/dev-notes/archive/2026-Q2/engine-drift-fix-spec-2026-05-30.md)
 
@@ -476,3 +616,15 @@ file-anchor set.
   break `verify_anchors.sh` or grow the immutable report-anchor set for zero
   marginal coverage) and rejects exempting the 6 (2c: reopens the blind spot).
   No `anchors.toml` row or saved report file changes; VR-3 stays 86/86.
+- 2026-11-25 (orchestrator, bug-log `#229` fix): § D7.2a added. The determinism
+  helpers spawn `CARGO_BIN_EXE_backtest`, the invocation's own build, checked at
+  every spawn, instead of a hard-coded `target/debug/backtest` built only when
+  absent, so the D7.2 command (now written with its `--`, plus `t229_` and
+  `--show-output`) re-runs the 14 pins on the release binary; R-REAL builds its
+  no-feature binary only under a featured invocation, so a no-feature run nests
+  no cargo; `multi_pair_determinism.rs` spawns the same accessor. Pinned by the
+  four `t229_*` tests, whose static scans catch the spellings they list; the
+  per-spawn check is the dynamic guard. D6.1's no-feature clause holds only for
+  an invocation with no `--features`; under a featured one the pins run the
+  featured build while the builders re-link it (bug-log `#236`, open). Pins
+  unchanged; no ADR added; anchor-neutral, 119/119.

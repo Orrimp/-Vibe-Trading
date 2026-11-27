@@ -53,16 +53,32 @@ Single-command regression gate for the 119-anchor body-only SHA-256 contract.
 5. **D7.2 — engine-drift re-run gate (release mode; runs after verify_anchors.sh PASS):**
 
    ```bash
-   # D7.2: synthetic re-run determinism tests in RELEASE (ADR-0045 § D7.2).
-   # Release is mandatory — debug is multi-minute; release ≈ sma 9s, momentum 26s.
-   cargo test --release -p backtest --test determinism -- t622_ t717_ tt1_
+   # D7.2 (ADR-0045 § D7.2a, bug-log #229): the pins on the RELEASE binary cargo builds
+   # for THIS command (`CARGO_BIN_EXE_backtest`); every spawn checks its profile;
+   # `--show-output` prints the t229 line naming the binary the pins ran on.
+   cargo test --release -p backtest --test determinism -- t229_ t622_ t717_ tt1_ --show-output
    ```
+
+   Expected: `test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out`,
+   and the captured line `t229: every non-builder spawn takes <ws>/target/release/backtest`.
+   Measured 2026-11-25: libtest 5.4 s for the 18 tests, 9.6 s wall after an incremental
+   compile; 118 s wall from a cold `target/` (2026-11-27, after `cargo clean`). The figures this
+   step used to quote ("release ≈ sma 9s, momentum 26s") were debug numbers (ADR-0045 § D7
+   Cost): until bug-log #229 this command spawned the debug binary.
 
    These tests re-execute the engine from scratch and assert the output body-SHA
    equals the locked in-test constant. They guard against "engine moved but nobody
    updated anchors.toml" (the scenario that D7.1 alone cannot catch).
 
    **Routing on FAIL:**
+   - A `t229_spawned_backtest_is_this_profiles_build` failure, or any test failing with
+     `backtest_bin()`'s panic (`bug-log #229: CARGO_BIN_EXE_backtest names no file` or
+     `bug-log #229: this test runs from profile dir …`), means the binary the pins would
+     spawn is not this command's build: read no t622/t717/tt1 result from this run;
+     HANDOFF → developer to fix the harness, never the pins.
+   - A failure of the other three `t229_` tests (static source scans) means the
+     harness's wiring drifted (a new fixed path, spawn site or feature); the pins may
+     still have run on this build. Fix the wiring before trusting the next run.
    - If the failing test's constant matches `anchors.toml` → engine moved since the
      last anchor lock → HANDOFF → developer (re-lock or investigate regression).
    - If the failing test's constant does NOT match `anchors.toml` → stale in-test
@@ -70,8 +86,9 @@ Single-command regression gate for the 119-anchor body-only SHA-256 contract.
      manually re-lock per ADR-0045 § D6).
 
    **Scope:** this step runs ONLY in the `verify-anchors` skill gate (pre-VERDICT),
-   NOT in every `cargo test`. The full `cargo test --workspace` already includes
-   these tests in debug; D7.2 ensures they also run in release before ship.
+   NOT in every `cargo test`. CI (both legs) runs these tests in debug, on the debug
+   binary; D7.2 runs them on the release binary before ship. Before the bug-log #229
+   fix (2026-11-25) this command spawned whatever `target/debug/backtest` was on disk.
 
 ## Routing
 

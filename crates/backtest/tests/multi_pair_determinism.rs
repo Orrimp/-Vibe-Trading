@@ -17,16 +17,6 @@ fn run_pairs_scenario_once(scenario: &str) -> String {
         .and_then(|p| p.parent())
         .expect("locate workspace root");
 
-    let bin_path = workspace_root.join("target/debug/backtest");
-    if !bin_path.exists() {
-        let status = std::process::Command::new("cargo")
-            .args(["build", "--bin", "backtest"])
-            .current_dir(workspace_root)
-            .status()
-            .expect("cargo build failed");
-        assert!(status.success(), "cargo build --bin backtest failed");
-    }
-
     let tmp = tempfile::tempdir().expect("create tempdir");
     let reports_dir = tmp.path().join("evidence/reports");
     std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
@@ -43,11 +33,18 @@ fn run_pairs_scenario_once(scenario: &str) -> String {
         std::fs::copy(entry.path(), dst).expect("copy strategy TOML");
     }
 
-    let output = std::process::Command::new(&bin_path)
+    // bug-log #229: cargo's own build for this invocation (its profile, features and target
+    // dir), never a fixed profile path; determinism.rs's `t229_*` scans pin this spawn.
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_backtest"))
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
         .current_dir(tmp.path())
         .output()
-        .expect("spawn backtest binary");
+        .unwrap_or_else(|e| {
+            panic!(
+                "bug-log #229: spawn {}: {e}",
+                env!("CARGO_BIN_EXE_backtest")
+            )
+        });
 
     assert!(
         output.status.success(),
@@ -122,8 +119,10 @@ fn t716_pairs_2024_h1_zscore_mr_deterministic() {
 // already here, one `assert_eq!` missing.
 //
 // Condition is the same one `run_pairs_scenario_once` already pins and the same
-// one the measurements were taken under: the **no-feature** debug binary, CWD a
-// tempdir holding only `config/strategies/`. Both matter — bug-log #112 is two
+// one the measurements were taken under: under a no-feature invocation, the **no-feature**
+// binary cargo builds for it (`CARGO_BIN_EXE_backtest`, debug under CI's `cargo test`; a
+// featured invocation runs the featured build, ADR-0045 § D7.2a), CWD a tempdir holding
+// only `config/strategies/`. Both matter — bug-log #112 is two
 // sets of false verdicts from getting exactly this wrong.
 //
 // Comparison target is the current canonical namespace,
