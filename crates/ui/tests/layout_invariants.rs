@@ -21,15 +21,44 @@
 //!
 //! ## Determinism
 //!
-//! Per `AGENT.md ## Process discipline` rule 5 (and the developer
-//! brief's "Determinism non-negotiables still apply to M1-C"
-//! reminder): proptest's RNG is configured with a **fixed seed** via
-//! `ProptestConfig::with_rng_algorithm(RngAlgorithm::ChaCha) + cases:
-//! 256`. The ChaCha RNG is the same algorithm the workspace uses for
-//! all production seeded RNGs (`rand_chacha::ChaCha20Rng`); proptest
-//! 1.6 ships a `ChaCha` variant as the RNG algorithm choice. Two
-//! consecutive `cargo test -p ui --test layout_invariants` runs MUST
-//! produce identical output.
+//! Per `AGENT.md ## Process discipline` rule 5, every property draws from one
+//! fixed seed, `LAYOUT_RNG_SEED`, on proptest's ChaCha RNG (`proptest_config`),
+//! so two runs draw the same cases (T4 pins it through the macro's own
+//! `contextualize_config`). `PROPTEST_RNG_SEED=<u64>` explores another seed.
+//! Before bug-log `#231` this section claimed a fixed seed while the code set
+//! only the algorithm, so every run drew new cases from the OS, and the shared
+//! `.proptest-regressions` file a failed run wrote was `rm`-ed and the run
+//! repeated. Now nothing is persisted (`failure_persistence = None`, pinned by
+//! T5): a failure replays on every run at the fixed seed, and a found
+//! regression is pinned as a NAMED test (`RECORDED_FAILING_LABELS`, T6).
+//!
+//! ## Text the fuzzers never generate (bug-log `#231`)
+//!
+//! The two free-text parameters (`strategies_id_cell`'s `label`, `positions`'
+//! `error_msg`) draw from `free_text`: proptest's `.{0,64}` minus
+//! `IN_LINE_PARAGRAPH_SEPARATORS`, the five chars that start a new bidi
+//! paragraph inside one cosmic-text line. cosmic-text 0.15 asserts that every
+//! paragraph of a line has the first one's direction (`assert_eq!(line_rtl,
+//! rtl)`, `shape.rs:960`), so such a separator between left-to-right and
+//! right-to-left text panics it. Both text properties also shape their case on
+//! a private font system first (`guard_shaping`), so a trip the exclusion
+//! misses fails that one property instead of the whole binary.
+//!
+//! - **Blast radius.** A panic inside iced's text layout poisons iced's
+//!   process-wide font lock, and cargo runs this file as one process. The
+//!   first failure is the cause; every later `Write font system: PoisonError`
+//!   (or `Read font system`), with its trivially shrunk input, is collateral.
+//!   `PROPTEST_VERBOSE=2` prints each input before it runs.
+//! - **Triage.** A green `--nocapture` log holds exactly
+//!   `2 × |IN_LINE_PARAGRAPH_SEPARATORS| + |RECORDED_FAILING_LABELS|`
+//!   `shape.rs:960` panics (T2's canary rows and T6's preconditions), all on
+//!   thread `t231-private-shaping`. Any other `shape.rs:960` line is a real trip.
+//!   It also holds two `proptest:` lines, `Saving this and future failures in
+//!   …/planted.proptest-regressions` and the CI hint after it: T5's control
+//!   writing into its own TempDir, not a failure of this file.
+//! - **Scope.** The exclusion bounds this file's input domain only; the cockpit
+//!   can still hit the panic (bug-log `#239`). T2 goes red when cosmic-text
+//!   stops panicking, and then the exclusion and the guard can be dropped.
 //!
 //! ## Scope (per architect Q4 — 6 widgets)
 //!
@@ -44,10 +73,18 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::collections::BTreeSet;
+use std::sync::OnceLock;
+
+use iced::advanced::graphics::text::cosmic_text as ct;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::widget::Tree;
 use iced::{Element, Size};
 use proptest::prelude::*;
+use proptest::strategy::ValueTree;
+use proptest::test_runner::{
+    FileFailurePersistence, RngAlgorithm, RngSeed, TestRunner, contextualize_config,
+};
 
 use trading_core::StrategyId;
 use ui::state::Message;
@@ -146,20 +183,143 @@ fn check_element_layout_with<'a>(
     assert_root_not_zero_dim(&node, "root")
 }
 
-/// proptest configuration shared by every property block. Fixed
-/// ChaCha seed via the algorithm choice; 256 cases per property
+/// The seed every property in this file draws from. Any value works; what matters is
+/// that it is the same one on every run (AGENT.md § Process discipline rule 5).
+/// `PROPTEST_RNG_SEED=<u64>` still explores another: `with_cases` reads it, and so does
+/// the `proptest!` macro's `contextualize_config`.
+const LAYOUT_RNG_SEED: u64 = 0x4c41_594f_5554; // "LAYOUT"
+
+/// proptest configuration shared by every property block: the fixed
+/// ChaCha seed above, nothing persisted, and 256 cases per property
 /// per architect Q4 budget (~5ms × 6 widgets ≈ 30ms aggregate;
 /// well within the 60s wall-clock budget at T-M1-C-3).
 fn proptest_config() -> ProptestConfig {
     let mut cfg = ProptestConfig::with_cases(256);
-    // `rng_algorithm` field: `RngAlgorithm::ChaCha` matches the
-    // workspace's `rand_chacha::ChaCha20Rng` choice for all
-    // production-determinism RNGs.
-    cfg.rng_algorithm = proptest::test_runner::RngAlgorithm::ChaCha;
-    // Source-file pinning so proptest's persistence cache lands in
-    // a stable per-file directory rather than the global one.
-    cfg.source_file = Some("crates/ui/tests/layout_invariants.rs");
+    // `RngAlgorithm::ChaCha` matches the workspace's `rand_chacha::ChaCha20Rng`
+    // choice for all production-determinism RNGs.
+    cfg.rng_algorithm = RngAlgorithm::ChaCha;
+    // Unset, PROPTEST_RNG_SEED leaves the seed `Random` (config.rs:183): ChaCha from the
+    // OS (rng.rs:397), so new cases on every run. That is why #231 showed up as 1
+    // failing run among 14.
+    if cfg.rng_seed == RngSeed::Random {
+        cfg.rng_seed = RngSeed::Fixed(LAYOUT_RNG_SEED);
+    }
+    // A fixed seed replays any failure on every run. The persisted file was shared by
+    // all 12 properties, and its comments recorded poisoned shrinks (bug-log #231);
+    // a found regression is pinned as a NAMED test instead.
+    cfg.failure_persistence = None;
     cfg
+}
+
+// ─── Free text the fuzzers draw (bug-log #231) ─────────────────────────────
+//
+// Self-contained on purpose: the consts and fns of this section depend on nothing
+// else in the file, so a sibling test file can lift them whole (the bidi-separator
+// fix, bug-log #239, plans one shared `tests/fixtures/bidi.rs`).
+
+/// The characters that start a new bidi paragraph INSIDE one cosmic-text line:
+/// Bidi_Class = B (unicode-bidi 0.3.18, which cosmic-text 0.15 shapes with) minus
+/// cosmic-text's own line endings, which `LineIter` (`line_ending.rs`) splits on first.
+/// Any of them between text of different direction panics cosmic-text 0.15
+/// (`assert_eq!(line_rtl, rtl)`, `shape.rs:960`).
+/// Derived, not chosen: T1 scans every char for class B; T2 shapes every candidate.
+/// A slice, so a probe adds or drops a member with one token.
+const IN_LINE_PARAGRAPH_SEPARATORS: &[char] = &['\u{1C}', '\u{1D}', '\u{1E}', '\u{85}', '\u{2029}'];
+
+/// cosmic-text 0.15's two line endings (`LineIter`, cosmic-text-0.15.0/src/line_ending.rs:55).
+const COSMIC_TEXT_LINE_ENDINGS: &[char] = &['\n', '\r'];
+
+/// Every private shaping runs on a thread of this name. A `shape.rs:960` panic line
+/// naming it is this file's own canary or guard, not a real trip (bug-log #231).
+const PRIVATE_SHAPING_THREAD: &str = "t231-private-shaping";
+
+/// `raw` without its in-line paragraph separators.
+fn strip_in_line_paragraph_separators(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| !IN_LINE_PARAGRAPH_SEPARATORS.contains(c))
+        .collect()
+}
+
+/// Free text of up to `max_len` chars: proptest's `.{0,max_len}` (every char but
+/// `\n`, proptest's default biases) minus the in-line paragraph separators.
+/// `prop_map` consumes the RNG exactly as its source does, so at one seed these are
+/// the bare regex's cases minus the separators (T3).
+fn free_text(max_len: usize) -> impl Strategy<Value = String> {
+    proptest::string::string_regex(&format!(".{{0,{max_len}}}"))
+        .expect("a valid regex")
+        .prop_map(|raw| strip_in_line_paragraph_separators(&raw))
+}
+
+/// Every `char` of Bidi_Class B, scanned once per binary: `c` is class B iff
+/// `"\u{5d0}{c}\u{5d0}"` splits into two bidi paragraphs. The probe is non-ASCII, so
+/// `BidiParagraphs` takes its `BidiInfo` path (`bidi_para.rs`): the same unicode-bidi
+/// build cosmic-text shapes with, so the scan cannot skew from the shaper.
+fn class_b_chars() -> &'static [char] {
+    static SCAN: OnceLock<Vec<char>> = OnceLock::new();
+    SCAN.get_or_init(|| {
+        let mut probe = String::with_capacity(12);
+        (0..=u32::from(char::MAX))
+            .filter_map(char::from_u32)
+            .filter(|&c| {
+                probe.clear();
+                probe.push('\u{5d0}');
+                probe.push(c);
+                probe.push('\u{5d0}');
+                ct::BidiParagraphs::new(&probe).count() == 2
+            })
+            .collect()
+    })
+}
+
+/// The UI face's family name, derived from the theme (as `embedded_font_contract.rs` does).
+fn ui_family() -> &'static str {
+    match ui::theme::font::UI.family {
+        iced::font::Family::Name(name) => name,
+        other => panic!("the UI font must name a family, not a generic one: {other:?}"),
+    }
+}
+
+/// Shape `text` the way iced's `Paragraph::with_text` does (`Buffer::set_text`,
+/// iced_graphics-0.14.0/src/text/paragraph.rs:87-93), but on a PRIVATE font system
+/// holding only the embedded UI face, on its own named thread, so a cosmic-text panic
+/// here can never poison iced's process-wide lock. `Err` carries the panic message.
+fn shape_on_a_private_font_system(text: &str) -> Result<(), String> {
+    static UI_FACE: OnceLock<ct::fontdb::Database> = OnceLock::new();
+    let db = UI_FACE
+        .get_or_init(|| {
+            let mut db = ct::fontdb::Database::new();
+            db.load_font_data(ui::theme::font::UI_REGULAR.to_vec());
+            db
+        })
+        .clone();
+    let text = text.to_owned();
+    std::thread::Builder::new()
+        .name(PRIVATE_SHAPING_THREAD.to_owned())
+        .spawn(move || {
+            let mut fonts = ct::FontSystem::new_with_locale_and_db(String::from("en-US"), db);
+            let attrs = ct::Attrs::new().family(ct::Family::Name(ui_family()));
+            let mut buffer = ct::Buffer::new(&mut fonts, ct::Metrics::new(14.0, 20.0));
+            buffer.set_text(&mut fonts, &text, &attrs, ct::Shaping::Advanced, None);
+        })
+        .expect("spawn the private-shaping thread")
+        .join()
+        .map_err(|p| {
+            p.downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+                .unwrap_or_else(|| String::from("<non-string panic>"))
+        })
+}
+
+/// A text property's first step: the case's text, as the widget renders it, must
+/// shape privately. A trip then fails ONE property and shrinks on a healthy lock,
+/// instead of poisoning it under all of them (bug-log #231). Wired by T7.
+fn guard_shaping(text: &str) -> Result<(), TestCaseError> {
+    shape_on_a_private_font_system(text).map_err(|panic| {
+        TestCaseError::fail(format!(
+            "cosmic-text panics shaping {text:?} (bug-log #231): {panic}"
+        ))
+    })
 }
 
 // ─── PoC: strategies::id_cell (the F1 case) ─────────────────────────────
@@ -174,6 +334,9 @@ proptest! {
     /// boolean — and asserts the resulting layout Node tree carries
     /// no zero-dim node.
     ///
+    /// Labels are `free_text`: all of Unicode but `\n`, minus the bidi
+    /// paragraph separators that panic cosmic-text 0.15 (bug-log `#231`).
+    ///
     /// Synthetic F1 re-injection: developer reverts
     /// `crates/ui/src/widgets/strategies.rs:228+231` from
     /// `Length::Fixed(layout::STRATEGY_RULE_HEIGHT_PX)` to
@@ -185,9 +348,10 @@ proptest! {
     #[test]
     fn strategies_id_cell_layout_never_zero_dim(
         id_str in "[a-z_]{1,32}",
-        label in ".{0,64}",
+        label in free_text(64),
         is_active in any::<bool>(),
     ) {
+        guard_shaping(&label)?;
         let id = StrategyId::new(&id_str);
         let element = widgets_for_test::strategies_id_cell(id, label, is_active);
         check_element_layout(element).map_err(TestCaseError::fail)?;
@@ -235,9 +399,10 @@ proptest! {
     #[test]
     fn positions_view_layout_never_zero_dim(
         n_rows in 0usize..=8,
-        error_msg in ".{0,64}",
+        error_msg in free_text(64),
         variant in 0u8..4,
     ) {
+        guard_shaping(&format!("{}{error_msg}", ui::strings::POS_ERROR_PREFIX))?;
         let cockpit = build_cockpit_with_positions(variant, n_rows, &error_msg);
         let element = ui::widgets::positions::view(&cockpit);
         check_element_layout(element).map_err(TestCaseError::fail)?;
@@ -856,4 +1021,622 @@ fn build_assistant_llm_forecaster_cockpit(
         history,
     };
     cockpit
+}
+
+// ─── bug-log #231: the exclusion, the seed and persistence, pinned ─────────
+//
+// T1-T7. T1 and T2 derive the separator set two independent ways (a class-B
+// scan, and shaping); T3 pins `free_text` two-sided; T4 the seed, T5 that a
+// failure writes nothing; T6 the labels a run is known to have failed on; T7
+// that every property parameter draws from a classified strategy.
+
+/// Labels a run of this file is known to have failed on, pinned as named cases
+/// (bug-log #231). The first is the minimal form (a separator, then an RTL
+/// char). The second is the label the 2026-11-24 failure drew: replaying its
+/// persisted seed (`cc 52704bdd…`) on the pre-#231 file regenerated it, with
+/// U+0085 at char 19 and U+FEBE (Arabic, class AL) as the next strong char.
+const RECORDED_FAILING_LABELS: &[&str] = &[
+    "\u{85}\u{5d0}",
+    "W\u{2}{=${u?qA\u{1}K/\u{1b}$\u{1dfd0}\u{b5f2a}Z\u{ab}\u{85}\u{fffd}1\u{a5}\u{febe}%\u{692e4}\u{d5a36}\u{1f574}%jVe/.\u{575fc}H=%\u{69f3c}\u{f9881}c\u{4fb70}`\u{bc3c6}`R\u{e8}\u{0}._\\?:\u{7f}\u{8bd33}\u{5579a}b\u{1f574}\u{23a}[\u{1b}",
+];
+
+/// `n` values of `strategy`, drawn in order by one runner built on `cfg`.
+fn draw<S: Strategy>(strategy: &S, cfg: ProptestConfig, n: usize) -> Vec<S::Value> {
+    let mut runner = TestRunner::new(cfg);
+    (0..n)
+        .map(|_| strategy.new_tree(&mut runner).expect("a value").current())
+        .collect()
+}
+
+/// A config drawing from `seed` on ChaCha, built without `proptest_config()`, so
+/// T3 does not depend on that fn's seed handling (T4 pins that).
+fn seeded_config(seed: u64) -> ProptestConfig {
+    let mut cfg = ProptestConfig::with_cases(1);
+    cfg.rng_algorithm = RngAlgorithm::ChaCha;
+    cfg.rng_seed = RngSeed::Fixed(seed);
+    cfg
+}
+
+/// T1. The separator const is exactly unicode-bidi's class B minus cosmic-text's
+/// line endings, exhaustive over every `char` and two-sided (#161): a missing
+/// member fails, and so does an extra one.
+#[test]
+fn in_line_paragraph_separators_are_class_b_minus_the_line_endings() {
+    let class_b: BTreeSet<char> = class_b_chars().iter().copied().collect();
+    for c in COSMIC_TEXT_LINE_ENDINGS {
+        assert!(
+            class_b.contains(c),
+            "control: the class-B scan must find the line ending {c:?}, or it cannot \
+             see a separator at all (scan found {class_b:?})"
+        );
+    }
+    let endings: BTreeSet<char> = COSMIC_TEXT_LINE_ENDINGS.iter().copied().collect();
+    let in_line: BTreeSet<char> = class_b.difference(&endings).copied().collect();
+    let declared: BTreeSet<char> = IN_LINE_PARAGRAPH_SEPARATORS.iter().copied().collect();
+    assert_eq!(
+        declared.len(),
+        IN_LINE_PARAGRAPH_SEPARATORS.len(),
+        "IN_LINE_PARAGRAPH_SEPARATORS lists a char twice"
+    );
+    assert_eq!(
+        in_line, declared,
+        "class B minus COSMIC_TEXT_LINE_ENDINGS (left) must equal \
+         IN_LINE_PARAGRAPH_SEPARATORS (right): unicode-bidi or cosmic-text moved \
+         (bug-log #231)"
+    );
+    println!("t231 T1: class B = {class_b:?}; in-line separators = {in_line:?}");
+}
+
+/// T2, the canary, on a private font system. Every candidate (the derived class B,
+/// the const, and U+2028 as the near-miss) is shaped in four rows, each pair
+/// differing in one dimension. A row trips iff its candidate is in
+/// `IN_LINE_PARAGRAPH_SEPARATORS` and its two paragraphs differ in direction: the
+/// expectation is DERIVED from the const T1 pins, not measured off cosmic-text.
+/// When cosmic-text stops panicking, the trip rows go red: drop the exclusion.
+#[test]
+fn cosmic_text_trips_exactly_on_an_in_line_separator_between_directions() {
+    let mut candidates: BTreeSet<char> = class_b_chars().iter().copied().collect();
+    candidates.extend(IN_LINE_PARAGRAPH_SEPARATORS.iter().copied());
+    candidates.insert('\u{2028}');
+
+    let mut tripped = 0usize;
+    let mut newline_rows_shaped = 0usize;
+    let mut wrong = Vec::new();
+    for c in candidates {
+        let trips = IN_LINE_PARAGRAPH_SEPARATORS.contains(&c);
+        // (row, the polarity a trip prints, or None when the row must shape)
+        let rows = [
+            (format!("{c}\u{5d0}"), trips.then_some("left: true")), // LTR | RTL
+            (format!("{c}a"), None),                                // LTR | LTR
+            (format!("\u{5d0}{c}a"), trips.then_some("left: false")), // RTL | LTR
+            (format!("\u{5d0}{c}\u{5d1}"), None),                   // RTL | RTL
+        ];
+        for (row, expected_trip) in rows {
+            let outcome = shape_on_a_private_font_system(&row);
+            match (expected_trip, &outcome) {
+                (Some(polarity), Err(panic))
+                    if panic.contains("left == right") && panic.contains(polarity) =>
+                {
+                    tripped += 1;
+                }
+                (None, Ok(())) => {
+                    if c == '\n' {
+                        newline_rows_shaped += 1;
+                    }
+                }
+                _ => wrong.push(format!(
+                    "{row:?}: expected {}, got {outcome:?}",
+                    expected_trip.map_or_else(
+                        || String::from("it to shape"),
+                        |p| format!("a `left == right` trip with `{p}`")
+                    )
+                )),
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "cosmic-text's trip set moved (bug-log #231; drop the exclusion only if it \
+         stopped tripping):\n{}",
+        wrong.join("\n")
+    );
+    assert!(tripped > 0, "non-vacuity: no row tripped");
+    assert_eq!(
+        newline_rows_shaped, 4,
+        "non-vacuity: the four `\\n` rows must be candidates and shape"
+    );
+    println!("t231 T2: {tripped} rows tripped as expected");
+}
+
+/// T3. `free_text` draws exactly the bare regex's cases minus the separators,
+/// two-sided: an independent `str::replace` and a char-count identity catch an
+/// under-strip, and a literal pair plus a domain control catch an over-strip.
+#[test]
+fn free_text_draws_the_raw_cases_minus_the_separators() {
+    const N: usize = 4096;
+    let bare = proptest::string::string_regex(".{0,64}").expect("a valid regex");
+    let raw = draw(&bare, seeded_config(LAYOUT_RNG_SEED), N);
+    let filtered = draw(&free_text(64), seeded_config(LAYOUT_RNG_SEED), N);
+    let is_separator = |c: &char| IN_LINE_PARAGRAPH_SEPARATORS.contains(c);
+
+    let raw_separators: usize = raw
+        .iter()
+        .map(|s| s.chars().filter(is_separator).count())
+        .sum();
+    let raw_nel = raw
+        .iter()
+        .map(|s| s.matches('\u{85}').count())
+        .sum::<usize>();
+    assert!(
+        raw_separators > 0,
+        "control: {N} raw draws hold no separator, so this test cannot see a filter"
+    );
+    for (i, (r, f)) in raw.iter().zip(&filtered).enumerate() {
+        assert_eq!(
+            *f,
+            r.replace(IN_LINE_PARAGRAPH_SEPARATORS, ""),
+            "draw {i}: free_text must be the raw draw minus the separators"
+        );
+        assert_eq!(
+            f.chars().count(),
+            r.chars().count() - r.chars().filter(is_separator).count(),
+            "draw {i}: free_text dropped a char that is not a separator"
+        );
+    }
+    assert_eq!(
+        strip_in_line_paragraph_separators("a\u{85}\u{5d0}\u{2028}\u{2029}b"),
+        "a\u{5d0}\u{2028}b",
+        "the strip keeps RTL, U+2028 and non-Latin-1, and drops only the separators"
+    );
+    let chars = || filtered.iter().flat_map(|s| s.chars());
+    let rtl_blocks = chars()
+        .filter(|c| ('\u{590}'..='\u{8ff}').contains(c))
+        .count();
+    let above_latin1 = chars().filter(|&c| c > '\u{ff}').count();
+    assert!(
+        rtl_blocks > 0 && above_latin1 > 0,
+        "domain control: the filtered draws must still hold Hebrew/Arabic-block chars \
+         ({rtl_blocks}) and chars above U+00FF ({above_latin1})"
+    );
+    println!(
+        "t231 T3: {N} draws; raw separators {raw_separators} (U+0085 {raw_nel}); \
+         filtered chars in U+0590..=U+08FF {rtl_blocks}, above U+00FF {above_latin1}"
+    );
+}
+
+/// T4. The properties' config draws the same cases on every run, read the way the
+/// `proptest!` macro reads it (`contextualize_config`), and another seed differs.
+/// Under `PROPTEST_RNG_SEED` the seed is the env's, so the `Random → Fixed` step is
+/// not exercised; the test says so instead of passing silently (CI sets neither var).
+#[test]
+fn the_property_config_draws_the_same_cases_twice() {
+    if std::env::var_os("PROPTEST_RNG_SEED").is_some() {
+        println!(
+            "t231 T4: UNMEASURED: PROPTEST_RNG_SEED is set, so proptest_config()'s \
+             own Random -> Fixed(LAYOUT_RNG_SEED) step is not exercised"
+        );
+    }
+    let cfg = contextualize_config(proptest_config());
+    let RngSeed::Fixed(seed) = cfg.rng_seed else {
+        panic!(
+            "proptest_config() leaves the seed {:?}: every run would draw new cases \
+             (AGENT.md § Process discipline rule 5; bug-log #231)",
+            cfg.rng_seed
+        );
+    };
+    let first = draw(&free_text(64), contextualize_config(proptest_config()), 64);
+    let second = draw(&free_text(64), contextualize_config(proptest_config()), 64);
+    assert_eq!(
+        first, second,
+        "two runners on proptest_config() drew different cases"
+    );
+
+    let mut other = contextualize_config(proptest_config());
+    other.rng_seed = RngSeed::Fixed(seed ^ 1);
+    let third = draw(&free_text(64), other, 64);
+    assert_ne!(first, third, "control: another seed must draw other cases");
+}
+
+/// T5. A failing property on this file's config writes no regressions file (#187:
+/// the unhappy path must write nothing). It runs in a TempDir, never on a repo
+/// path, so a stale file in `crates/ui/tests/` cannot affect it. Under
+/// `PROPTEST_DISABLE_FAILURE_PERSISTENCE` proptest itself clears persistence, so the
+/// subject and the belt pass whatever `proptest_config()` sets; the test says so.
+#[test]
+fn a_failing_property_in_this_file_writes_no_regressions_file() {
+    if std::env::var_os("PROPTEST_DISABLE_FAILURE_PERSISTENCE").is_some() {
+        println!(
+            "t231 T5: UNMEASURED: PROPTEST_DISABLE_FAILURE_PERSISTENCE is set, so \
+             proptest_config()'s own `failure_persistence = None` is not exercised"
+        );
+    }
+    /// Run a planted always-failing property on this file's config, edited by
+    /// `edit`, with its source file in a fresh TempDir; return the dir's entries.
+    fn planted(edit: impl FnOnce(&mut ProptestConfig)) -> Vec<String> {
+        let dir = tempfile::TempDir::new().expect("a temp dir");
+        let source: &'static str = Box::leak(
+            dir.path()
+                .join("planted.rs")
+                .to_str()
+                .expect("a UTF-8 temp path")
+                .to_owned()
+                .into_boxed_str(),
+        );
+        let mut cfg = contextualize_config(proptest_config());
+        cfg.source_file = Some(source);
+        edit(&mut cfg);
+        let result = TestRunner::new(cfg).run(&any::<bool>(), |_| {
+            Err(TestCaseError::fail("planted failure (bug-log #231 T5)"))
+        });
+        assert!(result.is_err(), "the planted property must fail");
+        let mut names: Vec<String> = std::fs::read_dir(dir.path())
+            .expect("read the temp dir")
+            .map(|e| {
+                e.expect("a dir entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    assert_eq!(
+        planted(|_| {}),
+        Vec::<String>::new(),
+        "a failure on proptest_config() wrote a regressions file (bug-log #231)"
+    );
+    assert_eq!(
+        planted(|cfg| {
+            cfg.failure_persistence = Some(Box::new(FileFailurePersistence::WithSource(
+                "proptest-regressions",
+            )));
+        }),
+        vec![String::from("planted.proptest-regressions")],
+        "control: the same failure with persistence on must write the file T5 looks for"
+    );
+    assert!(
+        proptest_config().failure_persistence.is_none(),
+        "belt: proptest_config() must persist nothing, under any path"
+    );
+}
+
+/// T6. The recorded failing labels trip cosmic-text raw, and once filtered they
+/// shape and lay out in the widget the property fuzzes.
+#[test]
+fn strategies_id_cell_lays_out_the_recorded_failing_labels_once_filtered() {
+    // Non-vacuity, and the header's triage count (`|RECORDED_FAILING_LABELS|`).
+    assert_eq!(
+        RECORDED_FAILING_LABELS.len(),
+        2,
+        "RECORDED_FAILING_LABELS must hold the minimal form and the 2026-11-24 label"
+    );
+    for raw in RECORDED_FAILING_LABELS {
+        let tripped = shape_on_a_private_font_system(raw);
+        assert!(
+            matches!(&tripped, Err(panic) if panic.contains("left == right")),
+            "precondition: {raw:?} must trip cosmic-text privately (bug-log #231), \
+             got {tripped:?}"
+        );
+        let filtered = strip_in_line_paragraph_separators(raw);
+        if let Err(panic) = shape_on_a_private_font_system(&filtered) {
+            panic!(
+                "{filtered:?} (from {raw:?}) still panics cosmic-text privately, so \
+                 the filter misses a separator (bug-log #231): {panic}"
+            );
+        }
+        let element = widgets_for_test::strategies_id_cell(
+            StrategyId::new("v0.sma"),
+            filtered.clone(),
+            false,
+        );
+        if let Err(e) = check_element_layout(element) {
+            panic!("strategies_id_cell({filtered:?}) layout: {e}");
+        }
+    }
+}
+
+/// What a property parameter's strategy expression is, for T7.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParamKind {
+    Bool,
+    NumericRange,
+    FreeText,
+    AsciiClassLiteral,
+}
+
+/// T7's allowlist. `None` for anything not on it: `any::<bool>()`; a numeric range
+/// `<num><u8|usize|f32>..[=]<num>`; `free_text(<digits>)`; or a plain `"…"` literal of
+/// positive bracket classes of printable ASCII (no `\`, no `[` inside, no leading
+/// `^`), each optionally followed by `{n}`, `{n,m}`, `*`, `+` or `?`.
+fn classify(expr: &str) -> Option<ParamKind> {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    if expr == "any::<bool>()" {
+        return Some(ParamKind::Bool);
+    }
+    if let Some(arg) = expr
+        .strip_prefix("free_text(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
+        return digits(arg).then_some(ParamKind::FreeText);
+    }
+    if let Some(body) = expr.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+        return is_ascii_class_regex(body).then_some(ParamKind::AsciiClassLiteral);
+    }
+    let (lo, hi) = expr.split_once("..")?;
+    let hi = hi.strip_prefix('=').unwrap_or(hi);
+    let (lo, float) = if let Some(n) = lo.strip_suffix("f32") {
+        (n, true)
+    } else {
+        (
+            lo.strip_suffix("usize").or_else(|| lo.strip_suffix("u8"))?,
+            false,
+        )
+    };
+    let number = |s: &str| match s.split_once('.') {
+        Some((i, f)) => float && digits(i) && digits(f),
+        None => digits(s),
+    };
+    (number(lo) && number(hi)).then_some(ParamKind::NumericRange)
+}
+
+/// A regex body made only of positive bracket classes of printable ASCII, each with
+/// an optional quantifier: it can generate printable ASCII only.
+fn is_ascii_class_regex(body: &str) -> bool {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let mut rest = body;
+    if rest.is_empty() {
+        return false;
+    }
+    while !rest.is_empty() {
+        let Some(class_and_after) = rest.strip_prefix('[') else {
+            return false;
+        };
+        let Some((class, after)) = class_and_after.split_once(']') else {
+            return false;
+        };
+        let printable = class
+            .bytes()
+            .all(|b| (0x20..=0x7e).contains(&b) && b != b'\\' && b != b'[');
+        if class.is_empty() || class.starts_with('^') || !printable {
+            return false;
+        }
+        rest = if let Some(after) = after.strip_prefix(['*', '+', '?']) {
+            after
+        } else if let Some(braced) = after.strip_prefix('{') {
+            let Some((bound, after)) = braced.split_once('}') else {
+                return false;
+            };
+            let ok = match bound.split_once(',') {
+                Some((n, m)) => digits(n) && digits(m),
+                None => digits(bound),
+            };
+            if !ok {
+                return false;
+            }
+            after
+        } else {
+            after
+        };
+    }
+    true
+}
+
+/// One property parameter line, `<ident> in <expr>,`, as `(ident, expr)`.
+fn parse_param(line: &str) -> Option<(&str, &str)> {
+    let (ident, rest) = line.split_once(" in ")?;
+    let expr = rest.strip_suffix(',')?;
+    let ident_ok = ident.starts_with(|c: char| c == '_' || c.is_ascii_alphabetic())
+        && ident.chars().all(|c| c == '_' || c.is_ascii_alphanumeric());
+    (ident_ok && !expr.is_empty() && expr == expr.trim()).then_some((ident, expr))
+}
+
+/// T7 (#190 wiring). Reads this file: every `proptest!` block opens at column 0
+/// (any other non-comment line naming the macro fails), its config expression
+/// calls `proptest_config()`, every parameter draws from a strategy `classify`
+/// allows, free text only ever comes from `free_text` in the two properties that
+/// render it, and each of those opens with `guard_shaping`. A new property block or
+/// strategy form fails here until it is classified deliberately.
+///
+/// What it does NOT see: a config expression that calls `proptest_config()` and
+/// then discards or overrides its seed or persistence; a `TestRunner` built by hand
+/// outside the macro (T3/T4/T5 build their own, on purpose); and a macro that
+/// expands to either.
+#[test]
+fn property_parameters_draw_text_only_through_free_text() {
+    // The classifier itself, on runtime strings.
+    for rejected in [
+        r#"".{0,64}""#,
+        r#""\\PC{0,64}""#,
+        r#""[^a]{0,64}""#,
+        r#"r".{0,64}""#,
+        "any::<String>()",
+        r#"prop::collection::vec(".{0,64}", 0..4)"#,
+        "free_text(64).prop_map(|s| s)",
+        "free_text(max_len)",
+        r#""[a-z]{0,64}|.""#,
+        r#""[[:alpha:]]{1,8}""#,
+    ] {
+        assert_eq!(
+            classify(rejected),
+            None,
+            "classify must reject `{rejected}`"
+        );
+    }
+    for (accepted, kind) in [
+        (r#""[a-z_.]{1,32}""#, ParamKind::AsciiClassLiteral),
+        ("free_text(64)", ParamKind::FreeText),
+        ("0u8..4", ParamKind::NumericRange),
+        ("0usize..=8", ParamKind::NumericRange),
+        ("400.0f32..=1080.0", ParamKind::NumericRange),
+        ("any::<bool>()", ParamKind::Bool),
+    ] {
+        assert_eq!(
+            classify(accepted),
+            Some(kind),
+            "classify must accept `{accepted}`"
+        );
+    }
+
+    // The macro's name, spelled so that no line of T7 itself contains it.
+    const MACRO: &str = concat!("proptest", "!");
+    let opener = format!("{MACRO} {{");
+    let lines: Vec<&str> = include_str!("layout_invariants.rs").lines().collect();
+    let openers: Vec<usize> = (0..lines.len()).filter(|&i| lines[i] == opener).collect();
+    // Every non-comment line naming the macro, anywhere on the line: an indented or
+    // path-qualified (`proptest::…`) block, or `{MACRO}{{`, is one T7 would not read.
+    let mentions: Vec<usize> = (0..lines.len())
+        .filter(|&i| !lines[i].trim_start().starts_with("//") && lines[i].contains(MACRO))
+        .collect();
+    assert_eq!(
+        mentions,
+        openers,
+        "every {MACRO} block must open at column 0 as `{opener}` so T7 reads it; \
+         lines naming it otherwise: {:?}",
+        mentions
+            .iter()
+            .filter(|i| !openers.contains(i))
+            .map(|i| i + 1)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        openers.len(),
+        12,
+        "this file holds 12 {MACRO} blocks; classify a new one here deliberately \
+         (bug-log #231)"
+    );
+
+    let mut free_text_params = BTreeSet::new();
+    let mut literal_params = BTreeSet::new();
+    for &open in &openers {
+        let close = (open + 1..lines.len())
+            .find(|&j| lines[j] == "}")
+            .unwrap_or_else(|| panic!("layout_invariants.rs:{}: unclosed {MACRO}", open + 1));
+        let block: Vec<(usize, &str)> = (open + 1..close)
+            .map(|j| (j + 1, lines[j].trim()))
+            .collect();
+        let at = |k: usize| block[k].0;
+
+        // Config wiring: one `#![proptest_config(` per block, built from proptest_config().
+        let configs: Vec<usize> = (0..block.len())
+            .filter(|&k| block[k].1.starts_with("#![proptest_config("))
+            .collect();
+        assert_eq!(
+            configs.len(),
+            1,
+            "layout_invariants.rs:{}: a {MACRO} block needs exactly one config line",
+            open + 1
+        );
+        let first = configs[0];
+        let last = (first..block.len())
+            .find(|&k| block[k].1.ends_with(")]"))
+            .unwrap_or_else(|| panic!("layout_invariants.rs:{}: unclosed config", at(first)));
+        let joined = block[first..=last]
+            .iter()
+            .map(|(_, l)| *l)
+            .collect::<Vec<_>>()
+            .join(" ");
+        let expr = joined
+            .strip_prefix("#![proptest_config(")
+            .unwrap_or(&joined);
+        assert!(
+            expr.contains("proptest_config()"),
+            "layout_invariants.rs:{}: the config `{expr}` is not built from \
+             proptest_config(), so it skips the fixed seed and no-persistence",
+            at(first)
+        );
+
+        // Parameters: one `fn NAME(` list, one `<ident> in <expr>,` per line.
+        let fns: Vec<usize> = (0..block.len())
+            .filter(|&k| block[k].1.starts_with("fn "))
+            .collect();
+        assert_eq!(
+            fns.len(),
+            1,
+            "layout_invariants.rs:{}: one fn per block",
+            open + 1
+        );
+        let f = fns[0];
+        let name = block[f]
+            .1
+            .strip_prefix("fn ")
+            .and_then(|r| r.strip_suffix('('))
+            .unwrap_or_else(|| {
+                panic!(
+                    "layout_invariants.rs:{}: `{}` must end its line at `(`, one \
+                     parameter per line",
+                    at(f),
+                    block[f].1
+                )
+            });
+        let end = (f + 1..block.len())
+            .find(|&k| block[k].1 == ") {")
+            .unwrap_or_else(|| {
+                panic!(
+                    "layout_invariants.rs:{}: fn {name}'s list never ends at `) {{`",
+                    at(f)
+                )
+            });
+        let mut this_fn_free_text = Vec::new();
+        for &(lineno, line) in &block[f + 1..end] {
+            if line.is_empty() || line.starts_with("//") {
+                continue;
+            }
+            let (param, expr) = parse_param(line).unwrap_or_else(|| {
+                panic!(
+                    "layout_invariants.rs:{lineno}: fn {name}: `{line}` is not \
+                     `<ident> in <expr>,` on one line"
+                )
+            });
+            match classify(expr) {
+                Some(ParamKind::FreeText) => {
+                    free_text_params.insert((name, param));
+                    this_fn_free_text.push(param);
+                }
+                Some(ParamKind::AsciiClassLiteral) => {
+                    literal_params.insert((name, param));
+                }
+                Some(ParamKind::Bool | ParamKind::NumericRange) => {}
+                None => panic!(
+                    "layout_invariants.rs:{lineno}: fn {name}'s parameter `{param}` draws \
+                     from `{expr}`, which T7 does not classify. Free text must come from \
+                     free_text (bug-log #231); classify any other form here deliberately"
+                ),
+            }
+        }
+
+        // Guard wiring: a free-text property's body opens with guard_shaping(<its text>).
+        if !this_fn_free_text.is_empty() {
+            let opening = block[end + 1..]
+                .iter()
+                .find(|(_, l)| !l.is_empty() && !l.starts_with("//"))
+                .map_or("", |(_, l)| *l);
+            assert!(
+                opening.starts_with("guard_shaping(")
+                    && this_fn_free_text.iter().all(|p| opening.contains(p)),
+                "fn {name} draws free text ({this_fn_free_text:?}), so its body must open \
+                 with `guard_shaping(` of that text (bug-log #231); it opens with `{opening}`"
+            );
+        }
+    }
+
+    let expected_free_text: BTreeSet<(&str, &str)> = [
+        ("strategies_id_cell_layout_never_zero_dim", "label"),
+        ("positions_view_layout_never_zero_dim", "error_msg"),
+    ]
+    .into_iter()
+    .collect();
+    let expected_literals: BTreeSet<(&str, &str)> =
+        [("strategies_id_cell_layout_never_zero_dim", "id_str")]
+            .into_iter()
+            .collect();
+    assert_eq!(
+        free_text_params, expected_free_text,
+        "free_text parameters moved"
+    );
+    assert_eq!(
+        literal_params, expected_literals,
+        "string-literal parameters moved"
+    );
 }

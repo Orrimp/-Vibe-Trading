@@ -240,11 +240,20 @@ DECLARED: dict[str, dict] = {
                "`--list` includes. `#![cfg(all(target_os = \"macos\", feature = "
                "\"live\"))]` (ADR-0057 D2), so Windows lists 0 by design.",
     },
+    # ── bug-log #231 (layout_invariants: one seed, no separators, canaries) ──
+    "layout_invariants": {
+        "macos": 19,
+        "windows": 19,
+        "why": "12 layout properties + the 7 bug-log #231 tests (separator scan, "
+               "cosmic-text canary, free_text two-sided, seed, no persistence, "
+               "recorded labels, parameter allowlist). No cfg on any item, so both "
+               "legs list the same.",
+    },
 }
 
 # Non-vacuity floor for the declaration itself: deleting rows must be deliberate.
 # Raise it when a row is added; lowering it is a decision, not a fix.
-MIN_DECLARED = 17
+MIN_DECLARED = 18
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
 

@@ -125,9 +125,19 @@ TEMPORARY diagnostic build — revert before shipping.
   frame (see `benches/cockpit_render.rs`).
 - Multi-thread `std::env::set_var` is UB and caused flaky time-axis rendering — the
   test-time UTC override is an `AtomicBool`, not an env var.
-- A transient `cosmic-text` glyph-shaping panic can poison the shared font mutex and
-  persist a `crates/ui/tests/layout_invariants.proptest-regressions` cache → `rm` it
-  and re-run; not a Reports/feature regression.
+- `layout_invariants` runs on one fixed proptest seed and persists nothing (bug-log
+  `#231`), so a failure there is deterministic, and re-running will not clear it. Its
+  first panic is the cause; `Write font system: PoisonError` and `Read font system:
+  PoisonError` panics after it are collateral (iced's font lock is process-wide). The
+  fuzzers never generate the bidi paragraph separators that panic cosmic-text 0.15
+  (`shape.rs:960`), and the text properties shape their case on a private font system
+  first. The product can still hit that panic (`#239`). `shape.rs:960` lines naming
+  thread `t231-private-shaping` in a green `--nocapture` log are the canary's own, and
+  so are the `proptest: Saving this and future failures in
+  …/planted.proptest-regressions` line and the hint after it (a test writing into its
+  own temp dir). A
+  `crates/ui/tests/layout_invariants.proptest-regressions` left from before `#231` is
+  never read; delete it.
 - The cockpit must run in `--release` (the dev `opt-level=0` tiny-skia path is ~40×
   slower → the "1–3 s per interaction" lag). See README "Run the cockpit".
 - `test_support::program_from_cockpit` boots from `cockpit.clone()`, and the manual
