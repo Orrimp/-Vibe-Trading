@@ -659,15 +659,16 @@ jobs:
       # once the #185 Windows verdict came back green (run 42575316185, all three
       # legs success) so this would be the only experiment riding its own run.
       #
-      # What it recovers is not generic coverage. Two of its six tests,
+      # What it recovers is not generic coverage. Two of its nine tests,
       # `btc_default_sha_matches_anchor_69` and `eth_ticker_sha_matches_anchor_70`,
       # invoke the `run_yahoo_sma` BINARY and hash its output — a second witness that
       # RE-RUNS THE PRODUCER, which is the thing the on-disk anchor gates structurally
       # cannot do (bug-log #93, #111, and the header of
       # crates/reports/tests/strategy_anchors_unchanged.rs). Those are precisely the
       # two rows bug-log #182 re-emitted, and until this step nothing in CI re-derived
-      # them. The other four pin the ALLOWED_YAHOO_TICKERS cross-crate mirror, the two
-      # scenario-name formats, and the unknown-ticker exit code.
+      # them. The other seven pin the ALLOWED_YAHOO_TICKERS cross-crate mirror, the two
+      # scenario-name formats, the unknown-ticker exit code, and where the bin writes by
+      # default and with an explicit --reports-dir (bug-log #227).
       #
       # MEASURED locally 2026-11-08 before this step was added:
       #   cargo test -p backtest --features yahoo --test run_yahoo_sma_ticker_flag

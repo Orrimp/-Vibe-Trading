@@ -11,11 +11,13 @@
 # known hazards is the kind that is cheap to prevent here and expensive to discover at
 # hour nine:
 #
-#   1. `param_robustness_sweep`'s DEFAULT --out-dir points INTO the anchored corpus
-#      (1-26 AC3). A measurement run was launched on defaults 2026-08-16 and killed
-#      mid-compute; `evidence/` stayed clean only because the sweep is slow. This script
-#      refuses to run without an explicit out-dir and refuses one that resolves inside
-#      `evidence/`.
+#   1. Until bug-log #227, `param_robustness_sweep`'s DEFAULT --out-dir pointed INTO the
+#      anchored corpus (1-26 AC3). A measurement run was launched on defaults 2026-08-16
+#      and killed mid-compute; `evidence/` stayed clean only because the sweep is slow.
+#      The default is now the git-ignored `backtest-runs/<family>/reports/` (ADR-0104
+#      D7), and this script still refuses to run without an explicit out-dir and
+#      refuses an out-dir under evidence/v1, v2 or v3 whose leaf already holds .md
+#      reports.
 #   2. A 15-hour job that cannot resume loses everything to one Ctrl-C, one power
 #      failure, or one operator who needs their laptop. Each surface is its own
 #      invocation, so completed ones are skipped on the next start.
@@ -84,9 +86,10 @@ if [ -z "$OUT_DIR" ]; then
   cat >&2 <<'MSG'
 REFUSED: --out-dir is mandatory.
 
-`param_robustness_sweep`'s own default writes INTO evidence/v1/…/reports/, i.e. into the
-anchored corpus. 1-26 AC3 exists because that nearly happened on 2026-08-16. This script
-will not run without you saying where the output goes.
+Until bug-log #227, `param_robustness_sweep`'s own default wrote INTO evidence/v1/…/reports/,
+i.e. into the anchored corpus; 1-26 AC3 exists because that nearly happened on 2026-08-16.
+The default is now backtest-runs/<family>/reports/, and this driver still requires an
+explicit out-dir: it will not run without you saying where the output goes.
 MSG
   exit 2
 fi

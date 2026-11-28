@@ -17,9 +17,10 @@ pub mod progress;
 /// `config/strategies/*.toml` from any CWD, not just workspace root.
 pub mod paths;
 
-/// bug-log #210 — the `backtest` bin's report paths: the git-ignored default
-/// output root (`backtest-runs/`) and the baseline lookup in the committed
-/// corpus (ADR-0104).
+/// The report paths of the crate's CLI bins (ADR-0104; bug-log #210, #227): the
+/// git-ignored default output root (`backtest-runs/`) of the `backtest`,
+/// `run_yahoo_sma`, `monte_carlo` and `param_robustness_sweep` bins, and the
+/// `backtest` bin's baseline lookup in the committed corpus.
 pub mod cli_paths;
 
 /// Shared metric calculators and the Monte-Carlo distribution-summary reducer.

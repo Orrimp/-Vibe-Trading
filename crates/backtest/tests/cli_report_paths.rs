@@ -25,13 +25,18 @@
 //! | P15 | `child_dirs`: drop the `!= REPORTS_DIR` filter | C5, ui LY-210 |
 //! | P16 | delete the `!/evidence/**/backtest-runs/` carve-out from `.gitignore` | R3 |
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::collections::BTreeSet;
+use std::path::Path;
 use std::process::Command;
 
 use backtest::cli_paths::{
     self, BASELINE_DECLARATIONS, EVIDENCE_ROOT, report_dir_for_scenario, resolve_baseline,
 };
+
+// bug-log #227: the snapshot walker and the workspace root live in one shared copy.
+#[path = "support/sandbox.rs"]
+mod sandbox;
+use sandbox::{snapshot, workspace_root};
 
 /// Rows in `BASELINE_DECLARATIONS` at the fix (2026-11-24): btc-2024-h1-sma-cross,
 /// macd, rsi, bbands. Declared, not measured off the table.
@@ -47,14 +52,6 @@ const COMMITTED_NON_NA_BASELINE_LINES_FLOOR: usize = 11;
 
 /// Distinct scenarios in `evidence/anchors.toml` at the fix.
 const ANCHORED_SCENARIOS_FLOOR: usize = 77;
-
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("locate workspace root")
-        .to_path_buf()
-}
 
 fn git(ws: &Path, args: &[&str]) -> std::process::Output {
     Command::new("git")
@@ -262,36 +259,6 @@ fn default_output_dir_is_git_ignored_for_every_anchored_scenario() {
             report.display()
         );
     }
-}
-
-/// (is a dir, length, mtime) of one entry.
-type Meta = (bool, u64, std::time::SystemTime);
-
-/// Every entry under `root` (root itself included, as `""`), relative to it, with
-/// its metadata. Any read error panics: an unreadable tree never compares equal by
-/// being empty. A dir's mtime moves when an entry is added or removed, so a
-/// create-then-remove inside the tree is visible too.
-fn snapshot(root: &Path) -> BTreeMap<PathBuf, Meta> {
-    fn meta(p: &Path) -> Meta {
-        let m = std::fs::symlink_metadata(p).unwrap_or_else(|e| panic!("stat {p:?}: {e}"));
-        let mtime = m.modified().unwrap_or_else(|e| panic!("mtime {p:?}: {e}"));
-        (m.is_dir(), m.len(), mtime)
-    }
-    fn walk(base: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Meta>) {
-        let rd = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("list {dir:?}: {e}"));
-        for e in rd {
-            let p = e.unwrap_or_else(|e| panic!("entry in {dir:?}: {e}")).path();
-            let m = meta(&p);
-            out.insert(p.strip_prefix(base).expect("under base").to_path_buf(), m);
-            if m.0 {
-                walk(base, &p, out);
-            }
-        }
-    }
-    let mut out = BTreeMap::new();
-    out.insert(PathBuf::new(), meta(root));
-    walk(root, root, &mut out);
-    out
 }
 
 const H1_SCENARIO: &str = "btc-2024-h1-sma-cross";

@@ -1962,6 +1962,38 @@ pub struct CellResult {
 
 // ── Report renderer (ADR-0051 D3 / § D6.4) ────────────────────────────────────
 
+/// The evidence feature a θ-surface family belongs to: the `slug:` its report's front
+/// matter carries, the `evidence/v1/<slug>/reports/` dir `verify_anchors.sh` reads its
+/// anchored rows from, and the sub-dir of `param_robustness_sweep`'s default output
+/// under `backtest-runs/` (ADR-0104 D7, bug-log #227). Until #227 this mapping had two
+/// copies: this renderer's and the bin's `resolve_effective_out_dir`. The exhaustive
+/// `match` makes a new score source a compile error, never a silent momentum default.
+#[must_use]
+pub fn sweep_family_feature(
+    horizon: crate::resample::Horizon,
+    selection_mode: SweepSelectionMode,
+    score_source: SweepScoreSource,
+    direction: SweepDirection,
+) -> &'static str {
+    if horizon != crate::resample::Horizon::OneHour {
+        return "horizon-retest-robustness";
+    }
+    if selection_mode.is_ts() {
+        return "time-series-momentum-robustness";
+    }
+    match score_source {
+        SweepScoreSource::Carry => "carry-strategy",
+        SweepScoreSource::BasisReversal => "perp-basis-signal-robustness",
+        SweepScoreSource::MnBasisSpread
+        | SweepScoreSource::MnFundingSpread
+        | SweepScoreSource::MnBasisFundingResidual => "perp-basis-mn-spread",
+        SweepScoreSource::VolAdjustedReturn => match direction {
+            SweepDirection::Momentum => "momentum-parameter-robustness-sweep",
+            SweepDirection::Reversion => "cross-sectional-mean-reversion-strategy",
+        },
+    }
+}
+
 /// Render the θ-surface report.
 ///
 /// Front-matter (run-varying, NOT hashed) + deterministic body (shared-input
@@ -2035,23 +2067,8 @@ pub fn render_surface_report(
     let is_horizon_run = horizon != crate::resample::Horizon::OneHour;
     let is_basis_run = score_source == SweepScoreSource::BasisReversal;
     let is_mn_run = score_source.is_mn();
-    let slug = if is_horizon_run {
-        "horizon-retest-robustness"
-    } else if selection_mode.is_ts() {
-        "time-series-momentum-robustness"
-    } else {
-        match score_source {
-            SweepScoreSource::Carry => "carry-strategy",
-            SweepScoreSource::BasisReversal => "perp-basis-signal-robustness",
-            SweepScoreSource::MnBasisSpread
-            | SweepScoreSource::MnFundingSpread
-            | SweepScoreSource::MnBasisFundingResidual => "perp-basis-mn-spread",
-            SweepScoreSource::VolAdjustedReturn => match direction {
-                SweepDirection::Momentum => "momentum-parameter-robustness-sweep",
-                SweepDirection::Reversion => "cross-sectional-mean-reversion-strategy",
-            },
-        }
-    };
+    // bug-log #227: the one family mapping, shared with the bin's default out-dir.
+    let slug = sweep_family_feature(horizon, selection_mode, score_source, direction);
     let frontmatter = format!(
         "---\n\
          slug: {slug}\n\

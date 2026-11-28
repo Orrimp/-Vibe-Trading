@@ -166,7 +166,7 @@ DECLARED: dict[str, dict[str, object]] = {
         "ci": "built",
         "why": "bug-log #184 — ci.yml `backtest yahoo-gated ticker-flag tests`, one leg "
                "only — Ubuntu then, the macOS leg since the 2026-11-09 matrix narrowing — "
-               "sharing the `yahoo` build the repro-sample step already pays for. 6 test fns, 0 ignored (measured 6 passed / 0.80 s). Two of "
+               "sharing the `yahoo` build the repro-sample step already pays for. 6 test fns at #184 (measured 6 passed / 0.80 s), 9 since bug-log #227 (WY1-WY3), 0 ignored. Two of "
                "them re-run the run_yahoo_sma BINARY to witness anchors 69 and 70 — "
                "the rows #182 re-emitted — which no on-disk hash gate can do.",
     },

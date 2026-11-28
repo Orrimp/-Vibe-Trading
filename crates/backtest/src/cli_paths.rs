@@ -1,5 +1,7 @@
 //! bug-log #210 — where the `backtest` bin (`src/main.rs`) writes its reports,
-//! and where it reads the baseline a scenario declares (ADR-0104).
+//! and where it reads the baseline a scenario declares (ADR-0104); bug-log #227 —
+//! where `run_yahoo_sma`, `monte_carlo` and `param_robustness_sweep` write theirs
+//! (ADR-0104 D7).
 //!
 //! - **Writes** default to [`CLI_OUTPUT_ROOT`]`/<feature>/reports/`
 //!   ([`report_dir_for_scenario`]), relative to the working directory. That root
@@ -14,9 +16,13 @@
 //!   finds none is refused ([`resolve_baseline`]), never written as
 //!   `baseline_report: n/a` (the `#66` skip-as-pass shape).
 //!
-//! The scope is the `backtest` bin only. `run_yahoo_sma`, `monte_carlo` and
-//! `param_robustness_sweep` keep their own `--reports-dir` / `--out-dir`
-//! defaults (bug-log `#227`).
+//! The write-root half ([`CLI_OUTPUT_ROOT`], [`default_reports_dir`],
+//! [`effective_reports_dir`]) also binds `run_yahoo_sma`, `monte_carlo` and
+//! `param_robustness_sweep` (ADR-0104 D7, bug-log #227); the sweep's per-family
+//! sub-dir comes from `sweep_harness::sweep_family_feature`. The baseline half is
+//! the `backtest` bin's only. `threshold_sweep` (default
+//! `target/threshold-sweep-reports/`) and the `passive_baseline_equity` example are
+//! not bound here.
 //!
 //! The module lives in the lib, not in `main.rs`, so the integration test
 //! `tests/cli_report_paths.rs` can call the same functions the bin calls.
@@ -24,9 +30,13 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-/// The default root of the CLI's report output, relative to the working
-/// directory (like `data/binance` and `config/`). Git-ignored (`backtest-runs/`,
-/// unanchored, carved out under `evidence/` so a run started there stays visible).
+/// The default root of the report output of the `backtest`, `run_yahoo_sma`,
+/// `monte_carlo` and `param_robustness_sweep` bins. For `backtest`, `monte_carlo` and
+/// `param_robustness_sweep` it is relative to the working directory (like
+/// `data/binance` and `config/`); `run_yahoo_sma` resolves it through its workspace
+/// walk, so from inside a workspace a first run lands under the workspace root
+/// (ADR-0104 D7). Git-ignored (`backtest-runs/`, unanchored, carved out under
+/// `evidence/` so a run started there stays visible).
 pub const CLI_OUTPUT_ROOT: &str = "backtest-runs";
 
 /// The committed evidence corpus, relative to the working directory. Only read.
@@ -187,9 +197,37 @@ pub fn scenario_to_feature(scenario: &str) -> &'static str {
 /// `--reports-dir` overrides it. Caller is responsible for `create_dir_all`.
 #[must_use]
 pub fn report_dir_for_scenario(scenario: &str) -> PathBuf {
+    default_reports_dir(scenario_to_feature(scenario))
+}
+
+/// bug-log #227 (ADR-0104 D7) — the feature `run_yahoo_sma` writes under when
+/// `--reports-dir` is absent. Its pre-fix default was
+/// `evidence/v1/lab-yahoo-realdata/reports`; D7 swaps only the root.
+pub const YAHOO_SMA_FEATURE: &str = "lab-yahoo-realdata";
+
+/// bug-log #227 (ADR-0104 D7) — the feature `monte_carlo` writes under when
+/// `--out-dir` is absent, and the `slug:` its report's front matter carries: the
+/// `evidence/v1/<slug>/reports/` dir the `mc-robustness-2026-06` branch of
+/// `verify_anchors.sh` reads first.
+pub const MONTE_CARLO_FEATURE: &str = "strategy-robustness-harness";
+
+/// `backtest-runs/<feature>/reports/`: the default report dir of the `backtest`,
+/// `run_yahoo_sma`, `monte_carlo` and `param_robustness_sweep` bins (ADR-0104 D1, D7).
+/// Relative; the first three use it relative to the working directory, and
+/// `run_yahoo_sma` passes it through its workspace walk (ADR-0104 D7).
+#[must_use]
+pub fn default_reports_dir(feature: &str) -> PathBuf {
     PathBuf::from(CLI_OUTPUT_ROOT)
-        .join(scenario_to_feature(scenario))
+        .join(feature)
         .join(REPORTS_DIR)
+}
+
+/// Where a research bin writes: an explicit `--reports-dir` / `--out-dir` verbatim
+/// (ADR-0104 D2, the one deliberate way into `evidence/`), else
+/// [`default_reports_dir`]`(feature)`.
+#[must_use]
+pub fn effective_reports_dir(explicit: Option<&Path>, feature: &str) -> PathBuf {
+    explicit.map_or_else(|| default_reports_dir(feature), Path::to_path_buf)
 }
 
 /// The baseline scenario `scenario` declares in [`BASELINE_DECLARATIONS`], if any.
@@ -496,5 +534,53 @@ mod tests {
             }
             other => panic!("expected BaselineUnresolved, got {other:?}"),
         }
+    }
+
+    /// D1 (bug-log #227, ADR-0104 D7) — the research bins' default dir is
+    /// `backtest-runs/<feature>/reports`, with literal oracles. The two feature
+    /// constants are pinned here on both CI legs (the yahoo bin-level pins run on
+    /// macOS only), and the `backtest` bin's dir has the same shape.
+    #[test]
+    fn default_reports_dir_is_backtest_runs_feature_reports() {
+        assert_eq!(
+            default_reports_dir("some-feature"),
+            Path::new("backtest-runs")
+                .join("some-feature")
+                .join("reports")
+        );
+        assert_eq!(
+            default_reports_dir(YAHOO_SMA_FEATURE),
+            Path::new("backtest-runs")
+                .join("lab-yahoo-realdata")
+                .join("reports")
+        );
+        assert_eq!(
+            default_reports_dir(MONTE_CARLO_FEATURE),
+            Path::new("backtest-runs")
+                .join("strategy-robustness-harness")
+                .join("reports")
+        );
+        assert_eq!(
+            report_dir_for_scenario("btc-2023-1m-sma-cross"),
+            default_reports_dir("v0-paper-sma")
+        );
+    }
+
+    /// D2 (bug-log #227, ADR-0104 D2/D7) — two-sided on the flag: absent gives the
+    /// default; present is used verbatim, into `evidence/` included, and a value that
+    /// looks like a default (ANOTHER feature's, under `backtest-runs/`) is not treated
+    /// as absent. A value equal to `f`'s own default could not tell the two apart: it
+    /// maps to itself under any re-route (bug-log #227 review, probe P227-16).
+    #[test]
+    fn explicit_reports_dir_is_used_verbatim() {
+        let f = "some-feature";
+        assert_eq!(effective_reports_dir(None, f), default_reports_dir(f));
+        let into_evidence = Path::new("evidence/v1/strategy-robustness-harness/reports");
+        assert_eq!(
+            effective_reports_dir(Some(into_evidence), f),
+            into_evidence.to_path_buf()
+        );
+        let other = default_reports_dir("other-feature");
+        assert_eq!(effective_reports_dir(Some(&other), f), other);
     }
 }

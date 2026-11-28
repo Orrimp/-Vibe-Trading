@@ -8,6 +8,11 @@
 //! (c) Cross-crate pinned-table test: `ALLOWED_YAHOO_TICKERS` mirror matches
 //!     `data::yahoo::binance_to_yahoo_ticker` RHS (D-V0.1.2-2 drift gate).
 //! (d) Unknown-ticker `--ticker FOO-USD` exits non-zero with exit code 2.
+//! (e) bug-log #227 (ADR-0104 D7) WY1-WY3: where the bin writes when `--reports-dir`
+//!     is absent (`backtest-runs/lab-yahoo-realdata/reports`, git-ignored, never
+//!     `evidence/`), and that an explicit value is the way into `evidence/`. They read
+//!     the committed `data/yahoo-sample/` corpus, so they never skip; the probe table
+//!     is in `tests/research_bin_report_paths.rs`.
 //!
 //! NOTE: tests (a) and (b) invoke the binary via `std::process::Command`
 //! and require the `yahoo` feature + the on-disk parquet cache
@@ -19,6 +24,9 @@
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::process::Command;
+
+#[path = "support/sandbox.rs"]
+mod sandbox;
 
 // ── Body-hash helper (mirrors scripts/hash_report.py) ────────────────────────
 
@@ -355,4 +363,204 @@ fn scenario_name_format_eth() {
         format!("{}-yahoo-2024-1d-sma-cross", base.to_lowercase())
     }
     assert_eq!(scenario_name("ETH-USD"), "eth-yahoo-2024-1d-sma-cross");
+}
+
+// ── (e) bug-log #227: the default report dir (WY1-WY3) ───────────────────────
+
+/// The scenario the default (no `--ticker`) run emits.
+const BTC_SCENARIO: &str = "btc-yahoo-2024-1d-sma-cross";
+
+/// Run the real `run_yahoo_sma` on the committed `data/yahoo-sample/` corpus (absolute,
+/// so the cache resolves the same from any working directory) with `cwd` and `extra`.
+#[cfg(feature = "yahoo")]
+fn run_on_sample(ws: &Path, cwd: &Path, extra: &[&str]) -> std::process::Output {
+    sandbox::run_serialised(
+        Command::new(env!("CARGO_BIN_EXE_run_yahoo_sma"))
+            .arg("--cache-root")
+            .arg(ws.join("data").join("yahoo-sample"))
+            .args(extra)
+            .current_dir(cwd),
+    )
+}
+
+#[cfg(feature = "yahoo")]
+fn assert_success(out: &std::process::Output) -> String {
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        out.status.success(),
+        "exit {:?}\nstdout: {stdout}\nstderr: {}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    stdout
+}
+
+#[cfg(feature = "yahoo")]
+fn assert_btc_report_name(p: &Path) {
+    let name = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .expect("utf-8 file name");
+    assert!(
+        name.starts_with("backtest-") && name.ends_with(&format!("-{BTC_SCENARIO}.md")),
+        "report file name {name} is not backtest-*-{BTC_SCENARIO}.md"
+    );
+}
+
+/// WY1 — no `--reports-dir`, from a working directory with no `Cargo.lock` above it
+/// (the bin's walk falls back to the cwd): the report lands at the relative
+/// `backtest-runs/lab-yahoo-realdata/reports/…`, git ignores it, it is the one file
+/// the run wrote, and `evidence/` is untouched.
+#[cfg(feature = "yahoo")]
+#[test]
+fn default_run_writes_under_backtest_runs_not_evidence() {
+    let ws = sandbox::workspace_root();
+    let tmp = sandbox::research_sandbox(&ws);
+    let before_ev = sandbox::snapshot(&tmp.path().join("evidence"));
+    let before_all = sandbox::files_under(tmp.path());
+    let out = run_on_sample(&ws, tmp.path(), &[]);
+    let stdout = assert_success(&out);
+    let rel = sandbox::printed_path(&stdout, "Report");
+    let expected_dir = Path::new("backtest-runs")
+        .join("lab-yahoo-realdata")
+        .join("reports");
+    assert!(
+        !rel.is_absolute() && rel.starts_with(&expected_dir),
+        "report {} is not under {}",
+        rel.display(),
+        expected_dir.display()
+    );
+    assert_btc_report_name(&rel);
+    assert!(
+        sandbox::ignored(&ws, &rel),
+        "the path the bin wrote, {}, is not git-ignored",
+        rel.display()
+    );
+    let new: std::collections::BTreeSet<_> = sandbox::files_under(tmp.path())
+        .difference(&before_all)
+        .cloned()
+        .collect();
+    assert_eq!(
+        new,
+        std::collections::BTreeSet::from([rel.clone()]),
+        "the run must have written exactly its report"
+    );
+    assert_eq!(
+        sandbox::snapshot(&tmp.path().join("evidence")),
+        before_ev,
+        "a default run changed the sandbox's evidence/ tree (names, sizes or mtimes)"
+    );
+}
+
+/// WY2 — WY1's two-sided partner on the flag: an explicit
+/// `--reports-dir evidence/v1/lab-yahoo-realdata/reports` writes exactly there, git
+/// does not ignore it, and no `backtest-runs/` appears.
+#[cfg(feature = "yahoo")]
+#[test]
+fn explicit_reports_dir_into_evidence_writes_there() {
+    let ws = sandbox::workspace_root();
+    let tmp = sandbox::research_sandbox(&ws);
+    let before_all = sandbox::files_under(tmp.path());
+    let explicit = Path::new("evidence/v1/lab-yahoo-realdata/reports");
+    let out = run_on_sample(
+        &ws,
+        tmp.path(),
+        &["--reports-dir", explicit.to_str().expect("utf-8")],
+    );
+    let stdout = assert_success(&out);
+    let rel = sandbox::printed_path(&stdout, "Report");
+    assert_btc_report_name(&rel);
+    assert_eq!(
+        rel,
+        explicit.join(rel.file_name().expect("file name")),
+        "an explicit --reports-dir must be used verbatim"
+    );
+    let new: std::collections::BTreeSet<_> = sandbox::files_under(tmp.path())
+        .difference(&before_all)
+        .cloned()
+        .collect();
+    assert_eq!(
+        new,
+        std::collections::BTreeSet::from([rel.clone()]),
+        "the run must have written exactly its report"
+    );
+    assert!(
+        !sandbox::ignored(&ws, &rel),
+        "{} is git-ignored, but an explicit emission into evidence/ must stay visible",
+        rel.display()
+    );
+    assert!(
+        !tmp.path().join("backtest-runs").exists(),
+        "an explicit --reports-dir run created backtest-runs/"
+    );
+}
+
+/// WY3 — the production branch: no `--reports-dir`, from a sub-directory of a tree
+/// whose root holds a `Cargo.lock` (how the operator runs it inside the workspace).
+/// The walk resolves the default against that root, so the report lands at
+/// `<root>/backtest-runs/lab-yahoo-realdata/reports/…` (absolute), never under the
+/// cwd and never under `evidence/`. Two-sided with WY1 on "a workspace marker above
+/// the cwd".
+#[cfg(feature = "yahoo")]
+#[test]
+fn default_run_from_inside_a_workspace_lands_at_its_root() {
+    let ws = sandbox::workspace_root();
+    let tmp = sandbox::research_sandbox(&ws);
+    std::fs::write(tmp.path().join("Cargo.lock"), b"# stub workspace marker\n")
+        .expect("write stub Cargo.lock");
+    let sub = tmp.path().join("sub");
+    std::fs::create_dir(&sub).expect("mkdir sub");
+    let before_ev = sandbox::snapshot(&tmp.path().join("evidence"));
+    let before_all = sandbox::files_under(tmp.path());
+    let out = run_on_sample(&ws, &sub, &[]);
+    let stdout = assert_success(&out);
+    let printed = sandbox::printed_path(&stdout, "Report");
+    assert!(
+        printed.is_absolute(),
+        "the walk must resolve the default to an absolute path, got {}",
+        printed.display()
+    );
+    // macOS reports `/private/var/…` as the cwd of a `/var/…` tempdir: compare both
+    // sides canonicalised.
+    let root = std::fs::canonicalize(tmp.path()).expect("canonicalize sandbox");
+    let got = std::fs::canonicalize(&printed)
+        .unwrap_or_else(|e| panic!("canonicalize {}: {e}", printed.display()));
+    let expected_dir = root
+        .join("backtest-runs")
+        .join("lab-yahoo-realdata")
+        .join("reports");
+    assert!(
+        got.starts_with(&expected_dir),
+        "report {} is not under {}",
+        got.display(),
+        expected_dir.display()
+    );
+    assert_btc_report_name(&got);
+    let r = got
+        .strip_prefix(&root)
+        .expect("under the sandbox")
+        .to_path_buf();
+    assert!(
+        sandbox::ignored(&ws, &r),
+        "the path the bin wrote, {}, is not git-ignored",
+        r.display()
+    );
+    let new: std::collections::BTreeSet<_> = sandbox::files_under(tmp.path())
+        .difference(&before_all)
+        .cloned()
+        .collect();
+    assert_eq!(
+        new,
+        std::collections::BTreeSet::from([r.clone()]),
+        "the run must have written exactly its report"
+    );
+    assert!(
+        !sub.join("backtest-runs").exists(),
+        "the default resolved against the cwd, not the workspace root"
+    );
+    assert_eq!(
+        sandbox::snapshot(&tmp.path().join("evidence")),
+        before_ev,
+        "a default run changed the sandbox's evidence/ tree (names, sizes or mtimes)"
+    );
 }

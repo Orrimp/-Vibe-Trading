@@ -41,10 +41,10 @@ file at the same path", written for the container-depth-0 layout.
 
 ## Decision
 
-**Scope.** This ADR binds the `backtest` bin (`crates/backtest/src/main.rs`) only. The
-crate's other bins that default into `evidence/v1/` (`run_yahoo_sma`'s `--reports-dir`,
-`monte_carlo`'s and `param_robustness_sweep`'s output dirs) are bug-log `#227`, and the
-`forecast` family is bug-log `#128`; neither is decided here.
+**Scope.** This ADR binds the `backtest` bin (`crates/backtest/src/main.rs`; D1-D6) and,
+by the 2026-11-28 amendment below (bug-log `#227`), `run_yahoo_sma`, `monte_carlo` and
+`param_robustness_sweep` (D1, D2, D7). `threshold_sweep` and the `forecast` family are
+bug-log `#128`; the `passive_baseline_equity` example is not bound.
 
 - **D1 — Default output is git-ignored.** With no `--reports-dir`, the bin writes
   `backtest-runs/<feature>/reports/backtest-<stamp>-<scenario>.md` (and its
@@ -155,6 +155,123 @@ integration test `tests/cli_report_paths.rs` must call the same functions the bi
   `baseline_report:` is front matter, excluded by `extract_report_body` and
   `hash_report.py`. 119/119.
 
+## Amendment 2026-11-28 (bug-log `#227`: the crate's three research bins write to the same root)
+
+### Context
+
+Until this amendment `run_yahoo_sma` defaulted `--reports-dir` to
+`evidence/v1/lab-yahoo-realdata/reports`, `monte_carlo` defaulted `--out-dir` to
+`evidence/v1/strategy-robustness-harness/reports/`, and `param_robustness_sweep` defaulted
+`--out-dir` to `evidence/v1/momentum-parameter-robustness-sweep/reports/` and, by value
+equality with that literal, re-routed it to six more anchored family dirs (horizon, TS,
+carry, basis, MN, MR). Each writes a date-stamped name (`backtest-<stamp>-<s>.md`,
+`robustness-<ts>-<s>.md`, `robustness-sweep-<ts>-<s>.md`), so a default run planted an
+untracked file the gate's newest-wins resolver picks: the `#113` mechanism `#210` fixed for
+the `backtest` bin. The same value-equality check also re-routed an EXPLICIT
+`--out-dir evidence/v1/momentum-parameter-robustness-sweep/reports[/]` on all 9
+non-momentum family invocations (9 of the 10 in PS2's table; 6 distinct dirs), only the
+momentum row passing through, contradicting the bin's own "an explicit `--out-dir` always
+wins". The sweep's front-matter `slug:` and its router carried two
+unpinned copies of the same 7-way family mapping.
+
+**Measured** (a read-only simulation in the `#227` design pass, HEAD `1c5c6f04af6c`, not
+re-run here): for every anchored row these bins can produce, one hypothetical default-run
+path appended to the resolver's real candidate list, each branch's own selection applied,
+under `LC_ALL=C` and `LC_ALL=en_US.UTF-8`; without the hypothetical path the picks equal
+`verify_anchors.sh --explain` for all 38 simulated rows (37 producible plus
+`eth-2024-h1-sma-cross`, which `run_yahoo_sma` cannot mint). The fresh default path was PICKED
+for **37 of 37** rows in both locales: `lab-yahoo-realdata-v0.1.1`/`-v0.1.3` (2 rows; after
+the shared prefix `…/lab-yahoo-realdata` the fresh path's next byte is `/`, every committed
+one's `-`, so it sorts last whatever its stamp), the `mc-robustness-2026-06` mc row (same
+dir, newer stamp) and its 6 sweep rows, `horizon-retest-robustness` (8),
+`perp-basis-signal-robustness` (8) and `perp-basis-mn-spread` (12). The 34 sweep rows are
+`scripts/relock/surfaces.tsv`'s.
+
+### Decision
+
+- **D7 — The research bins write to the same git-ignored root.** The rule: the new default
+  is the pre-amendment default with its leading `evidence/v1/` replaced by
+  `backtest-runs/`. So:
+  - `run_yahoo_sma`: `backtest-runs/lab-yahoo-realdata/reports`
+    (`cli_paths::YAHOO_SMA_FEATURE`);
+  - `monte_carlo`: `backtest-runs/strategy-robustness-harness/reports`
+    (`cli_paths::MONTE_CARLO_FEATURE`);
+  - `param_robustness_sweep`: `backtest-runs/<family>/reports`, `<family>` from
+    `backtest::sweep_harness::sweep_family_feature(horizon, selection_mode, score_source,
+    direction)`, one of the seven dirs above.
+
+  Feature slugs, file names and report bodies do not change, so promoting a run into the
+  corpus is a root swap through the explicit flag. The flags are `Option<PathBuf>`: absent
+  means `cli_paths::effective_reports_dir(None, feature)` =
+  `cli_paths::default_reports_dir(feature)` (the same `CLI_OUTPUT_ROOT` and shape as D1's
+  `report_dir_for_scenario`); present means the value is used verbatim (D2), for every
+  sweep family, and the value-equality re-route is retired. One mapping,
+  `sweep_family_feature`, names both a sweep report's front-matter `slug:` and its default
+  dir; `MONTE_CARLO_FEATURE` does the same for `monte_carlo` (MEASURED: the function equals
+  both pre-amendment copies on all 72 axis tuples clap can parse; the slug edits produce
+  identical bytes). `run_yahoo_sma` keeps its workspace walk for both forms: from inside the
+  workspace a first run lands at `<ws>/backtest-runs/…`, unless
+  `<cwd>/backtest-runs/lab-yahoo-realdata/reports` already exists; `monte_carlo` and the
+  sweep stay cwd-relative, as the `backtest` bin does. An explicit path into `evidence/` is
+  not refused (D2). The existing `.gitignore` rule and carve-out already cover every new
+  default (`git check-ignore --no-index`), so no ignore rule is added.
+
+### Consequences
+
+- A default run of any of the three never adds a file under `evidence/` from a working
+  directory outside it, so it can no longer shadow an anchored body.
+- An explicit `--out-dir` / `--reports-dir` into an existing anchored dir still plants a
+  picked body: that is D2, by design. `scripts/relock/run_surfaces.sh` keeps its mandatory
+  `--out-dir` and its evidence guard.
+- Per family, an explicit `--out-dir evidence/v1/momentum-parameter-robustness-sweep/reports/`
+  now lands there verbatim. For MR, carry and TS it is still PICKED, because the
+  `mc-robustness-2026-06` branch reads the momentum dir before theirs; the pre-amendment
+  re-route planted a picked body in their own dir, so the harm is the same. For horizon,
+  basis and MN, whose branches read only their own dir at `-maxdepth 1`, the verbatim write is
+  unpicked clutter where the re-route planted a PICKED body: strictly safer.
+- Residual for `run_yahoo_sma`: from a cwd under `evidence/` with
+  `<cwd>/backtest-runs/lab-yahoo-realdata/reports` already present, the walk's fast path
+  writes under the legacy resolver's `find "$root"/evidence`; that file is picked whenever its
+  full path sorts after the committed body (e.g. from `evidence/v2/…`, not from `evidence/`
+  or `evidence/v1/`). The carve-out keeps it visible in `git status`. `monte_carlo` and the
+  sweep have no such residual: their branches read fixed `v1` dirs at `-maxdepth 1`, and no
+  `robustness-*` name matches a legacy pattern.
+- The pre-amendment yahoo default (container depth 1) was reachable by all three ADR-0055 D8
+  readers (the Reports picker, the Lab's report lookup, Compare's scan); a default run no
+  longer is. ADR-0055 is not amended: `run_yahoo_sma` is no D8 reader.
+- A stale default-run file planted by a pre-amendment binary is neither detected nor
+  deleted; nothing is ever auto-deleted under `evidence/` (`#228`).
+- `--help` no longer prints `[default: …]` for these flags; each doc comment states the
+  default.
+- Not decided here: `monte_carlo` mints the anchored scenario name for any `--paths` /
+  `--ensemble-seed` (bug-log `#237`).
+- Enforced by:
+  - `crates/backtest/src/cli_paths.rs` unit tests D1 (`default_reports_dir` and both feature
+    constants against literals; `report_dir_for_scenario` has the same shape) and D2 (the
+    flag two-sided: absent → default, present → verbatim, into `evidence/` included, and a
+    value that looks like another feature's default is not treated as absent);
+  - `param_robustness_sweep`'s in-bin PS1 (real clap parsing: no `--out-dir` parses as
+    absent and each of 10 family invocations resolves to `backtest-runs/<family>/reports`)
+    and PS2 (an explicit value, the pre-amendment re-routed literal included, is verbatim
+    for all 10);
+  - `crates/backtest/tests/research_bin_report_paths.rs`: G1 (every default dir is outside
+    `evidence/` and git-ignored; control: the evidence home is not), G2 (the default slugs
+    equal the dirs the committed corpus keeps the mc body and all 34 manifest rows in),
+    SRC1/SRC2 (each `main` passes the parsed flag and axes, read from the production part
+    of the source), WM1/WS1 (the real `monte_carlo` and sweep, run with no flag in a
+    sandbox, write exactly one git-ignored file under `backtest-runs/` and nothing under
+    `evidence/`);
+  - `crates/backtest/tests/run_yahoo_sma_ticker_flag.rs` WY1/WY2/WY3 (the real bin on the
+    committed `data/yahoo-sample/`: the default relative to a cwd with no `Cargo.lock` above
+    it, an explicit evidence path verbatim, and the default under a workspace marker), run by
+    the exact CI command `cargo test -p backtest --features yahoo --test
+    run_yahoo_sma_ticker_flag`;
+  - probes P227-1..16 in bug-log `#227` and the module doc of
+    `tests/research_bin_report_paths.rs`.
+- Anchor-neutral: no `evidence/` byte, report body, template or file name changes; the two
+  slug edits are front matter and render identical bytes. 119/119, `--explain`
+  byte-identical before and after.
+
 ## Changelog
 - 2026-11-24 (orchestrator, bug-log `#210` fix): initial accept. Supersedes ADR-0037's
   path clause ("the same `spec/<feature>/reports/backtest-<stamp>-<scenario>.md` file at
@@ -168,3 +285,9 @@ integration test `tests/cli_report_paths.rs` must call the same functions the bi
   (R-REAL builds only under `--features`), so its "no race" premise holds by construction
   there; under `--features` the builders re-link it while siblings spawn it (pre-existing,
   open as bug-log `#236`). No decision of this ADR changes.
+- 2026-11-28 (orchestrator, bug-log `#227` fix): amendment D7 (above). Scope widened to
+  `run_yahoo_sma`, `monte_carlo` and `param_robustness_sweep` (D1, D2, D7); their defaults
+  move from `evidence/v1/<feature>/reports` to `backtest-runs/<feature>/reports`, their
+  flags become `Option` (verbatim when present; the sweep's value-equality re-route is
+  retired), and one family mapping (`sweep_harness::sweep_family_feature`) names both the
+  sweep's front-matter `slug:` and its default dir. No decision D1-D6 changes.

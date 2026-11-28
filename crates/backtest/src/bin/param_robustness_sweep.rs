@@ -3,8 +3,11 @@
 //! Sweeps the v1 cross-sectional momentum family over the **RE-SCOPED 6-cell θ-grid**
 //! (orchestrator-specified 2026-05-30 for tractability; was 14-cell × N=500 per
 //! original architect design; re-scoped to 6-cell × N=200 for ~10-15 min wall-clock).
-//! Runs the C2 N-path robustness harness at each cell, and emits ONE anchored
-//! θ-surface report under `evidence/v1/momentum-parameter-robustness-sweep/reports/`.
+//! Runs the C2 N-path robustness harness at each cell, and emits ONE θ-surface report,
+//! by default under the git-ignored `backtest-runs/<family>/reports/` (ADR-0104 D7,
+//! bug-log #227; `<family>` from `backtest::sweep_harness::sweep_family_feature`, e.g.
+//! `momentum-parameter-robustness-sweep`). The anchored copies live in
+//! `evidence/v1/<family>/reports/`.
 //!
 //! ## Re-scope rationale (2026-05-30)
 //!
@@ -38,11 +41,13 @@
 //! ## Usage
 //!
 //! ```bash
+//! # The report lands in backtest-runs/momentum-parameter-robustness-sweep/reports/.
+//! # Emitting INTO evidence/ takes an explicit --out-dir, used verbatim for every
+//! # family (ADR-0038 § D6.b, ADR-0104 D2); scripts/relock/run_surfaces.sh requires one.
 //! cargo run --release -p backtest --features "candle realdata" --bin param_robustness_sweep -- \
 //!   --generator block-bootstrap-real \
 //!   --paths 200 \
-//!   --ensemble-seed 0xC0FFEE \
-//!   --out-dir evidence/v1/momentum-parameter-robustness-sweep/reports/
+//!   --ensemble-seed 0xC0FFEE
 //! ```
 //!
 //! ## Watch recipe (for long-running N=200 runs — copy-paste to operator terminal)
@@ -51,7 +56,7 @@
 //! watch -n 15 '
 //! PID=$(pgrep -f param_robustness_sweep | head -1)
 //! [ -z "$PID" ] && echo "param_robustness_sweep not running" && exit
-//! N=$(ls evidence/v1/momentum-parameter-robustness-sweep/reports/robustness-sweep-*.md 2>/dev/null | wc -l | tr -d " ")
+//! N=$(ls backtest-runs/momentum-parameter-robustness-sweep/reports/robustness-sweep-*.md 2>/dev/null | wc -l | tr -d " ")
 //! ELAPSED=$(ps -o etime= -p $PID 2>/dev/null | tr -d " ")
 //! [ "$N" -gt 0 ] && echo "surface landed ($N file); elapsed ${ELAPSED}" || echo "running (no surface yet); elapsed ${ELAPSED}"
 //! '
@@ -179,13 +184,13 @@ struct Args {
     )]
     expected_revision_sha: String,
 
-    /// Output directory for the θ-surface report.
-    /// Defaults to the momentum dir; use --out-dir to override for MR runs.
-    #[arg(
-        long,
-        default_value = "evidence/v1/momentum-parameter-robustness-sweep/reports/"
-    )]
-    out_dir: PathBuf,
+    /// Output directory for the θ-surface report. Absent: `backtest-runs/<family>/reports/`
+    /// (git-ignored; ADR-0104 D7, bug-log #227), `<family>` from
+    /// `backtest::sweep_harness::sweep_family_feature`. An explicit value is used verbatim for
+    /// EVERY family (until #227 an explicit value equal to the momentum default was
+    /// re-routed) and is the one way to emit into `evidence/` (ADR-0038 § D6.b, ADR-0104 D2).
+    #[arg(long)]
+    out_dir: Option<PathBuf>,
 
     /// Calendar year for the scenario's backtest span (2023 or 2024).
     #[arg(long, default_value_t = 2023)]
@@ -1612,53 +1617,26 @@ fn load_mn_path_gen(
 
 // ── Effective out-dir resolution ──────────────────────────────────────────────
 
-/// Resolve the effective report output directory (review 1-16: extracted from
-/// `main` verbatim so the family→dir routing is unit-testable, + the MR arm).
-///
-/// For carry: if the user did not override `--out-dir`, default to the carry reports dir.
-/// For TS: if the user did not override `--out-dir`, default to the TS reports dir.
-/// For horizon retest (horizon != 1h): default to the horizon-retest-robustness reports dir.
-/// For basis: default to the perp-basis-signal-robustness reports dir (D-BR.9).
-/// For MR (review 1-16): default to the cross-sectional-mean-reversion-strategy
-/// reports dir — MR was the only family lane with NO arm here, so a default MR
-/// rerun wrote into the FROZEN momentum reports dir, where a stale rerun could
-/// shadow the anchored reports as "latest matching" from the wrong directory.
-/// We detect "was the default changed?" by checking if it's still the momentum
-/// default; an explicit `--out-dir` always wins.
+/// The report output directory. Review 1-16 extracted the family routing; bug-log #227
+/// moved it into `backtest::sweep_harness::sweep_family_feature` (the renderer's `slug:`
+/// source too), put the default under the git-ignored root, and made an explicit
+/// `--out-dir` verbatim for every family.
 fn resolve_effective_out_dir(
-    out_dir: &std::path::Path,
-    is_horizon_run: bool,
+    out_dir: Option<&std::path::Path>,
+    horizon: backtest::resample::Horizon,
     selection_mode: SweepSelectionMode,
     score_source: SweepScoreSource,
     direction: SweepDirection,
 ) -> PathBuf {
-    let momentum_default_out_dir =
-        PathBuf::from("evidence/v1/momentum-parameter-robustness-sweep/reports/");
-    if out_dir != momentum_default_out_dir {
-        // Explicit --out-dir override: honored verbatim for every family.
-        return out_dir.to_path_buf();
-    }
-    if is_horizon_run {
-        // M-DEV-3: horizon runs default to the horizon-retest-robustness reports dir (D-HR.8).
-        PathBuf::from("evidence/v1/horizon-retest-robustness/reports/")
-    } else if selection_mode.is_ts() {
-        PathBuf::from("evidence/v1/time-series-momentum-robustness/reports/")
-    } else if score_source == SweepScoreSource::Carry {
-        PathBuf::from("evidence/v1/carry-strategy/reports/")
-    } else if score_source == SweepScoreSource::BasisReversal {
-        // M-DEV-5 (D-BR.9): basis-reversal reports live in the dedicated namespace dir.
-        PathBuf::from("evidence/v1/perp-basis-signal-robustness/reports/")
-    } else if score_source.is_mn() {
-        // M-DEV-5 (D-MN.8): MN-spread reports live in the MN namespace dir (§ D6.10).
-        PathBuf::from("evidence/v1/perp-basis-mn-spread/reports/")
-    } else if direction == SweepDirection::Reversion {
-        // Review 1-16: MR reports live in the MR evidence namespace (where the
-        // anchored v1-mr-theta-surface report already lives) — never in the
-        // frozen momentum dir.
-        PathBuf::from("evidence/v1/cross-sectional-mean-reversion-strategy/reports/")
-    } else {
-        out_dir.to_path_buf()
-    }
+    backtest::cli_paths::effective_reports_dir(
+        out_dir,
+        backtest::sweep_harness::sweep_family_feature(
+            horizon,
+            selection_mode,
+            score_source,
+            direction,
+        ),
+    )
 }
 
 /// Reject every misinvocation that could FORGE an anchored surface.
@@ -2268,7 +2246,6 @@ fn main() -> Result<()> {
 
     // M-DEV-4: TS-momentum gets its own scenario slug (distinct from momentum/MR/carry).
     // M-DEV-3: horizon retest runs get a horizon-specific slug (§ D-HR.5).
-    let is_horizon_run = args.horizon != backtest::resample::Horizon::OneHour;
     //
     // Review 1-18 (H3): the scenario identity is built by the ONE production
     // seam, `sweep_harness::build_scenario_name`. Until now this bin carried an
@@ -2332,8 +2309,8 @@ fn main() -> Result<()> {
 
     // ── Resolve effective out_dir (review 1-16: extracted into a unit-tested fn) ─
     let effective_out_dir = resolve_effective_out_dir(
-        &args.out_dir,
-        is_horizon_run,
+        args.out_dir.as_deref(),
+        args.horizon,
         args.selection_mode,
         args.score_source,
         args.direction,
@@ -4161,125 +4138,102 @@ mod tests {
         );
     }
 
-    // ── Review 1-16: effective out-dir routing ────────────────────────────────
+    // ── Effective out-dir routing (review 1-16; bug-log #227, ADR-0104 D7) ─────
 
-    const MOMENTUM_DEFAULT_OUT_DIR: &str =
-        "evidence/v1/momentum-parameter-robustness-sweep/reports/";
+    /// Every family's CLI flags and the feature dir its default run writes under.
+    /// The slugs are literals (the committed corpus's dir names), not
+    /// `sweep_family_feature` output, so a routing edit cannot move both sides.
+    const FAMILY_CLI: &[(&[&str], &str)] = &[
+        (&[], "momentum-parameter-robustness-sweep"),
+        (
+            &["--direction", "reversion"],
+            "cross-sectional-mean-reversion-strategy",
+        ),
+        (&["--score-source", "carry"], "carry-strategy"),
+        (
+            &["--selection-mode", "time-series-long-flat"],
+            "time-series-momentum-robustness",
+        ),
+        (
+            &["--score-source", "basis-reversal"],
+            "perp-basis-signal-robustness",
+        ),
+        (
+            &["--score-source", "mn-basis-spread"],
+            "perp-basis-mn-spread",
+        ),
+        (
+            &["--score-source", "mn-funding-spread"],
+            "perp-basis-mn-spread",
+        ),
+        (
+            &["--score-source", "mn-basis-funding-residual"],
+            "perp-basis-mn-spread",
+        ),
+        (
+            &["--score-source", "carry", "--horizon", "4h"],
+            "horizon-retest-robustness",
+        ),
+        (
+            &[
+                "--selection-mode",
+                "time-series-long-flat",
+                "--horizon",
+                "daily",
+            ],
+            "horizon-retest-robustness",
+        ),
+    ];
 
-    fn default_dir() -> PathBuf {
-        PathBuf::from(MOMENTUM_DEFAULT_OUT_DIR)
+    fn resolve_for(a: &Args) -> PathBuf {
+        resolve_effective_out_dir(
+            a.out_dir.as_deref(),
+            a.horizon,
+            a.selection_mode,
+            a.score_source,
+            a.direction,
+        )
     }
 
-    /// Review 1-16: an MR run (direction=Reversion) with the default --out-dir
-    /// routes to the MR evidence namespace — never the frozen momentum dir.
+    /// PS1 (bug-log #227) — with no `--out-dir`, real clap parsing leaves the flag
+    /// absent (a clap `default_value` would make every run look explicit), and every
+    /// family resolves to `backtest-runs/<family>/reports`, never into `evidence/`.
     #[test]
-    fn mr_default_out_dir_routes_to_mr_reports_dir() {
-        let dir = resolve_effective_out_dir(
-            &default_dir(),
-            false,
-            SweepSelectionMode::CrossSectionalTopK,
-            SweepScoreSource::VolAdjustedReturn,
-            SweepDirection::Reversion,
-        );
-        assert_eq!(
-            dir,
-            PathBuf::from("evidence/v1/cross-sectional-mean-reversion-strategy/reports/"),
-            "MR default runs must write into the MR evidence namespace"
-        );
+    fn default_out_dir_routes_every_family_under_backtest_runs() {
+        for (flags, slug) in FAMILY_CLI {
+            let a = parse_cli(flags);
+            assert_eq!(a.out_dir, None, "{flags:?}: --out-dir must parse as absent");
+            assert_eq!(
+                resolve_for(&a),
+                std::path::Path::new("backtest-runs")
+                    .join(slug)
+                    .join("reports"),
+                "{flags:?}: the default out-dir must be backtest-runs/{slug}/reports"
+            );
+        }
     }
 
-    /// The momentum lane keeps its default dir (passthrough — byte-unchanged),
-    /// and every other family lane keeps its pre-1-16 routing.
+    /// PS2 (bug-log #227) — PS1's two-sided partner on the flag: an explicit
+    /// `--out-dir` is used verbatim for EVERY family. The first value is the literal
+    /// HEAD re-routed by value equality (9 of these 10 rows, 6 distinct dirs, went to
+    /// their family dir instead), the second an arbitrary path.
     #[test]
-    fn existing_family_out_dir_routing_unchanged() {
-        // Momentum default: passthrough.
-        let mom = resolve_effective_out_dir(
-            &default_dir(),
-            false,
-            SweepSelectionMode::CrossSectionalTopK,
-            SweepScoreSource::VolAdjustedReturn,
-            SweepDirection::Momentum,
-        );
-        assert_eq!(mom, default_dir());
-        // Horizon retest.
-        let hz = resolve_effective_out_dir(
-            &default_dir(),
-            true,
-            SweepSelectionMode::CrossSectionalTopK,
-            SweepScoreSource::VolAdjustedReturn,
-            SweepDirection::Momentum,
-        );
-        assert_eq!(
-            hz,
-            PathBuf::from("evidence/v1/horizon-retest-robustness/reports/")
-        );
-        // TS.
-        let ts = resolve_effective_out_dir(
-            &default_dir(),
-            false,
-            SweepSelectionMode::TimeSeriesLongFlat,
-            SweepScoreSource::VolAdjustedReturn,
-            SweepDirection::Momentum,
-        );
-        assert_eq!(
-            ts,
-            PathBuf::from("evidence/v1/time-series-momentum-robustness/reports/")
-        );
-        // Carry.
-        let carry = resolve_effective_out_dir(
-            &default_dir(),
-            false,
-            SweepSelectionMode::CrossSectionalTopK,
-            SweepScoreSource::Carry,
-            SweepDirection::Momentum,
-        );
-        assert_eq!(carry, PathBuf::from("evidence/v1/carry-strategy/reports/"));
-        // Basis.
-        let basis = resolve_effective_out_dir(
-            &default_dir(),
-            false,
-            SweepSelectionMode::CrossSectionalTopK,
-            SweepScoreSource::BasisReversal,
-            SweepDirection::Momentum,
-        );
-        assert_eq!(
-            basis,
-            PathBuf::from("evidence/v1/perp-basis-signal-robustness/reports/")
-        );
-        // MN.
-        let mn = resolve_effective_out_dir(
-            &default_dir(),
-            false,
-            SweepSelectionMode::CrossSectionalTopK,
-            SweepScoreSource::MnBasisSpread,
-            SweepDirection::Momentum,
-        );
-        assert_eq!(
-            mn,
-            PathBuf::from("evidence/v1/perp-basis-mn-spread/reports/")
-        );
-    }
-
-    /// An explicit --out-dir override wins for EVERY family, including MR.
-    #[test]
-    fn explicit_out_dir_override_always_wins() {
-        let custom = PathBuf::from("/tmp/custom-sweep-out/");
-        let mr = resolve_effective_out_dir(
-            &custom,
-            false,
-            SweepSelectionMode::CrossSectionalTopK,
-            SweepScoreSource::VolAdjustedReturn,
-            SweepDirection::Reversion,
-        );
-        assert_eq!(mr, custom, "explicit --out-dir must win for MR");
-        let carry = resolve_effective_out_dir(
-            &custom,
-            false,
-            SweepSelectionMode::CrossSectionalTopK,
-            SweepScoreSource::Carry,
-            SweepDirection::Momentum,
-        );
-        assert_eq!(carry, custom, "explicit --out-dir must win for carry");
+    fn explicit_out_dir_is_verbatim_for_every_family() {
+        for explicit in [
+            "evidence/v1/momentum-parameter-robustness-sweep/reports/",
+            "/tmp/custom-sweep-out/",
+        ] {
+            for (flags, _) in FAMILY_CLI {
+                let mut argv: Vec<&str> = flags.to_vec();
+                argv.extend_from_slice(&["--out-dir", explicit]);
+                let a = parse_cli(&argv);
+                assert_eq!(
+                    resolve_for(&a),
+                    PathBuf::from(explicit),
+                    "{flags:?}: an explicit --out-dir {explicit} must be used verbatim"
+                );
+            }
+        }
     }
 
     // ── Per-cell reduction (story 1-28 residual; bug-log #110, #140, #141, #153) ──

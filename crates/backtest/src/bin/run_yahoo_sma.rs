@@ -14,16 +14,20 @@
 //! ```bash
 //! cargo run -p backtest --features yahoo \
 //!   --bin run_yahoo_sma -- \
-//!   --cache-root data/yahoo \
-//!   --reports-dir evidence/v1/lab-yahoo-realdata/reports
+//!   --cache-root data/yahoo
 //! ```
 //!
-//! ETH-USD anchor (v0.1.2):
+//! The default writes `backtest-runs/lab-yahoo-realdata/reports/` (git-ignored;
+//! ADR-0104 D7, bug-log #227). To emit INTO `evidence/` (an ADR-0038 § D6.b
+//! re-emission), pass `--reports-dir evidence/<container>/<new-namespace>/reports`
+//! and check the result with `verify_anchors.sh --explain`.
+//!
+//! ETH-USD:
 //! ```bash
 //! cargo run -p backtest --features yahoo \
 //!   --bin run_yahoo_sma -- \
 //!   --ticker ETH-USD \
-//!   --reports-dir evidence/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports
+//!   --reports-dir <scratch>
 //! ```
 //!
 //! # Anchor discipline
@@ -88,10 +92,13 @@ struct Args {
     #[arg(long, default_value = "data/yahoo")]
     cache_root: PathBuf,
 
-    /// Directory to write the backtest report into.
-    /// Default: evidence/v1/lab-yahoo-realdata/reports
-    #[arg(long, default_value = "evidence/v1/lab-yahoo-realdata/reports")]
-    reports_dir: PathBuf,
+    /// Directory to write the backtest report into. Absent:
+    /// `backtest-runs/lab-yahoo-realdata/reports` (git-ignored; ADR-0104 D7,
+    /// bug-log #227), resolved by the workspace walk below. An explicit value is used
+    /// verbatim (after the same walk) and is the one way to emit into `evidence/`
+    /// (ADR-0104 D2).
+    #[arg(long)]
+    reports_dir: Option<PathBuf>,
 
     /// Full-year start in epoch-millis (default: 2024-01-01T00:00:00Z).
     #[arg(long)]
@@ -157,7 +164,10 @@ async fn main() -> Result<()> {
 
     let ticker = &args.ticker;
     let cache_root = resolve_workspace_path(&args.cache_root);
-    let reports_dir = resolve_workspace_path(&args.reports_dir);
+    let reports_dir = resolve_workspace_path(&backtest::cli_paths::effective_reports_dir(
+        args.reports_dir.as_deref(),
+        backtest::cli_paths::YAHOO_SMA_FEATURE,
+    ));
 
     let start_ms = args.start_ms.unwrap_or(DEFAULT_START_MS);
     let end_ms = args.end_ms.unwrap_or(DEFAULT_END_MS);
