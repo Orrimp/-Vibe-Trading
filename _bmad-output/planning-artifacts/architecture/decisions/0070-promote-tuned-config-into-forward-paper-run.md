@@ -5,7 +5,7 @@ status: accepted
 date: 2026-06-25
 supersedes: none
 superseded-by: none
-updated: 2026-11-24
+updated: 2026-11-28
 ---
 
 # ADR-0070: Promotion wiring — carry a robust Tune config into the forward paper-trade
@@ -141,7 +141,22 @@ a cross-coin promotion is never silent; the €200 literal is the code's, not a 
 placeholder.)* The crowned-pick header keeps its "best of the bake-off" provenance; the
 promoted header says "you tuned this" — different provenance, different words. The
 persistent not-advice footer (`TUNE_DISCLAIMER`) stays; promotion adds framing, never
-removes a disclaimer.
+removes a disclaimer. *(Amended 2026-11-28, bug-log `#222`: the header is the headline and
+caption as well as the strip. A promotion draws `FORWARD_PLAN_PROMOTED_HEADLINE` ("Your tuned
+config") over `FORWARD_PLAN_PROMOTED_CAPTION` ("Watching your tuned config as new bars arrive —
+not the bake-off’s crowned pick, so no confidence check applies to it. Not a prediction or a
+guarantee of future edge."); a crowned plan keeps "Confidence check" and its caption.
+`screens::forward_plan::header_copy` reads `pending_forward_promotion` and nothing else, the
+field the strip reads, so the header and the strip never disagree. The header and the plan on
+screen can: the binary clears the field when it sends a crowned launch, not when that launch's
+plan lands, and a late plan can land under a fresh promotion; both orderings are filed as
+bug-log `#244` (open). The loading line is neutral ("Reading the
+strategy’s standing rules…"), since only a promotion flips the plan to `Loading`
+(`state::promote_swept_config`). Pinned by U1
+(`screens::forward_plan::tests::header_copy_follows_the_promotion_not_the_bakeoff`), W1
+(`forward_plan_provenance.rs::promoted_copy_says_tuned_not_crowned`) and LR-222
+(`forward_plan_populated_render.rs::promoted_header_is_not_the_crowned_header_on_one_bakeoff`,
+the crowned header on the same bake-off its negative control).)*
 
 **D7 — Day-1 divergence + fidelity gate (CLAUDE.md non-negotiable, the
 v3-vol-overlay-noop precedent).** New `crates/agent/tests/forward_promotion_divergence.rs`
@@ -204,6 +219,11 @@ a confidence check on that pick") still draw over a promoted plan, which now has
 block under them (`#222`); and "Export this plan" on a promoted plan still takes its coin,
 window, verdict (including the scorecard-derived credibility line, whose "see below" hint now
 has no TRUST section to point to) and filename from the leaderboard's bake-off (`#223`).
+*(Resolved 2026-11-28, except the window between the crowned launch and its plan landing (and
+the reverse race, a late plan landing under a fresh promotion), filed as `#244` (open): `#222`
+by the D6 amendment, `#223` by ADR-0088 § D5 as amended (a promoted plan offers no export, and
+the export's weak-evidence hint prints only over its TRUST section, ADR-0088 § D3 as amended).
+In `#244`'s windows the header can mislabel the plan on screen; the export is refused there.)*
 
 ## Alternatives considered
 
@@ -252,6 +272,14 @@ has no TRUST section to point to) and filename from the leaderboard's bake-off (
 
 ## Changelog
 
+- 2026-11-28 (developer, bug-log `#222`, `#223`): **D6** the header follows the provenance: a
+  promotion draws "Your tuned config" and its own caption over the strip, a crowned plan keeps
+  "Confidence check"; `screens::forward_plan::header_copy` reads `pending_forward_promotion`
+  only; the loading line no longer says "crowned". **D11** the two known divergences the
+  2026-11-24 entry filed are resolved, `#222` by D6 and `#223` by ADR-0088 § D3/§ D5 as amended
+  (a promoted plan offers no export), except the window between a crowned launch and its plan
+  landing and the reverse late-plan race, filed as `#244` (open). D1–D5, D7–D10, the FRAGILE lock, the frozen gate and the
+  scorecard maths unchanged; anchor-neutral (119/119).
 - 2026-11-24 (developer, bug-log `#213`): **D11** a promotion carries no bake-off confidence:
   `ForwardRunConfig.confidence` is `None` for every promoted launch, so the forward plan's
   "How much to trust this pick" block and the export's TRUST section appear for a crowned plan

@@ -75,6 +75,7 @@ use crate::forward_plan::state::{
     ConfidenceSummaryView, ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
     PlanVoteMethodView,
 };
+use crate::leaderboard::{BakeoffReportMirror, ScorecardView};
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
     FORWARD_PLAN_AS_OF_FMT, FORWARD_PLAN_BUDGET_LINE_FMT, FORWARD_PLAN_CADENCE_FMT,
@@ -88,13 +89,14 @@ use crate::strings::{
     FORWARD_PLAN_CONFIDENCE_TITLE, FORWARD_PLAN_DISCLAIMER, FORWARD_PLAN_EMPTY_PROMPT,
     FORWARD_PLAN_ERROR_PREFIX, FORWARD_PLAN_HEADLINE, FORWARD_PLAN_HORIZON_FMT,
     FORWARD_PLAN_HORIZON_TITLE, FORWARD_PLAN_LATEST_SIGNAL_FMT, FORWARD_PLAN_LOADING,
-    FORWARD_PLAN_NOT_A_PREDICTION, FORWARD_PLAN_RULE_ALWAYS_SHORT,
-    FORWARD_PLAN_RULE_BBANDS_ENTRY_IF_FMT, FORWARD_PLAN_RULE_BBANDS_ENTRY_THEN,
-    FORWARD_PLAN_RULE_BBANDS_EXIT_IF, FORWARD_PLAN_RULE_BBANDS_EXIT_THEN,
-    FORWARD_PLAN_RULE_BUY_AND_HOLD, FORWARD_PLAN_RULE_COMPOUND_CAVEAT,
-    FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT, FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_NAMED_FMT,
-    FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT, FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_NAMED_FMT,
-    FORWARD_PLAN_RULE_IF, FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT, FORWARD_PLAN_RULE_MACD_ENTRY_THEN,
+    FORWARD_PLAN_NOT_A_PREDICTION, FORWARD_PLAN_PROMOTED_CAPTION, FORWARD_PLAN_PROMOTED_HEADLINE,
+    FORWARD_PLAN_RULE_ALWAYS_SHORT, FORWARD_PLAN_RULE_BBANDS_ENTRY_IF_FMT,
+    FORWARD_PLAN_RULE_BBANDS_ENTRY_THEN, FORWARD_PLAN_RULE_BBANDS_EXIT_IF,
+    FORWARD_PLAN_RULE_BBANDS_EXIT_THEN, FORWARD_PLAN_RULE_BUY_AND_HOLD,
+    FORWARD_PLAN_RULE_COMPOUND_CAVEAT, FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT,
+    FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_NAMED_FMT, FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT,
+    FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_NAMED_FMT, FORWARD_PLAN_RULE_IF,
+    FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT, FORWARD_PLAN_RULE_MACD_ENTRY_THEN,
     FORWARD_PLAN_RULE_MACD_EXIT_IF, FORWARD_PLAN_RULE_MACD_EXIT_THEN,
     FORWARD_PLAN_RULE_RSI_ENTRY_IF_FMT, FORWARD_PLAN_RULE_RSI_ENTRY_THEN,
     FORWARD_PLAN_RULE_RSI_EXIT_IF_FMT, FORWARD_PLAN_RULE_RSI_EXIT_THEN,
@@ -129,16 +131,25 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let mut col = Column::new()
         .padding(space::L as u16)
         .spacing(space::L)
-        // The headline/caption block plus — ONLY when a crowned plan is Ready —
-        // the right-aligned "Export this plan" action (Q-HE-6, ADR-0088 § D5).
-        .push(header_row(&st.plan, mode));
+        // The headline/caption block, in the crowned or the promoted copy, keyed on
+        // the field the D6 strip below reads (ADR-0070 § D6 as amended, bug-log
+        // #222), plus, only when the plan on screen is the crowned plan of the
+        // bake-off on the leaderboard, the right-aligned "Export this plan" action
+        // (ADR-0088 § D5 as amended, bug-log #223).
+        .push(header_row(
+            header_copy(model),
+            crowned_export_pair(model).is_some(),
+            mode,
+        ));
 
     // advisor-param-promotion (ADR-0070 § D6) — when the active plan came from a
     // PROMOTION, lead with the "you tuned this" provenance strip (distinct from
-    // the crowned "best of the bake-off" framing — the ONLY live promote-vs-crown
-    // signal). Keyed on `pending_forward_promotion` being `Some` (set on promote,
-    // cleared when a crowned pick launches), so it reads the SAME tuned params the
-    // loop runs and never lingers over a crowned plan.
+    // the crowned "best of the bake-off" framing). Keyed on
+    // `pending_forward_promotion` being `Some` (set on promote, cleared when a
+    // crowned pick launches), so it reads the SAME tuned params the loop runs. The
+    // strip, the header copy (`header_copy`, bug-log #222) and the export gate
+    // (`crowned_export_pair`, bug-log #223) all read this one field (ADR-0070 § D6
+    // as amended).
     if let Some(promotion) = &model.pending_forward_promotion {
         col = col.push(promote_provenance_strip(promotion, mode));
     }
@@ -200,18 +211,36 @@ fn family_label(params: &crate::tune::PromoteParams) -> &'static str {
     }
 }
 
+/// The headline and caption over the plan on screen (ADR-0070 § D6 as amended, bug-log
+/// #222). Reads `pending_forward_promotion` and nothing else, the field the D6 strip
+/// reads, so the header and the strip never disagree.
+fn header_copy(model: &Cockpit) -> (&'static str, &'static str) {
+    if model.pending_forward_promotion.is_some() {
+        (
+            FORWARD_PLAN_PROMOTED_HEADLINE,
+            FORWARD_PLAN_PROMOTED_CAPTION,
+        )
+    } else {
+        (FORWARD_PLAN_HEADLINE, FORWARD_PLAN_CAPTION)
+    }
+}
+
 /// Headline (`H1`) over caption (`BODY`, muted) — the screen's plain-language
 /// "what this is", framed as standing rules (not a forecast) from the first line.
-fn header_text(mode: ThemeMode) -> crate::Element<'static> {
+/// The copy is [`header_copy`]'s: the crowned or the promoted pair.
+fn header_text(
+    (headline, caption): (&'static str, &'static str),
+    mode: ThemeMode,
+) -> crate::Element<'static> {
     Column::new()
         .spacing(space::XXS)
         .push(
-            Text::new(FORWARD_PLAN_HEADLINE)
+            Text::new(headline)
                 .size(text::H1)
                 .color(color::FG_1.current(mode)),
         )
         .push(
-            Text::new(FORWARD_PLAN_CAPTION)
+            Text::new(caption)
                 .size(text::BODY)
                 .color(color::FG_3.current(mode))
                 .width(Length::Fixed(720.0)),
@@ -222,22 +251,28 @@ fn header_text(mode: ThemeMode) -> crate::Element<'static> {
 // ── Header row + export action (advisor-handoff-export P5, ADR-0088 § D5) ──────
 
 /// The screen header — the headline/caption block, and, on the right, the
-/// "Export this plan" action. The export affordance renders **ONLY when the
-/// crowned plan is `PanelState::Ready`** (Q-HE-6 / ADR-0088 § D5): in
-/// `Loading`/`Empty`/`Error` there is no plan to hand off, so the button is
-/// ABSENT (no empty-export artifact is ever offered). The rendered-pixel proof
-/// `tests/plan_export_button_render.rs` asserts both the presence (Ready) and
-/// the absence (Empty) at the pixel layer.
-fn header_row(plan: &PanelState<ForwardPlanView>, mode: ThemeMode) -> crate::Element<'static> {
+/// "Export this plan" action. The export affordance renders **only when
+/// `exportable`**, which `view` sets to [`crowned_export_pair`]`.is_some()`: the
+/// plan on screen is the crowned plan of the bake-off on the leaderboard (ADR-0088
+/// § D5 as amended, bug-log #223). The handler reads the same predicate, so the
+/// button shows exactly when a press writes. In `Loading`/`Empty`/`Error`, over a
+/// promoted plan, during a re-run and beside another bake-off it is ABSENT. The
+/// rendered-pixel proof `tests/plan_export_button_render.rs` asserts the presence
+/// (Ready, crowned) and the absence (Empty; LR-223's promoted, re-run, other-coin
+/// and no-bake-off frames) at the pixel layer.
+fn header_row(
+    copy: (&'static str, &'static str),
+    exportable: bool,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
     let mut row = Row::new()
         .align_y(iced::alignment::Vertical::Center)
         .spacing(space::M)
-        .push(header_text(mode))
+        .push(header_text(copy, mode))
         // Push the action to the trailing edge — the header title stays left.
         .push(Space::new().width(Length::Fill));
 
-    // Q-HE-6: the export action exists only for a Ready crowned plan.
-    if matches!(plan, PanelState::Ready(_)) {
+    if exportable {
         row = row.push(export_button(mode));
     }
 
@@ -280,7 +315,7 @@ fn result_body<'a>(
     mode: ThemeMode,
 ) -> crate::Element<'a> {
     match plan {
-        // The agent is resolving the plan from the crowned selection.
+        // The agent is resolving the plan (today only after a promotion, ADR-0070 § D6 as amended).
         PanelState::Loading => Container::new(
             Column::new()
                 .push(Space::new().height(Length::Fixed(space::XL as f32)))
@@ -1114,11 +1149,15 @@ pub enum PlanExportOutcome {
     /// The `create_dir_all` / `fs::write` failed. Carries the OS error detail
     /// (dynamic data) for the honest failure toast (`PLAN_EXPORT_TOAST_FAILED_FMT`).
     Failed(String),
-    /// No crowned plan (or no bake-off mirror) was `Ready` to export — a
-    /// defensive guard. The button is ABSENT unless the plan is Ready (Q-HE-6,
-    /// proven at the pixel layer), so this is structurally unreachable from the
-    /// UI; the handler no-ops it, mirroring the button-gated `TrainingPressed`
-    /// no-op precedent (`state.rs`). Never writes a file.
+    /// [`crowned_export_pair`] is `None`: no crowned plan beside the bake-off that
+    /// crowned it (a promoted plan, no `Ready` bake-off, a re-run in flight, a newer
+    /// bake-off, another budget) — a defensive guard. Not reachable from a settled
+    /// frame, because the button is shown exactly when `crowned_export_pair` is `Some`
+    /// (ADR-0088 § D5 as amended, bug-log #223; proven at the pixel layer by LR-223); in
+    /// a message race (a bake-off or plan message processed between the frame that drew
+    /// the button and the press) the press is refused and writes nothing. The handler
+    /// no-ops it, mirroring the button-gated `TrainingPressed` no-op precedent
+    /// (`state.rs`). Never writes a file and never creates the directory.
     NotReady,
 }
 
@@ -1134,32 +1173,86 @@ fn plan_exports_dir() -> std::path::PathBuf {
         .join("plan-exports")
 }
 
-/// Assemble the crowned-plan inputs from the model, serialise them with the
-/// pure golden-tested [`serialize_plan_export`], and write the artifact to the
-/// git-ignored `plan-exports/` dir. **This is the single filesystem-write leaf
-/// (ADR-0088 § D5) — it happens ONLY here, on the explicit `Message::ExportPlan`
-/// button press, never automatically on render/update.** Pure-read of the model
-/// (`&Cockpit`); no panic, no `unwrap`. The `Message::ExportPlan` arm maps the
-/// returned [`PlanExportOutcome`] to a toast.
+/// The crowned plan on screen and the bake-off that crowned it: the only pair the
+/// hand-off export describes (ADR-0088 § D5 as amended, bug-log #223). `Some` when the
+/// plan is `Ready`, nothing is promoted (ADR-0070 § D6's field), a bake-off is `Ready`,
+/// and the plan is that bake-off's crowned launch: its coin, its crowned strategy and its
+/// scorecard as the plan's confidence, bit for bit (what `ui::live::crowned_forward_run_config`
+/// carries, ADR-0070 § D11), sized with the budget of the current forward run
+/// (`forward_budget`, which the binary sets with `ForwardPaperTradeStarted` before the
+/// crowned plan can land). The budget clause matters because the bake-off is
+/// budget-independent and runs at a fixed seed: re-running it after a budget change crowns
+/// the same row with the same scorecard, and until the new plan lands the old plan's
+/// `projected_units` would export under the new budget line. The plan carries no FX of
+/// its own, so an EUR and rate change that leaves the USDT budget identical is not seen
+/// (a residual, bug-log #223). The button shows exactly when this is `Some`.
 #[must_use]
-pub fn export_current_plan(model: &Cockpit) -> PlanExportOutcome {
-    // Q-HE-6 guard: only a Ready crowned plan whose bake-off mirror is also
-    // Ready can be exported (the mirror carries the outcome / scorecard /
-    // data-quality / coin / window / run-seed the serialiser needs). The button
-    // is absent otherwise, so both `else` arms are defensive.
+pub fn crowned_export_pair(model: &Cockpit) -> Option<(&ForwardPlanView, &BakeoffReportMirror)> {
     let PanelState::Ready(plan) = &model.forward_plan_screen_state.plan else {
-        return PlanExportOutcome::NotReady;
+        return None;
     };
     let PanelState::Ready(report) = &model.leaderboard_screen_state.result else {
+        return None;
+    };
+    let crowned = report.crowned_row()?;
+    let crowned_here = model.pending_forward_promotion.is_none()
+        && plan.symbol == report.coin
+        && plan.strategy == crowned.strategy
+        && carries_its_scorecard(plan.confidence.as_ref(), report.scorecard.as_ref())
+        && model
+            .forward_budget
+            .is_some_and(|budget| budget.amount() == plan.budget);
+    crowned_here.then_some((plan, report))
+}
+
+/// `confidence` is `scorecard` projected, field for field, `f64` by bits (a copied NaN still
+/// matches). `false` if either is absent: the TRUST section and its "~1 in 5" note, which the
+/// weak-evidence hint and a "What this is NOT" bullet point at, exist only with it. A `Ready`
+/// bake-off always has one (`ScorecardView::from_scorecard` is `None` only for
+/// `n_candidates == 0`, and an empty field lands `Empty`, `LeaderboardScreenState::finish_run`).
+fn carries_its_scorecard(
+    confidence: Option<&ConfidenceSummaryView>,
+    scorecard: Option<&ScorecardView>,
+) -> bool {
+    let (Some(c), Some(s)) = (confidence, scorecard) else {
+        return false;
+    };
+    c.n_candidates == s.n_candidates
+        && c.deflated_sharpe.to_bits() == s.deflated_sharpe.to_bits()
+        && c.crown_clears_dsr == s.crown_clears_dsr
+        && c.min_btl_years.to_bits() == s.min_btl_years.to_bits()
+}
+
+/// The file "Export this plan" writes, `(filename, text)`, or `None` when
+/// [`crowned_export_pair`] is `None` (bug-log #223). Pure: no I/O, no wall-clock, no
+/// RNG (the golden-tested [`serialize_plan_export`] contract, R-HE.1).
+#[must_use]
+pub fn export_artifact(model: &Cockpit) -> Option<(String, String)> {
+    let (plan, report) = crowned_export_pair(model)?;
+    let text = serialize_plan_export(
+        plan,
+        report,
+        &model.leaderboard_screen_state.narration,
+        model.forward_fx.as_ref(),
+    );
+    Some((export_filename(report), text))
+}
+
+/// Write [`export_artifact`] to the git-ignored `plan-exports/` dir. **This is the
+/// single filesystem-write leaf (ADR-0088 § D5) — it happens ONLY here, on the
+/// explicit `Message::ExportPlan` button press, never automatically on
+/// render/update.** Pure-read of the model (`&Cockpit`); no panic, no `unwrap`. The
+/// `Message::ExportPlan` arm maps the returned [`PlanExportOutcome`] to a toast.
+///
+/// The button and this handler read one predicate, [`crowned_export_pair`]
+/// (ADR-0088 § D5 as amended, bug-log #223), so the button shows exactly when a
+/// press writes. A refused press returns [`PlanExportOutcome::NotReady`] before
+/// `create_dir_all`: it creates neither the directory nor a file.
+#[must_use]
+pub fn export_current_plan(model: &Cockpit) -> PlanExportOutcome {
+    let Some((filename, text)) = export_artifact(model) else {
         return PlanExportOutcome::NotReady;
     };
-    let narration = &model.leaderboard_screen_state.narration;
-    let fx = model.forward_fx.as_ref();
-
-    // Pure serialisation — no I/O, no wall-clock, no RNG (the golden-tested
-    // contract). Same inputs ⇒ byte-identical output (R-HE.1).
-    let text = serialize_plan_export(plan, report, narration, fx);
-    let filename = export_filename(report);
 
     // The single fs-write leaf. `create_dir_all` is idempotent; the filename is
     // deterministic (same run ⇒ same name ⇒ idempotent overwrite).
@@ -1213,5 +1306,70 @@ mod tests {
             );
             assert!(!line.contains('{'), "every placeholder is filled: {line:?}");
         }
+    }
+
+    /// bug-log #222 (U1, ADR-0070 § D6 as amended) — the header copy follows the
+    /// promotion and nothing else: (a) the crowned plan beside its bake-off draws the
+    /// crowned pair; (b) the same with a promotion, (c) a promotion over a `Loading`
+    /// plan (the first frame after "Use this config") and (d) a promotion with no
+    /// bake-off each draw the promoted pair. The two pairs differ.
+    #[test]
+    fn header_copy_follows_the_promotion_not_the_bakeoff() {
+        let crowned_pair = (FORWARD_PLAN_HEADLINE, FORWARD_PLAN_CAPTION);
+        let promoted_pair = (
+            FORWARD_PLAN_PROMOTED_HEADLINE,
+            FORWARD_PLAN_PROMOTED_CAPTION,
+        );
+        assert_ne!(crowned_pair.0, promoted_pair.0, "the headlines differ");
+        assert_ne!(crowned_pair.1, promoted_pair.1, "the captions differ");
+
+        let promotion = crate::state::ForwardPromotion {
+            strategy_id: trading_core::StrategyId::new("v0.5.sma"),
+            coin: trading_core::Symbol::new("BTCUSDT"),
+            params: crate::tune::PromoteParams::Sma {
+                fast_len: 10,
+                slow_len: 20,
+            },
+            window_label: SmolStr::new("2024 H1"),
+        };
+        let a = crate::fixtures::fake_cockpit_forward_plan_crowned(
+            crate::fixtures::fake_bakeoff_report_mirror(),
+        );
+        let mut b = a.clone();
+        b.pending_forward_promotion = Some(promotion.clone());
+        let mut c = b.clone();
+        c.forward_plan_screen_state.plan = PanelState::Loading;
+        let mut d = crate::fixtures::fake_cockpit_forward_plan(PanelState::Ready(
+            crate::fixtures::fake_forward_plan(),
+        ));
+        d.pending_forward_promotion = Some(promotion);
+
+        let mut fails = Vec::new();
+        for (case, cockpit, expected) in [
+            ("(a) crowned beside its bake-off", &a, crowned_pair),
+            ("(b) (a) plus a promotion", &b, promoted_pair),
+            ("(c) a promotion over a Loading plan", &c, promoted_pair),
+            ("(d) a promotion with no bake-off", &d, promoted_pair),
+        ] {
+            let got = header_copy(cockpit);
+            if got.0 != expected.0 {
+                fails.push(format!(
+                    "{case}: headline {:?}, expected {:?}",
+                    got.0, expected.0
+                ));
+            }
+            if got.1 != expected.1 {
+                fails.push(format!(
+                    "{case}: caption {:?}, expected {:?}",
+                    got.1, expected.1
+                ));
+            }
+        }
+        assert!(
+            fails.is_empty(),
+            "U1 #222: {} failure(s):\n  {}",
+            fails.len(),
+            fails.join("\n  ")
+        );
     }
 }

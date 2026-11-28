@@ -46,6 +46,16 @@
 //! the same pixels as one re-opened on ETH. Writes
 //! `/tmp/forward_plan_200_*_render.png`.
 //!
+//! ## bug-log #222 (LR-222)
+//!
+//! [`promoted_header_is_not_the_crowned_header_on_one_bakeoff`] renders a crowned
+//! plan beside its bake-off and the SAME plan view after a promotion (only the
+//! provenance differs), and asserts inside the header text column that the
+//! headline and the caption each differ, that the header depends on provenance only
+//! (a second crowned and a second promoted cockpit draw the same column), that the
+//! promoted header is no taller, and that it shows from the `Loading` frame on.
+//! Writes `/tmp/forward_plan_222_*_render.png`.
+//!
 //! ## macOS gate (ADR-0057 D2)
 //!
 //! Like `leaderboard_populated_render.rs`, real-renderer pixel assertions are
@@ -708,5 +718,293 @@ fn forward_plan_promoted_strip_names_the_landed_grids_coin() {
         p_eth == p_eth2,
         "LR-200b (3) #200: an ETH grid re-opened on SOL must paint the same strip as one \
          re-opened on ETH. PNGs: /tmp/forward_plan_200_{{eth_reopened_sol,eth}}_render.png"
+    );
+}
+
+// ── bug-log #222 (LR-222, AD-10, ADR-0070 § D6 as amended) — the header names the provenance ──
+
+/// Right edge of the header TEXT column: the 16-px column padding plus the fixed
+/// 720-px caption (`screens::forward_plan::header_text`), with a margin. The export
+/// button is right-aligned near x ≈ 1760, outside it, so the column sees the
+/// headline and the caption only.
+const HEADER_TEXT_RIGHT: u32 = 760;
+
+/// `true` for a `WARN_500`-amber pixel (dark `#E0B45C`): the predicate
+/// `forward_plan_short_render.rs` uses. Both the D6 strip and the framing banner
+/// carry a 1-px `WARN_500` border.
+fn is_warn_amber(r: i32, g: i32, b: i32) -> bool {
+    r > 170 && g > 140 && b < 140 && (r - g).abs() < 60 && (g - b) > 40
+}
+
+/// Foreground (the file's luma > 80) pixels of row `y` inside the header text column.
+fn column_row_fg(w: u32, rgba: &[u8], y: u32) -> u64 {
+    let mut hits = 0u64;
+    for x in 0..HEADER_TEXT_RIGHT.min(w) {
+        let idx = ((y as usize * w as usize) + x as usize) * 4;
+        let (r, g, b) = (
+            i32::from(rgba[idx]),
+            i32::from(rgba[idx + 1]),
+            i32::from(rgba[idx + 2]),
+        );
+        if (r * 2 + g * 3 + b) / 6 > 80 {
+            hits += 1;
+        }
+    }
+    hits
+}
+
+/// The RGBA bytes of `[y0, y1)` × `[0, HEADER_TEXT_RIGHT)`.
+fn column_bytes(w: u32, rgba: &[u8], y0: u32, y1: u32) -> Vec<u8> {
+    let right = HEADER_TEXT_RIGHT.min(w) as usize * 4;
+    (y0..y1)
+        .flat_map(|y| {
+            let start = y as usize * w as usize * 4;
+            rgba[start..start + right].iter().copied()
+        })
+        .collect()
+}
+
+/// The first row in `[from, to)` whose column foreground is non-zero (`ink`) or zero.
+fn first_row(w: u32, rgba: &[u8], from: u32, to: u32, ink: bool) -> Option<u32> {
+    (from..to).find(|&y| (column_row_fg(w, rgba, y) > 0) == ink)
+}
+
+/// The first row of the whole frame with at least 500 `WARN_500` pixels: the top
+/// border of the first warn card under the header (the D6 strip on a promoted plan,
+/// the framing banner on a crowned one).
+fn first_amber_row(w: u32, h: u32, rgba: &[u8]) -> Option<u32> {
+    (0..h).find(|&y| {
+        (0..w)
+            .filter(|&x| {
+                let idx = ((y as usize * w as usize) + x as usize) * 4;
+                is_warn_amber(
+                    i32::from(rgba[idx]),
+                    i32::from(rgba[idx + 1]),
+                    i32::from(rgba[idx + 2]),
+                )
+            })
+            .count()
+            >= 500
+    })
+}
+
+/// Promote a BTCUSDT SMA grid (`Sma{10,20}`) on top of `cockpit`, through `update`
+/// only: "Tune…", Run, the grid lands, "Use this config". Leaves the plan `Loading`
+/// (the first frame after the press).
+fn promote_through_update(cockpit: &mut Cockpit) {
+    use ui::state::{Message, update};
+    update(
+        cockpit,
+        Message::OpenTuneEditor {
+            family: ui::tune::TuneFamily::Sma,
+            coin: trading_core::Symbol::new("BTCUSDT"),
+            lookback: ui::leaderboard::LeaderboardLookback::H1_2024,
+        },
+    );
+    update(cockpit, Message::SweepRunRequested);
+    let mut grid = ui::fixtures::fake_sweep_report_mirror();
+    grid.coin = smol_str::SmolStr::new("BTCUSDT");
+    update(cockpit, Message::SweepRunCompleted(Ok(grid)));
+    update(
+        cockpit,
+        Message::PromoteSweptConfig(ui::tune::PromoteParams::Sma {
+            fast_len: 10,
+            slow_len: 20,
+        }),
+    );
+}
+
+/// **LR-222 (bug-log #222, AD-10, ADR-0070 § D6 as amended).** The forward plan's
+/// headline and caption follow the plan's provenance. Frames, all on the stock
+/// bake-off (BTCUSDT, crowned `v0.sma`):
+/// - C: the crowned plan beside the bake-off that crowned it
+///   (`fake_cockpit_forward_plan_crowned`);
+/// - P: C, then a promotion through `update`, then the tuned plan landed: the shape
+///   production lands for a promotion (`v0.5.sma`, the tuned 10/20 rules, no
+///   confidence since bug-log #213; the same view `fake_cockpit_forward_plan_promoted`
+///   carries), with the stock bake-off still on the leaderboard. A promotion beside
+///   a Ready bake-off is the state #222 and #223 were filed against. (The
+///   identical-view #161 pair, a promotion over the crowned view, is pinned at the
+///   predicate level instead: U1 (b) and `forward_plan_provenance.rs` E1 (d). It is
+///   reachable only through the late-plan race filed in bug-log #244.)
+/// - P_load: P before the tuned view lands (plan `Loading`, the first frame after
+///   "Use this config");
+/// - P2: `fake_cockpit_forward_plan_promoted()` (the same tuned view, no bake-off);
+/// - C2: the crowned cockpit on the five-arm bake-off.
+///
+/// Inside the header text column (`[0, HEADER_TEXT_RIGHT)` × `[0, PROVENANCE_TOP)`),
+/// with sub-bands derived from C only (`h0` C's first ink row, `split` C's first
+/// blank row after it, `c0` C's first ink row after that, the caption's top):
+/// 1. fg(C) > 0 and 2·fg(P) ≥ fg(C);
+/// 2. (a) C and P differ in the headline band `[h0, split)`, (b) in the caption band
+///    `[c0, PROVENANCE_TOP)`, and (c) P's headline is one ink run ending above `c0`
+///    (no P ink from its end down to `c0`) and P's ink in the caption band spans
+///    exactly C's caption rows (`c0` to C's last caption row), so (b) is the
+///    caption's difference, not a headline that grew into the caption band;
+/// 3. P == P2 and C == C2, byte for byte: the header depends on provenance only;
+/// 4. P's first ≥ 500-amber row is at or above C's: the promoted header is no
+///    taller (the D6 strip and the framing banner both start at header bottom + L);
+/// 5. P_load == P: the header is right from the first frame.
+///
+/// Writes `/tmp/forward_plan_222_{crowned,promoted,promoted_loading,promoted_no_bakeoff,crowned_five_arm}_render.png`.
+#[test]
+fn promoted_header_is_not_the_crowned_header_on_one_bakeoff() {
+    use ui::state::{Message, update};
+    let mut fails: Vec<String> = Vec::new();
+
+    let c =
+        ui::fixtures::fake_cockpit_forward_plan_crowned(ui::fixtures::fake_bakeoff_report_mirror());
+    let p2 = ui::fixtures::fake_cockpit_forward_plan_promoted();
+    let PanelState::Ready(tuned_view) = p2.forward_plan_screen_state.plan.clone() else {
+        panic!("precondition: the promoted fixture carries a Ready tuned plan");
+    };
+    if !(tuned_view.confidence.is_none() && tuned_view.strategy.as_str() == "v0.5.sma") {
+        fails.push(
+            "precondition: the tuned view is production-shaped (v0.5.sma, no confidence)"
+                .to_string(),
+        );
+    }
+    let mut p_load = c.clone();
+    promote_through_update(&mut p_load);
+    if !(p_load.pending_forward_promotion.is_some()
+        && matches!(p_load.forward_plan_screen_state.plan, PanelState::Loading))
+    {
+        fails.push("precondition: the promotion is pending and the plan is Loading".to_string());
+    }
+    let mut p = p_load.clone();
+    update(&mut p, Message::ForwardPlanReceived(tuned_view.clone()));
+    if !(matches!(&p.forward_plan_screen_state.plan, PanelState::Ready(v) if *v == tuned_view)
+        && matches!(
+            (&p.leaderboard_screen_state.result, &c.leaderboard_screen_state.result),
+            (PanelState::Ready(a), PanelState::Ready(b)) if a == b
+        ))
+    {
+        fails.push(
+            "precondition: P carries the tuned plan beside C's bake-off, promoted".to_string(),
+        );
+    }
+    let c2 = ui::fixtures::fake_cockpit_forward_plan_crowned(
+        ui::fixtures::fake_bakeoff_report_mirror_five_arm(),
+    );
+
+    let frames = [
+        ("crowned", c),
+        ("promoted", p),
+        ("promoted_loading", p_load),
+        ("promoted_no_bakeoff", p2),
+        ("crowned_five_arm", c2),
+    ]
+    .map(|(name, cockpit)| {
+        let (w, h, rgba) = render_forward_plan_rgba(cockpit);
+        if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+            let _ = img.save(format!("/tmp/forward_plan_222_{name}_render.png"));
+        }
+        (w, h, rgba)
+    });
+    let (w, h) = (frames[0].0, frames[0].1);
+    assert!(
+        frames.iter().all(|(fw, fh, _)| (*fw, *fh) == (w, h)),
+        "every frame renders at the same size"
+    );
+    let [c, p, p_load, p2, c2] = [0, 1, 2, 3, 4].map(|i| frames[i].2.as_slice());
+
+    // Sub-bands, derived from C alone.
+    let h0 = first_row(w, c, 0, PROVENANCE_TOP, true).expect("C's header draws ink");
+    let split = first_row(w, c, h0, PROVENANCE_TOP, false).expect("C's headline ends");
+    let c0 = first_row(w, c, split, PROVENANCE_TOP, true).expect("C's caption draws ink");
+    let p_h0 = first_row(w, p, 0, PROVENANCE_TOP, true);
+    let p_split = p_h0.and_then(|y| first_row(w, p, y, PROVENANCE_TOP, false));
+    let caption_last = (c0..PROVENANCE_TOP)
+        .rev()
+        .find(|&y| column_row_fg(w, c, y) > 0);
+    let caption_lines = (c0..PROVENANCE_TOP)
+        .filter(|&y| column_row_fg(w, c, y) > 0 && (y == c0 || column_row_fg(w, c, y - 1) == 0))
+        .count();
+    let p_caption_last = (c0..PROVENANCE_TOP)
+        .rev()
+        .find(|&y| column_row_fg(w, p, y) > 0);
+    let p_caption_lines = (c0..PROVENANCE_TOP)
+        .filter(|&y| column_row_fg(w, p, y) > 0 && (y == c0 || column_row_fg(w, p, y - 1) == 0))
+        .count();
+    let amber_c = first_amber_row(w, h, c);
+    let amber_p = first_amber_row(w, h, p);
+    let fg = |rgba: &[u8]| -> u64 { (0..PROVENANCE_TOP).map(|y| column_row_fg(w, rgba, y)).sum() };
+    let (fg_c, fg_p) = (fg(c), fg(p));
+    eprintln!(
+        "#222 pixel margin LR-222: column fg C {fg_c} P {fg_p}; C h0 {h0} split {split} c0 {c0} \
+         caption last ink row {caption_last:?} ink runs {caption_lines}; P h0 {p_h0:?} \
+         headline end {p_split:?} caption last ink row {p_caption_last:?} ink runs \
+         {p_caption_lines}; first >=500-amber row C {amber_c:?} P {amber_p:?}"
+    );
+
+    // 1.
+    if !(fg_c > 0 && 2 * fg_p >= fg_c) {
+        fails.push(format!(
+            "(1) fg(C) {fg_c} > 0 and 2 x fg(P) {fg_p} >= fg(C)"
+        ));
+    }
+    // 2.
+    if column_bytes(w, c, h0, split) == column_bytes(w, p, h0, split) {
+        fails.push(format!(
+            "(2a) #222: the promoted headline must differ from the crowned one in [{h0}, {split})"
+        ));
+    }
+    if column_bytes(w, c, c0, PROVENANCE_TOP) == column_bytes(w, p, c0, PROVENANCE_TOP) {
+        fails.push(format!(
+            "(2b) #222: the promoted caption must differ from the crowned one in [{c0}, \
+             {PROVENANCE_TOP})"
+        ));
+    }
+    let p_gap_ink: u64 = p_split.map_or(u64::MAX, |end| {
+        (end..c0.max(end)).map(|y| column_row_fg(w, p, y)).sum()
+    });
+    let p_caption_first = first_row(w, p, c0, PROVENANCE_TOP, true);
+    if p_split.is_none_or(|y| y > c0)
+        || p_gap_ink > 0
+        || p_caption_first != Some(c0)
+        || p_caption_last != caption_last
+    {
+        fails.push(format!(
+            "(2c) P's headline must be one ink run above the caption and P's caption must span \
+             C's caption rows: headline end {p_split:?}, ink between it and c0 {c0}: {p_gap_ink} \
+             px, P's caption rows {p_caption_first:?}..={p_caption_last:?}, C's \
+             {c0}..={caption_last:?}"
+        ));
+    }
+    // 3.
+    if column_bytes(w, p, 0, PROVENANCE_TOP) != column_bytes(w, p2, 0, PROVENANCE_TOP) {
+        fails.push(
+            "(3) P and P2 (another promoted plan, no bake-off) must draw the same header"
+                .to_string(),
+        );
+    }
+    if column_bytes(w, c, 0, PROVENANCE_TOP) != column_bytes(w, c2, 0, PROVENANCE_TOP) {
+        fails.push(
+            "(3) C and C2 (another crowned plan, another bake-off) must draw the same header"
+                .to_string(),
+        );
+    }
+    // 4.
+    match (amber_p, amber_c) {
+        (Some(yp), Some(yc)) if yp <= yc => {}
+        (yp, yc) => fails.push(format!(
+            "(4) the promoted header must be no taller than the crowned one: P's first \
+             >=500-amber row {yp:?} must be <= C's {yc:?}"
+        )),
+    }
+    // 5.
+    if column_bytes(w, p_load, 0, PROVENANCE_TOP) != column_bytes(w, p, 0, PROVENANCE_TOP) {
+        fails.push(
+            "(5) the header over the Loading plan (P_load) must equal P's: the provenance \
+             shows from the first frame"
+                .to_string(),
+        );
+    }
+    assert!(
+        fails.is_empty(),
+        "LR-222: {} failure(s):\n  {}\nPNGs: /tmp/forward_plan_222_{{crowned,promoted,\
+         promoted_loading,promoted_no_bakeoff,crowned_five_arm}}_render.png",
+        fails.len(),
+        fails.join("\n  ")
     );
 }

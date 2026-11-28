@@ -1193,8 +1193,12 @@ pub struct Cockpit {
     ///   with the tuned override when it sees a `PromoteSweptConfig` message (the
     ///   crowned-pick precedent); it does NOT clear this field, so it persists.
     /// - **provenance (view):** the forward-plan screen renders the "you tuned
-    ///   this" header while this is `Some` (the only live promote-vs-crown signal,
-    ///   distinct from the crowned "best of the bake-off" framing).
+    ///   this" strip while this is `Some` (distinct from the crowned "best of the
+    ///   bake-off" framing), and two more readers key on the same field (ADR-0070 §
+    ///   D6 as amended): `screens::forward_plan::header_copy` draws the promoted
+    ///   headline and caption (bug-log #222), and
+    ///   `screens::forward_plan::crowned_export_pair` refuses the export (bug-log
+    ///   #223).
     ///
     /// `None` at cold-start. CLEARED when a crowned bake-off pick launches (so a
     /// prior promotion's header never lingers over a crowned plan).
@@ -2664,9 +2668,13 @@ pub enum Message {
     /// git-ignored `plan-exports/` dir
     /// (`screens::forward_plan::export_current_plan`), then toasts the outcome
     /// (success carries the filename; failure carries an honest OS-error
-    /// detail). The button renders ONLY in `PanelState::Ready` (Q-HE-6), so this
-    /// message is only reachable for a crowned plan. Carries no payload — the
-    /// handler reads the current model state.
+    /// detail). The button shows exactly when
+    /// `screens::forward_plan::crowned_export_pair` is `Some` (the crowned plan
+    /// beside the bake-off that crowned it; ADR-0088 § D5 as amended, bug-log
+    /// #223), and the handler reads the same predicate, so from a settled frame
+    /// this message is only reachable for a crowned plan; in a message race the
+    /// press is refused and writes nothing. Carries no payload — the handler reads
+    /// the current model state.
     ExportPlan,
 
     // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
@@ -4078,9 +4086,11 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
                         crate::strings::PLAN_EXPORT_TOAST_FAILED_FMT.replace("{reason}", &reason);
                     enqueue_toast(model, SmolStr::new(msg), ToastSeverity::Danger);
                 }
-                // Structurally unreachable from the UI (the button is absent
-                // unless the plan is Ready, Q-HE-6) — no toast, no file, mirroring
-                // the button-gated `TrainingPressed` no-op.
+                // Not reachable from a settled frame: the button shows exactly when
+                // `crowned_export_pair` is `Some` (ADR-0088 § D5 as amended, bug-log
+                // #223); in a message race the press is refused — no toast, no
+                // file, no directory, mirroring the button-gated `TrainingPressed`
+                // no-op.
                 PlanExportOutcome::NotReady => {}
             }
         }
@@ -6852,19 +6862,47 @@ mod tests {
     }
 
     /// advisor-handoff-export P5 (ADR-0088 § D5) — the `Message::ExportPlan`
-    /// handler happy path: a Ready crowned plan + Ready bake-off mirror
+    /// handler happy path: a Ready crowned plan beside the Ready bake-off mirror
+    /// that crowned it (bug-log #223: its coin, crowned strategy and scorecard)
     /// serialises, writes the deterministic artifact to the git-ignored
     /// `plan-exports/` dir, and enqueues ONE `Success` toast naming the file.
     /// Mirrors the toast-idiom tests above; cleans up the written file.
     #[test]
     fn export_plan_writes_artifact_and_toasts_success() {
+        let five_arm = crate::fixtures::fake_bakeoff_report_mirror_five_arm();
+        let plan = crate::fixtures::fake_forward_plan_crowned_by(&five_arm)
+            .expect("the five-arm bake-off crowns a row");
         let mut c = Cockpit::new();
-        c.forward_plan_screen_state
-            .set_plan(crate::fixtures::fake_forward_plan());
-        c.leaderboard_screen_state.result =
-            PanelState::Ready(crate::fixtures::fake_bakeoff_report_mirror_five_arm());
+        // The crowned launch's budget, as the binary sends it before the plan lands
+        // (`ForwardPaperTradeStarted`; bug-log #223's budget clause).
+        update(
+            &mut c,
+            Message::ForwardPaperTradeStarted(Money::<Usdt>::from_decimal(plan.budget), None),
+        );
+        c.forward_plan_screen_state.set_plan(plan);
+        c.leaderboard_screen_state.result = PanelState::Ready(five_arm);
+
+        // The git-ignored plan-exports/ dir (`CARGO_MANIFEST_DIR` = crates/ui, so
+        // `../..` = workspace root). Recorded before the press, so the test removes
+        // the directory only if it created it (bug-log #223: it used to leave it
+        // behind, which kept `forward_plan_provenance.rs` E4's "a refused press
+        // creates no directory" clause from ever running in a full suite).
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("plan-exports");
+        let path = dir.join("plan-BTCUSDT-2024-h1-a1b2c3d4.md");
+        let dir_existed = dir.exists();
 
         update(&mut c, Message::ExportPlan);
+        let written = path.exists();
+
+        // Remove only what this test created: the file, and the directory with
+        // `remove_dir` (never `remove_dir_all`, so another writer's file survives).
+        let _ = std::fs::remove_file(&path);
+        if !dir_existed {
+            let _ = std::fs::remove_dir(&dir);
+        }
 
         // Exactly one Success toast, naming the deterministic filename.
         assert_eq!(c.toast_queue.len(), 1, "export must enqueue one toast");
@@ -6879,21 +6917,7 @@ mod tests {
             "the success toast names the deterministic filename, got {:?}",
             toast.message
         );
-
-        // The artifact really landed in the git-ignored plan-exports/ dir
-        // (`CARGO_MANIFEST_DIR` = crates/ui, so `../..` = workspace root). Remove
-        // it so the test leaves no working-tree debris.
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("plan-exports")
-            .join("plan-BTCUSDT-2024-h1-a1b2c3d4.md");
-        assert!(
-            path.exists(),
-            "the export file must exist at {}",
-            path.display()
-        );
-        let _ = std::fs::remove_file(&path);
+        assert!(written, "the export file must exist at {}", path.display());
     }
 
     /// advisor-handoff-export P5 (ADR-0088 § D5 / Q-HE-6) — the negative control:

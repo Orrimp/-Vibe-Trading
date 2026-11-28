@@ -81,7 +81,9 @@ which fail.
    - Press `Esc`: it closes.
    - Press `Esc` again: nothing happens.
 9. **[ToastDismiss] Toasts dismiss themselves.** Any toast that appears during the walk disappears
-   on its own after a few seconds. "Export this plan" on the Plan screen is one way to raise one.
+   on its own after a few seconds. "Export this plan" on the Plan screen is one way to raise one
+   (it shows only over a crowned plan while the bake-off that crowned it is on the Leaderboard;
+   if step 5 ended on a promotion, run a bake-off and wait for its plan first).
 10. **[Bus] The data feed is live.** During the walk, the Live screen's tape, positions and P&L
     panels leave their loading state, and the agent mode shows the running agent, not "halted".
 

@@ -277,6 +277,10 @@ Whether you arrived by accepting the crowned pick or by promoting a tuned config
 the **ForwardPlan** screen shows the **conditional decision plan** — *rules, not
 a forecast*:
 
+- A **header that says where the plan came from**: **"Confidence check"** for the
+  bake-off's crowned pick, **"Your tuned config"** for a promoted config, which has
+  no confidence check. While a promoted plan is being built the screen shows
+  *"Reading the strategy's standing rules…"* under that header.
 - A **dated current-stance badge** (FLAT / LONG) as of the last bar.
 - The standing **IF/THEN entry/exit rules** the strategy will follow.
 - The **budget-aware €200 next-BUY sizing** "at the last close".
@@ -290,6 +294,12 @@ a forecast*:
   confidence, beats holding?, and minimum history needed. A **promoted** plan
   does not show it, because those numbers score the bake-off's crowned pick, not
   your tuned config.
+- **"Export this plan"** (top right) saves the hand-off file for a **crowned** plan
+  while the bake-off that crowned it is on the Leaderboard. It is hidden while a new
+  bake-off runs, and until that bake-off's crowned plan arrives, and after a bake-off
+  that fails or crowns nothing, until a later bake-off crowns a plan. A **promoted** plan
+  has no export, because the file states a bake-off's verdict and confidence numbers
+  and a tuned config has neither.
 - The standing disclaimers: *"This is a conditional, rule-based plan — not a
   price prediction…"* and *"Not financial advice. The €200 is a simulated paper
   budget… no real orders are placed."*

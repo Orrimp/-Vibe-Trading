@@ -3041,6 +3041,48 @@ pub fn fake_cockpit_forward_plan_with_confidence() -> Cockpit {
     fake_cockpit_forward_plan(PanelState::Ready(fake_forward_plan_with_confidence()))
 }
 
+/// The crowned [`ForwardPlanView`](crate::forward_plan::ForwardPlanView) that
+/// `report`'s crowned launch would land (bug-log #223, ADR-0088 § D5 as amended):
+/// the body of [`fake_forward_plan`], with the crowned row's strategy, the
+/// bake-off's coin, and the bake-off's scorecard as its confidence, field for field
+/// (what `ui::live::crowned_forward_run_config` carries, ADR-0070 § D11). `None`
+/// when `report` crowned nothing.
+#[must_use]
+pub fn fake_forward_plan_crowned_by(
+    report: &crate::leaderboard::BakeoffReportMirror,
+) -> Option<crate::forward_plan::ForwardPlanView> {
+    use crate::forward_plan::state::ConfidenceSummaryView;
+    let crowned = report.crowned_row()?;
+    let mut plan = fake_forward_plan();
+    plan.strategy = crowned.strategy.clone();
+    plan.symbol = report.coin.clone();
+    plan.confidence = report.scorecard.map(|sc| ConfidenceSummaryView {
+        n_candidates: sc.n_candidates,
+        deflated_sharpe: sc.deflated_sharpe,
+        crown_clears_dsr: sc.crown_clears_dsr,
+        min_btl_years: sc.min_btl_years,
+    });
+    Some(plan)
+}
+
+/// A `Cockpit` routed to `Screen::ForwardPlan` with `report` landed on the
+/// leaderboard, the crowned launch's budget as the forward run's (what the binary's
+/// `ForwardPaperTradeStarted` sets before the plan lands), and its crowned plan
+/// ([`fake_forward_plan_crowned_by`]) on the plan screen, nothing promoted: the state
+/// "Export this plan" describes (bug-log #223). The plan is `Empty`, and no budget is
+/// set, when `report` crowned nothing.
+#[must_use]
+pub fn fake_cockpit_forward_plan_crowned(
+    report: crate::leaderboard::BakeoffReportMirror,
+) -> Cockpit {
+    let plan = fake_forward_plan_crowned_by(&report);
+    let budget = plan.as_ref().map(|p| Money::<Usdt>::from_decimal(p.budget));
+    let mut cockpit = fake_cockpit_forward_plan(plan.map_or(PanelState::Empty, PanelState::Ready));
+    cockpit.leaderboard_screen_state.finish_run(Ok(report));
+    cockpit.forward_budget = budget;
+    cockpit
+}
+
 /// A `Cockpit` routed to `Screen::ForwardPlan` with the supplied plan state
 /// installed. Synthetic — no engine, no I/O; the render guard drives this.
 #[must_use]

@@ -206,6 +206,12 @@ fn confidence_block_below_horizon_band() {
 /// promoted, through `ui::live::crowned_forward_run_config`); `crowned_bare`
 /// (that plan with its confidence stripped); `empty` (no plan).
 ///
+/// Every count is the foreground BELOW the header band, `[BODY_TOP, FRAME_HEIGHT)`
+/// (bug-log #223): since the fix the export button shows over `crowned` and not over
+/// `crowned_bare` (its confidence does not match the bake-off's scorecard), so a
+/// whole-frame count would add the button's fill to the block. The header band holds
+/// only the headline, the caption and the button; the confidence block is below it.
+///
 /// 1. `fixed` is populated: fg(fixed) > fg(empty) + 500.
 /// 2. fg(bug) − fg(fixed) ≥ ½ × (fg(crowned) − fg(crowned_bare)): the promoted
 ///    plan lacks what the confidence block draws. The threshold is derived from
@@ -220,7 +226,7 @@ fn confidence_block_below_horizon_band() {
 /// table (P213-1 to P213-16) is in `forward_launch_config.rs`.
 #[cfg(feature = "live")]
 mod lr213 {
-    use super::foreground_pixels;
+    use super::foreground_in_band;
     use rust_decimal_macros::dec;
     use smol_str::SmolStr;
     use std::time::Duration;
@@ -235,6 +241,12 @@ mod lr213 {
     /// the bug frame's confidence block past y = 1080, and a clipped block would
     /// shrink the margin assertion (2) measures.
     const FRAME_HEIGHT: u32 = 1320;
+
+    /// Top of the plan body: the header band `[0, BODY_TOP)` (headline, caption and,
+    /// over a crowned plan, the export button) is left out of every count, so the
+    /// subject stays the confidence block (bug-log #223, house rule `#189`). The same
+    /// boundary as `forward_plan_populated_render.rs::PROVENANCE_TOP`.
+    const BODY_TOP: u32 = 92;
 
     /// [`super::render_forward_plan_rgba`] at 1920×[`FRAME_HEIGHT`].
     fn render(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
@@ -351,6 +363,12 @@ mod lr213 {
         };
         let crowned_cfg = ui::live::crowned_forward_run_config(on_screen, budget())
             .expect("the bake-off crowned a row");
+        // The binary sends the launch's budget with every crowned launch, before its
+        // plan lands (bug-log #223: the export gate's budget clause reads it).
+        update(
+            &mut crowned_cockpit,
+            Message::ForwardPaperTradeStarted(budget(), None),
+        );
         let crowned_view = plan_view(&crowned_cfg);
         let mut crowned_bare_view = crowned_view.clone();
         crowned_bare_view.confidence = None;
@@ -384,7 +402,7 @@ mod lr213 {
             {
                 let _ = img.save(path);
             }
-            (name, foreground_pixels(w, h, &rgba))
+            (name, foreground_in_band(w, &rgba, BODY_TOP, h))
         });
         let fg = |n: &str| -> i64 {
             let f = frames.iter().find(|f| f.0 == n).expect("frame exists").1;

@@ -5,6 +5,7 @@ status: accepted
 date: 2026-07-10
 supersedes: none
 superseded-by: none
+updated: 2026-11-28
 ---
 
 # ADR-0088: SUGGEST → manual hand-off export
@@ -80,7 +81,17 @@ numbers/copy). To reuse the resolver without duplicating logic, `crown_credibili
 + `CrownCredibility` move (behaviour-preserving) from private in
 `screens/leaderboard.rs` to `pub(crate)` in `crates/ui/src/leaderboard/state.rs`
 (their data home); the render helper `crown_credibility_element` stays in the
-screen.
+screen. *(Amended 2026-11-28, bug-log `#223`: one line is keyed on the export's own
+structure rather than on the screen's. The weak-evidence hint
+(`LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT`, ADR-0085 § D3 wording, unchanged) points at the
+TRUST section ("See ‘How much to trust this’ below …"), so it prints only when that
+section prints, i.e. when `plan.confidence` is `Some`. **The handler's output is
+byte-unchanged for every exportable state:** D5's predicate requires the plan's
+confidence, so every WeakEvidence export still carries the hint verbatim (pinned by
+`forward_plan_provenance.rs` E3 at its E2 (a) state). Only serialiser inputs the handler cannot reach
+change, so REQ-V3-P5-HANDOFF-EXPORT-001's "carries … `_WEAK_EVIDENCE_HINT` verbatim
+IN-BODY" and DECISION-P5-WORDING still hold. Pinned by S1,
+`export::plan_export::tests::weak_evidence_hint_prints_only_over_its_trust_section`.)*
 
 **D4 — Format (Q-HE-1): markdown `.md`.** It preserves the co-located-caveat
 structure the not-advice boundary depends on (headings + callouts) and stays
@@ -93,7 +104,33 @@ journey terminus. It renders ONLY when `forward_plan_screen_state.plan` is
 artifact). A `Message::ExportPlan` handler assembles the inputs from
 `model.forward_plan_screen_state.plan` (Ready) + `model.leaderboard_screen_state`
 (the mirror + narration) + `model.forward_fx`, calls `serialize_plan_export`, and
-writes the file.
+writes the file. *(Amended 2026-11-28, bug-log `#223`: the button and the handler read
+one predicate, `screens::forward_plan::crowned_export_pair`. It is `Some` only when the
+plan is `Ready`, nothing is promoted (`pending_forward_promotion`, ADR-0070 § D6), a
+bake-off is `Ready`, and the plan is that bake-off's crowned launch: its coin, its
+crowned strategy, and its scorecard as the plan's confidence, bit for bit (what
+`ui::live::crowned_forward_run_config` carries, ADR-0070 § D11), sized with the current
+forward run's budget (`forward_budget`, set by `ForwardPaperTradeStarted` before the
+crowned plan lands). The budget clause is there because the bake-off is
+budget-independent and runs at a fixed seed, so a re-run after a budget change crowns the
+same row with a bit-identical scorecard; without it the old plan's units would export
+under the new budget line until the new plan lands. The plan carries no FX of its own, so
+an EUR and rate change that leaves the USDT budget identical is a recorded residual. So,
+from a settled frame, the button shows exactly when a press writes; in a message race
+(a bake-off or plan message processed between the frame that drew the button and the
+press) the press is refused. A refused press (`PlanExportOutcome::NotReady`) writes no
+file, creates no directory and raises no toast. A promoted plan offers no export: the
+file states a bake-off's verdict and confidence numbers, and a tuned config has neither.
+The button also hides while a re-run is in flight, after a re-run that fails or crowns
+nothing, and beside a newer bake-off or after a budget change until the new crowned plan
+lands. Before this, the guard was
+"the plan is `Ready`" and the handler paired the plan with whatever bake-off was
+`Ready`: a promoted plan exported under the leaderboard bake-off's coin, window, verdict
+and filename, and with no bake-off the button showed and did nothing. Pinned by
+`crates/ui/tests/forward_plan_provenance.rs` E1–E5 (E2 (i0)/(i) the budget pair; E4 a
+refused press writes nothing, its directory clause reported MEASURED or UNMEASURED) and by
+`plan_export_button_render.rs` LR-223
+(`export_button_shows_only_beside_the_bakeoff_that_crowned_the_plan`).)*
 
 **D6 — Determinism + one-per-plan + no wall-clock (Q-HE-3, R-HE.1).** One
 artifact per crowned plan (per-plan ≡ per-run today). The export path reads NO
@@ -159,6 +196,18 @@ precedent); the determinism + golden tests are the substitute gates.
   illustrative).
 - **A new anchored report** — rejected by construction: the export is a
   user-triggered artifact, never a `spec/*/reports/*.md` file.
+- **Export a promoted plan from the promotion (bug-log `#223` option 2)** — rejected
+  for the fix (2026-11-28); available as its own story. The file would take its coin
+  and window from `ForwardPromotion` and replace THE MEASURED ANSWER with a "config you
+  tuned" section. That needs at least five new export strings and a reworded ratified
+  bullet (`PLAN_EXPORT_NOT_BULLET_CHANCE`'s "see above" points at a TRUST note a
+  promoted file would lack, and describes the ranking gate, which did not pick a tuned
+  cell): a "Variant C" outside DECISION-P5-WORDING, which ratified Variants A and B
+  only. And `ForwardPromotion { strategy_id, coin, params, window_label }` carries no
+  run seed (the sweep runs at `LAB_DEFAULT_SEED`), no data source of its own (it would
+  be derived from a constant), no cell verdict, no beats-hold and no grid size, so the
+  file would carry less honesty scaffolding than both the crowned export and the
+  screen it was taken from. A feature, not a fix.
 
 ## Consequences
 
@@ -182,6 +231,15 @@ precedent); the determinism + golden tests are the substitute gates.
 - PAPER/SIM ONLY. No live path ships. `ci.yml.deferred` untouched.
 
 ## Changelog
+- 2026-11-28 (developer, bug-log `#223`): **D5** the button and the handler read one
+  predicate, `screens::forward_plan::crowned_export_pair` (a Ready plan, nothing
+  promoted, a Ready bake-off, the plan that bake-off's crowned launch: coin, crowned
+  strategy, scorecard bit for bit, and the current forward budget); a promoted plan offers
+  no export; a refused press writes nothing and toasts nothing. **D3** the weak-evidence hint prints only over its
+  TRUST section; the handler's output is byte-unchanged for every exportable state.
+  **Alternatives** option 2 (export a promoted plan from the promotion) recorded as
+  rejected for the fix. Frontmatter gains `updated:`. D1, D2, D4, D6–D9 unchanged; no
+  wording change (DECISION-P5-WORDING holds); anchor-neutral (119/119).
 - 2026-07-10 (architect): initial accept — remediation-plan P5, feature
   `advisor-handoff-export`. Took 0088 (0087 was the last registered ADR, the
   sibling P4 `advisor-lot-realism`; 0088 verified free on disk + in the README

@@ -38,15 +38,18 @@ THE COUNTS ARE DECLARED, NOT MEASURED OFF THE SUBJECT. Each one was read off
 the source at the stage that ships it: the `#[test]` / `#[tokio::test]` items
 that survive the leg's cfg set. Both legs build ui's default features (`live`,
 `yahoo`, `binance`, `live-fx`); Windows adds `fixtures`, which no declared file
-has a cfg on. Two declared files are OS-gated: `activity_tape_failed_hold_render`
-(bug-log `#217`) is `#![cfg(target_os = "macos")]` and `lab_stop_render`
-(bug-log `#215`) is `#![cfg(all(target_os = "macos", feature = "live"))]`
-(ADR-0057 D2, pixels are macOS-canonical), so each declares 4 on macOS and 0 on
-Windows, and the rows make the macOS-only AD-10 proofs' counts a measurement
-instead of a silent zero. No
-other declared file puts a `target_os`, `unix` or `windows` cfg on a test item
-(the `cfg(unix)` / `cfg(windows)` lines left in two of them gate `use` imports
-only), so every other row carries the same number for both legs.
+has a cfg on. Four declared files are OS-gated at file level (ADR-0057 D2, pixels
+are macOS-canonical), so each declares its count on macOS and 0 on Windows:
+`activity_tape_failed_hold_render` (bug-log `#217`) and
+`plan_export_button_render` and `forward_plan_populated_render` (bug-log `#223`
+and `#222`) are `#![cfg(target_os = "macos")]`, and `lab_stop_render` (bug-log
+`#215`) is `#![cfg(all(target_os = "macos", feature = "live"))]`. One more,
+`bidi_paragraph_separators` (bug-log `#239`), puts `#[cfg(target_os = "macos")]`
+on its 4 pixel items only, so Windows lists 4 fewer. The rows make the macOS-only
+AD-10 proofs' counts a measurement instead of a silent zero. No other declared
+file puts a `target_os`, `unix` or `windows` cfg on a test item (the `cfg(unix)` /
+`cfg(windows)` lines left in two of them gate `use` imports only), so every other
+row carries the same number for both legs.
 
 PER LEG, ON PURPOSE. The table still names both legs on every row, with no
 default and no inheritance. Each column is a claim of its own (the E2/E3 ports
@@ -260,11 +263,36 @@ DECLARED: dict[str, dict] = {
                "fewer. The 7 children are `#[ignore]`d (run by their parents in a "
                "child process) and `--list` includes them.",
     },
+    # ── bug-log #222 + #223 (the forward plan's provenance header and export gate) ──
+    "forward_plan_provenance": {
+        "macos": 6,
+        "windows": 6,
+        "why": "E1-E4 and W1 with no cfg, + E5 under `#[cfg(feature = \"live\")] mod "
+               "real_chain` (the real crowned and promoted launch chains). `live` is a "
+               "default ui feature on both legs; without it the count is 5, the silent "
+               "drop this row catches.",
+    },
+    "plan_export_button_render": {
+        "macos": 3,
+        "windows": 0,
+        "why": "The 2 Q-HE-6 tests + LR-223 (bug-log #223), the AD-10 pixel proof that "
+               "the export button shows only beside the bake-off that crowned the plan. "
+               "`#![cfg(target_os = \"macos\")]` (ADR-0057 D2), so Windows lists 0 by "
+               "design.",
+    },
+    "forward_plan_populated_render": {
+        "macos": 10,
+        "windows": 0,
+        "why": "9 tests (populated, negative controls, ADR-0070 Proof 2, RSI, F8, "
+               "LR-200b) + LR-222 (bug-log #222), the AD-10 pixel proof that a promoted "
+               "plan's header is not the crowned one. `#![cfg(target_os = \"macos\")]` "
+               "(ADR-0057 D2), so Windows lists 0 by design.",
+    },
 }
 
 # Non-vacuity floor for the declaration itself: deleting rows must be deliberate.
 # Raise it when a row is added; lowering it is a decision, not a fix.
-MIN_DECLARED = 19
+MIN_DECLARED = 22
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
 

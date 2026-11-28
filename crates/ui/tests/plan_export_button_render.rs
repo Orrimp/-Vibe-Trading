@@ -9,14 +9,21 @@
 //! snapshot, or a no-panic boot. This guard renders the REAL
 //! `screens::forward_plan::view` and asserts, at the pixel layer:
 //!
-//! - [`export_button_paints_in_ready_header`] — a Ready crowned plan paints the
-//!   `ACCENT`-filled button (a solid teal block) in the HEADER band. Writes
-//!   `/tmp/plan_export_button_ready_render.png`.
+//! - [`export_button_paints_in_ready_header`] — a Ready crowned plan, beside the
+//!   bake-off that crowned it, paints the `ACCENT`-filled button (a solid teal
+//!   block) in the HEADER band. Writes `/tmp/plan_export_button_ready_render.png`.
 //! - [`export_button_absent_when_not_ready`] — the Q-HE-6 negative control: the
 //!   `Empty` "no plan yet" state paints ~no `ACCENT` in the header band (the
 //!   button is ABSENT — no empty-export affordance) and STRICTLY less than the
 //!   Ready state. Proves the guard tracks the plan state, not a tautology.
 //!   Writes `/tmp/plan_export_button_empty_render.png`.
+//! - [`export_button_shows_only_beside_the_bakeoff_that_crowned_the_plan`] — LR-223
+//!   (bug-log #223, ADR-0088 § D5 as amended): the button shows exactly when
+//!   `screens::forward_plan::crowned_export_pair` is `Some`. On one bake-off, the
+//!   crowned plan beside it paints the button; a promoted plan beside the same
+//!   bake-off, the crowned plan during a re-run, the same plan beside a newer bake-off on another
+//!   coin, and a Ready plan with no bake-off at all (the state this file's positive
+//!   frame used before the fix) paint none.
 //!
 //! ## What the pixels key on
 //!
@@ -112,13 +119,14 @@ fn header_band_accent(w: u32, rgba: &[u8]) -> u64 {
     accent_teal_in_band(w, rgba, 0, HEADER_BOTTOM)
 }
 
-/// **The render-layer guard (positive).** A Ready crowned plan MUST paint the
-/// `ACCENT`-filled "Export this plan" button in the HEADER band. Writes the
-/// operator-facing PNG to `/tmp/plan_export_button_ready_render.png`.
+/// **The render-layer guard (positive).** A Ready crowned plan, beside the bake-off
+/// that crowned it (bug-log #223), MUST paint the `ACCENT`-filled "Export this plan"
+/// button in the HEADER band. Writes the operator-facing PNG to
+/// `/tmp/plan_export_button_ready_render.png`.
 #[test]
 fn export_button_paints_in_ready_header() {
-    let view = ui::fixtures::fake_forward_plan();
-    let cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(view));
+    let cockpit =
+        ui::fixtures::fake_cockpit_forward_plan_crowned(ui::fixtures::fake_bakeoff_report_mirror());
     let (w, h, rgba) = render_forward_plan_rgba(cockpit);
 
     // Operator-facing deliverable (memory: verify UI at the render layer).
@@ -146,9 +154,8 @@ fn export_button_paints_in_ready_header() {
 #[test]
 fn export_button_absent_when_not_ready() {
     let empty = ui::fixtures::fake_cockpit_forward_plan(PanelState::Empty);
-    let ready = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(
-        ui::fixtures::fake_forward_plan(),
-    ));
+    let ready =
+        ui::fixtures::fake_cockpit_forward_plan_crowned(ui::fixtures::fake_bakeoff_report_mirror());
 
     let (we, he, re) = render_forward_plan_rgba(empty);
     let (wr, _hr, rr) = render_forward_plan_rgba(ready);
@@ -175,5 +182,144 @@ fn export_button_absent_when_not_ready() {
          (ready {ready_accent} vs empty {empty_accent}) — proof the button is the \
          live Ready-only affordance, not shared chrome. \
          PNGs: /tmp/plan_export_button_{{ready,empty}}_render.png"
+    );
+}
+
+// ── bug-log #223 (LR-223, AD-10, ADR-0088 § D5 as amended) ──────────────────────
+
+/// Promote a BTCUSDT SMA grid (`Sma{10,20}`) on top of `cockpit`, through `update`
+/// only: "Tune…", Run, the grid lands, "Use this config" (the plan goes `Loading`).
+fn promote_through_update(cockpit: &mut Cockpit) {
+    use ui::state::{Message, update};
+    update(
+        cockpit,
+        Message::OpenTuneEditor {
+            family: ui::tune::TuneFamily::Sma,
+            coin: trading_core::Symbol::new("BTCUSDT"),
+            lookback: ui::leaderboard::LeaderboardLookback::H1_2024,
+        },
+    );
+    update(cockpit, Message::SweepRunRequested);
+    let mut grid = ui::fixtures::fake_sweep_report_mirror();
+    grid.coin = smol_str::SmolStr::new("BTCUSDT");
+    update(cockpit, Message::SweepRunCompleted(Ok(grid)));
+    update(
+        cockpit,
+        Message::PromoteSweptConfig(ui::tune::PromoteParams::Sma {
+            fast_len: 10,
+            slow_len: 20,
+        }),
+    );
+}
+
+/// **LR-223 (bug-log #223, AD-10, ADR-0088 § D5 as amended).** The export button
+/// shows exactly beside the bake-off that crowned the plan. Frames on the stock
+/// bake-off (BTCUSDT, crowned `v0.sma`):
+/// - C: the crowned plan beside it (`fake_cockpit_forward_plan_crowned`);
+/// - P: C, then a promotion through `update`, then the tuned plan production lands for
+///   it (`v0.5.sma`, the tuned rules, no confidence since bug-log #213: the view
+///   `fake_cockpit_forward_plan_promoted` carries), with the stock bake-off still
+///   Ready on the leaderboard: #223's title state;
+/// - R: C after `BakeoffRunRequested` (a re-run in flight, the leaderboard `Loading`);
+/// - X: C after a newer bake-off landed that differs from the stock one only in its
+///   coin (`ETHUSDT`);
+/// - N: `fake_cockpit_forward_plan(Ready(fake_forward_plan()))`, a Ready plan with
+///   no bake-off: #223's title state, and this file's positive frame before the fix.
+///
+/// Header-band `ACCENT`: C > 800 (the file's floor); each of P, R, X and N < 150
+/// (the file's absent floor); C > each + 600.
+///
+/// Writes `/tmp/plan_export_button_{crowned,promoted,rerun,other_coin,no_bakeoff}_render.png`.
+#[test]
+fn export_button_shows_only_beside_the_bakeoff_that_crowned_the_plan() {
+    use ui::state::{Message, update};
+    let mut fails: Vec<String> = Vec::new();
+
+    let stock = ui::fixtures::fake_bakeoff_report_mirror();
+    let c = ui::fixtures::fake_cockpit_forward_plan_crowned(stock.clone());
+    let PanelState::Ready(view) = c.forward_plan_screen_state.plan.clone() else {
+        panic!("precondition: the stock bake-off crowns a plan");
+    };
+    let same_plan = |cockpit: &Cockpit| matches!(&cockpit.forward_plan_screen_state.plan, PanelState::Ready(v) if *v == view);
+
+    let PanelState::Ready(tuned) = ui::fixtures::fake_cockpit_forward_plan_promoted()
+        .forward_plan_screen_state
+        .plan
+    else {
+        panic!("precondition: the promoted fixture carries a Ready tuned plan");
+    };
+    let mut p = c.clone();
+    promote_through_update(&mut p);
+    update(&mut p, Message::ForwardPlanReceived(tuned.clone()));
+    if !(p.pending_forward_promotion.is_some()
+        && tuned.confidence.is_none()
+        && matches!(&p.forward_plan_screen_state.plan, PanelState::Ready(v) if *v == tuned)
+        && matches!(&p.leaderboard_screen_state.result, PanelState::Ready(m) if *m == stock))
+    {
+        fails.push(
+            "precondition: P is promoted, carries the tuned plan, beside the stock bake-off"
+                .to_string(),
+        );
+    }
+
+    let mut r = c.clone();
+    update(&mut r, Message::BakeoffRunRequested);
+    if !(matches!(r.leaderboard_screen_state.result, PanelState::Loading) && same_plan(&r)) {
+        fails.push("precondition: R's leaderboard is Loading under C's plan view".to_string());
+    }
+
+    let mut eth = stock.clone();
+    eth.coin = smol_str::SmolStr::new("ETHUSDT");
+    let mut x = c.clone();
+    update(&mut x, Message::BakeoffRunCompleted(Ok(eth.clone())));
+    if !(matches!(&x.leaderboard_screen_state.result, PanelState::Ready(m) if *m == eth)
+        && same_plan(&x))
+    {
+        fails.push("precondition: X carries the ETHUSDT bake-off under C's plan view".to_string());
+    }
+
+    let n = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(
+        ui::fixtures::fake_forward_plan(),
+    ));
+    if !matches!(n.leaderboard_screen_state.result, PanelState::Empty) {
+        fails.push("precondition: N has no bake-off".to_string());
+    }
+
+    let accents = [
+        ("crowned", c),
+        ("promoted", p),
+        ("rerun", r),
+        ("other_coin", x),
+        ("no_bakeoff", n),
+    ]
+    .map(|(name, cockpit)| {
+        let (w, h, rgba) = render_forward_plan_rgba(cockpit);
+        if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+            let _ = img.save(format!("/tmp/plan_export_button_{name}_render.png"));
+        }
+        (name, header_band_accent(w, &rgba))
+    });
+    eprintln!("#223 pixel margin LR-223: header-band ACCENT {accents:?}");
+
+    let crowned = accents[0].1;
+    if crowned <= 800 {
+        fails.push(format!(
+            "(C) the crowned plan beside its bake-off must paint the button: {crowned} > 800"
+        ));
+    }
+    for (name, accent) in &accents[1..] {
+        if *accent >= 150 || crowned <= accent + 600 {
+            fails.push(format!(
+                "({name}) #223: no button may paint here: {accent} < 150 and crowned {crowned} \
+                 > {accent} + 600"
+            ));
+        }
+    }
+    assert!(
+        fails.is_empty(),
+        "LR-223: {} failure(s):\n  {}\nPNGs: /tmp/plan_export_button_{{crowned,promoted,rerun,\
+         other_coin,no_bakeoff}}_render.png",
+        fails.len(),
+        fails.join("\n  ")
     );
 }

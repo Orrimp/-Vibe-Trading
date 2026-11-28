@@ -2082,6 +2082,15 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("FORWARD_PLAN_SIDEBAR_LABEL", FORWARD_PLAN_SIDEBAR_LABEL),
         ("FORWARD_PLAN_HEADLINE", FORWARD_PLAN_HEADLINE),
         ("FORWARD_PLAN_CAPTION", FORWARD_PLAN_CAPTION),
+        // bug-log #222 (ADR-0070 § D6 as amended) — the promoted header
+        (
+            "FORWARD_PLAN_PROMOTED_HEADLINE",
+            FORWARD_PLAN_PROMOTED_HEADLINE,
+        ),
+        (
+            "FORWARD_PLAN_PROMOTED_CAPTION",
+            FORWARD_PLAN_PROMOTED_CAPTION,
+        ),
         ("FORWARD_PLAN_EMPTY_PROMPT", FORWARD_PLAN_EMPTY_PROMPT),
         ("FORWARD_PLAN_LOADING", FORWARD_PLAN_LOADING),
         ("FORWARD_PLAN_ERROR_PREFIX", FORWARD_PLAN_ERROR_PREFIX),
@@ -3615,7 +3624,8 @@ pub const LEADERBOARD_CROWN_WEAK_EVIDENCE: &str = "\u{26a0} This pick did not su
 
 /// The muted second line under the `WeakEvidence` band — points to the scorecard
 /// detail without repeating the figure (`SMALL`, `FG_3`). Verbatim per ADR-0085
-/// § D3 / feature.md § Decision 2 (ii).
+/// § D3 / feature.md § Decision 2 (ii). In the plan export it prints only over the
+/// TRUST section it points at (bug-log #223, ADR-0088 § D3 as amended).
 pub const LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT: &str =
     "See \u{2018}How much to trust this\u{2019} below for the deflated-confidence figure.";
 
@@ -4044,8 +4054,9 @@ pub const TUNE_DISCLAIMER: &str = "Tuning is paper/sim research, not advice. A c
 
 /// The promote-provenance header on the forward-plan screen when the active plan
 /// came from a PROMOTION (vs a crowned bake-off pick). Distinct from the crowned
-/// "best of the bake-off" provenance — this is the ONLY live promote-vs-crown
-/// signal (ADR-0070 § R5). `{family}` / `{params}` / `{window}` / `{coin}` are
+/// "best of the bake-off" provenance (ADR-0070 § R5). Since bug-log #222/#223 the
+/// strip is one of three readers of `pending_forward_promotion`, with the page header
+/// (`FORWARD_PLAN_PROMOTED_HEADLINE` / `_CAPTION`) and the export gate. `{family}` / `{params}` / `{window}` / `{coin}` are
 /// filled at the call site from `PromoteParams.label()`, the sweep window and the
 /// promotion's coin, which is the landed grid's (ADR-0070 § D10, bug-log #200), so
 /// a cross-coin promotion is never silent. Honest framing: a config robust on ONE
@@ -4077,14 +4088,31 @@ pub const FORWARD_PLAN_SIDEBAR_LABEL: &str = "Plan";
 /// "read as a fresh verdict" in v1; v2 names it what it actually is.
 ///
 /// (Was "Forward plan" in v1; relabelled "Confidence check" in v2.)
+///
+/// Crowned plans only; a promoted plan draws [`FORWARD_PLAN_PROMOTED_HEADLINE`]
+/// (ADR-0070 § D6 as amended, bug-log #222).
 pub const FORWARD_PLAN_HEADLINE: &str = "Confidence check";
 
 /// Page caption — the one-line "what this is", framed as a confidence check on
 /// the ALREADY-CROWNED pick, NOT a fresh prediction. This is the first
 /// not-a-prediction signal on the surface (P0-3 relabel from v1's neutral copy).
+///
+/// Crowned plans only; a promoted plan draws [`FORWARD_PLAN_PROMOTED_CAPTION`]
+/// (ADR-0070 § D6 as amended, bug-log #222).
 pub const FORWARD_PLAN_CAPTION: &str = "Watching the crowned strategy as new bars arrive \u{2014} \
      a confidence check on that pick, not a fresh prediction or a guarantee of future edge. \
      The same rules your simulated \u{20ac}200 paper-trade runs.";
+
+/// Page headline over a PROMOTED plan (ADR-0070 § D6 as amended, bug-log #222): a Tune
+/// config the operator chose, not the bake-off's crowned pick, with no confidence check
+/// (§ D11), so it is not called one.
+pub const FORWARD_PLAN_PROMOTED_HEADLINE: &str = "Your tuned config";
+
+/// The promoted twin of [`FORWARD_PLAN_CAPTION`] (bug-log #222). Shorter than it, so the
+/// header keeps two lines at 720 px and the D6 strip under it does not move (LR-222 (4)).
+pub const FORWARD_PLAN_PROMOTED_CAPTION: &str = "Watching your tuned config as new bars arrive \u{2014} \
+     not the bake-off\u{2019}s crowned pick, so no confidence check applies to it. \
+     Not a prediction or a guarantee of future edge.";
 
 // ── P0-3 confidence-check block (advisor-confidence-not-verdict, ADR-0075) ────
 
@@ -4150,10 +4178,10 @@ pub const FORWARD_PLAN_CONFIDENCE_NOTE: &str =
 pub const FORWARD_PLAN_EMPTY_PROMPT: &str = "No plan yet. Run a bake-off and crown a strategy first \u{2014} the plan shows what that \
      strategy will do over the coming days.";
 
-/// Loading copy — shown beside the spinner while the agent resolves the plan
-/// from the crowned selection at the launch boundary.
-pub const FORWARD_PLAN_LOADING: &str =
-    "Reading the crowned strategy\u{2019}s standing rules\u{2026}";
+/// Loading copy — shown beside the spinner while the agent resolves the plan at
+/// the launch boundary. Today only `promote_swept_config` sets `Loading`, so it is
+/// neutral for either provenance (bug-log #222).
+pub const FORWARD_PLAN_LOADING: &str = "Reading the strategy\u{2019}s standing rules\u{2026}";
 
 /// Error-state prefix — paired with the failure detail (never a bare "no
 /// data"; says what to check).

@@ -92,7 +92,7 @@ Always qualified by: **survivor-of-survivors bias** (the 2017-18 winners are the
 
 - **UJ-2. Vitaliy tunes a strategy — and the gate locks out the overfit config.** On the Calibrate stage he sweeps a bounded per-family parameter grid (e.g. MACD fast/slow/signal). Each config is scored through the **identical frozen robustness gate**; the surfaced p5/p50/p95 distribution spread — not the in-sample point — is the anti-overfit affordance. A config that reads FRAGILE has its "Use this config" promotion **locked**; a non-FRAGILE tuned config promotes into the forward plan and paper-run, whose header says honestly: "you tuned this; it survived resampling on THIS window — not a guarantee, not advice."
 
-- **UJ-3. Vitaliy exports the plan to take away.** From a Ready forward plan he clicks "Export this plan" and gets a deterministic markdown file (`plan-{coin}-{window}-{seed8}.md`) with operator-ratified wording — including the unbounded-loss warning when a short is crowned. No orders are placed, no venue API is touched, no LLM runs at export time.
+- **UJ-3. Vitaliy exports the plan to take away.** From a Ready crowned forward plan (a promoted plan has no export, ADR-0088 § D5) he clicks "Export this plan" and gets a deterministic markdown file (`plan-{coin}-{window}-{seed8}.md`) with operator-ratified wording — including the unbounded-loss warning when a short is crowned. No orders are placed, no venue API is touched, no LLM runs at export time.
 
 ## 4. Glossary
 
@@ -244,11 +244,11 @@ The system presents the crowned pick's forward plan as: current signal stance (B
 
 #### FR-13: Deterministic plan export
 
-The user can export a Ready plan as a markdown file with operator-ratified wording.
+The user can export a Ready crowned plan, while the bake-off that crowned it is on the leaderboard, as a markdown file with operator-ratified wording (a promoted plan has no export, ADR-0088 § D5).
 
 **Consequences (testable):**
 - Export writes `plan-{coin}-{window}-{seed8}.md` via a deterministic serialiser (golden-locked verbatim wording, including the short-crowned unbounded-loss case).
-- No orders, no venue API, no LLM at export time; the affordance exists only on a Ready plan.
+- No orders, no venue API, no LLM at export time; the affordance exists only when `crowned_export_pair` holds (ADR-0088 § D5 as amended, bug-log #223).
 
 ### 5.6 Forward paper-trade (Live)
 

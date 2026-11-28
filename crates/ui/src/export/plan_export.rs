@@ -33,6 +33,14 @@
 //! rationale (kept `screens/forward_plan.rs` untouched beyond what
 //! ADR-0088 names).
 //!
+//! One line is keyed on the export's OWN structure rather than on the screen's:
+//! the weak-evidence hint ([`LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT`], "See ‘How
+//! much to trust this’ below …") prints only when the TRUST section it points at
+//! prints, i.e. when `plan.confidence` is `Some` (bug-log #223, ADR-0088 § D3 as
+//! amended). Its words are unchanged (DECISION-P5-WORDING holds); the handler
+//! exports only a plan that carries its bake-off's confidence, so every exported
+//! `WeakEvidence` file still carries it.
+//!
 //! ## Purity (ADR-0088 § D6 / R-HE.1)
 //!
 //! No wall-clock, no RNG, no I/O, no panic. Same inputs ⇒ byte-identical
@@ -174,12 +182,16 @@ pub fn serialize_plan_export(
 ) -> String {
     let mut lines: Vec<String> = Vec::new();
 
+    // The TRUST section's input; the measured answer's weak-evidence hint points
+    // at that section, so it reads the same value (bug-log #223).
+    let trust = plan.confidence.as_ref();
+
     push_header(&mut lines, plan, report);
-    push_measured_answer(&mut lines, report);
+    push_measured_answer(&mut lines, report, trust);
     push_right_now(&mut lines, plan);
     push_standing_rules(&mut lines, plan);
     push_sizing(&mut lines, plan, fx);
-    if let Some(confidence) = plan.confidence.as_ref() {
+    if let Some(confidence) = trust {
         push_trust(&mut lines, confidence);
     }
     push_data_source(&mut lines, &report.data_quality);
@@ -270,7 +282,11 @@ fn header_meta_line(plan: &ForwardPlanView, report: &BakeoffReportMirror) -> Str
 
 // ── THE MEASURED ANSWER FOR THIS WINDOW (R-HE.4 modal-case-first) ─────────────
 
-fn push_measured_answer(lines: &mut Vec<String>, report: &BakeoffReportMirror) {
+fn push_measured_answer(
+    lines: &mut Vec<String>,
+    report: &BakeoffReportMirror,
+    trust: Option<&ConfidenceSummaryView>,
+) {
     push_rule(lines, false);
     push_body(lines, PLAN_EXPORT_SECTION_MEASURED_ANSWER);
     push_rule(lines, false);
@@ -295,7 +311,10 @@ fn push_measured_answer(lines: &mut Vec<String>, report: &BakeoffReportMirror) {
                 CrownCredibility::WeakEvidence => {
                     push_blank(lines);
                     push_body(lines, LEADERBOARD_CROWN_WEAK_EVIDENCE);
-                    push_body(lines, LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT);
+                    // It points at the TRUST section; bug-log #223, ADR-0088 § D3 as amended.
+                    if trust.is_some() {
+                        push_body(lines, LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT);
+                    }
                 }
                 CrownCredibility::Passes => {
                     push_blank(lines);
@@ -888,9 +907,11 @@ mod tests {
             out.contains(LEADERBOARD_CROWN_WEAK_EVIDENCE),
             "a WeakEvidence crown must carry the weak-evidence caveat IN-BODY:\n{out}"
         );
+        // bug-log #223 (ADR-0088 § D3 as amended): the hint points at the TRUST
+        // section, which `fake_forward_plan()` (`confidence: None`) does not have.
         assert!(
-            out.contains(LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT),
-            "the weak-evidence hint must accompany the caveat:\n{out}"
+            !out.contains(LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT),
+            "#223: with no TRUST section the weak-evidence hint has nothing to point at:\n{out}"
         );
         assert!(
             !out.contains(LEADERBOARD_CROWN_PASSES_DSR),
@@ -908,10 +929,8 @@ mod tests {
         // The disclaimers.
         assert!(out.contains(FORWARD_PLAN_DISCLAIMER));
         assert!(out.contains(FORWARD_PLAN_NOT_A_PREDICTION));
-        // The ~1-in-5 honesty note (P2-2) — only present because
-        // `fake_forward_plan()` carries no confidence block... wait, the
-        // TRUST section (and this note) only fire when `plan.confidence` is
-        // `Some`; `fake_forward_plan()` has `confidence: None`.
+        // The TRUST section and its ~1-in-5 honesty note (P2-2) fire only when
+        // `plan.confidence` is `Some`; `fake_forward_plan()` has `confidence: None`.
         assert!(
             !out.contains(PLAN_EXPORT_SECTION_TRUST),
             "fake_forward_plan() has confidence: None — no TRUST section:\n{out}"
@@ -941,6 +960,107 @@ mod tests {
         assert!(
             out.contains(PLAN_EXPORT_ONE_IN_FIVE_NOTE),
             "the honest ~1-in-5 search note must accompany the TRUST section:\n{out}"
+        );
+        // bug-log #223: with its TRUST section present, a WeakEvidence crown keeps
+        // the hint that points at it.
+        assert!(
+            out.contains(LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT),
+            "#223: the weak-evidence hint must print over its TRUST section:\n{out}"
+        );
+    }
+
+    /// bug-log #223 (S1, ADR-0088 § D3 as amended): the weak-evidence hint ("See
+    /// ‘How much to trust this’ below …") prints exactly when the TRUST section it
+    /// points at prints. One `WeakEvidence` report and two plans that differ only in
+    /// `confidence` (the #161 pair): without TRUST no hint; with TRUST the hint,
+    /// above the section ("below"). Then a totality sweep over every mirror fixture
+    /// × both plans: the hint never prints without its section.
+    #[test]
+    fn weak_evidence_hint_prints_only_over_its_trust_section() {
+        let report = fixtures::fake_bakeoff_report_mirror_five_arm();
+        assert!(
+            report.recommendation.outcome == OutcomeKind::ActiveWins
+                && report
+                    .scorecard
+                    .as_ref()
+                    .is_some_and(|sc| !sc.crown_clears_dsr),
+            "precondition: the five-arm crown is ActiveWins and fails DSR (WeakEvidence)"
+        );
+        let bare = fixtures::fake_forward_plan();
+        let with = fixtures::fake_forward_plan_with_confidence();
+        let mut stripped = with.clone();
+        stripped.confidence = None;
+        assert!(
+            with.confidence.is_some() && stripped == bare,
+            "precondition: the two plans differ only in `confidence`"
+        );
+        let export = |plan: &ForwardPlanView, report: &BakeoffReportMirror| {
+            serialize_plan_export(plan, report, &NarrationState::NotRequested, None)
+        };
+
+        let mut fails = Vec::new();
+        let out = export(&bare, &report);
+        if !out.contains(LEADERBOARD_CROWN_WEAK_EVIDENCE) {
+            fails.push("bare: the weak-evidence caveat must print".to_string());
+        }
+        if out.contains(LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT) {
+            fails.push("bare: the hint must not print without the TRUST section".to_string());
+        }
+        if out.contains(PLAN_EXPORT_SECTION_TRUST) {
+            fails.push("bare: a plan with no confidence has no TRUST section".to_string());
+        }
+
+        let out = export(&with, &report);
+        let hint = out.find(LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT);
+        let trust = out.find(PLAN_EXPORT_SECTION_TRUST);
+        if !out.contains(LEADERBOARD_CROWN_WEAK_EVIDENCE) {
+            fails.push("with TRUST: the weak-evidence caveat must print".to_string());
+        }
+        match (hint, trust) {
+            (Some(h), Some(t)) if h < t => {}
+            (h, t) => fails.push(format!(
+                "with TRUST: the hint must print above its section ('below'): hint at {h:?}, \
+                 TRUST at {t:?}"
+            )),
+        }
+
+        let reports = [
+            (
+                "benchmark_wins",
+                fixtures::fake_bakeoff_report_mirror_benchmark_wins(),
+            ),
+            ("five_arm", fixtures::fake_bakeoff_report_mirror_five_arm()),
+            (
+                "five_arm_passes_dsr",
+                fixtures::fake_bakeoff_report_mirror_five_arm_passes_dsr(),
+            ),
+            ("stock", fixtures::fake_bakeoff_report_mirror()),
+            (
+                "with_shorts",
+                fixtures::fake_bakeoff_report_mirror_with_shorts(),
+            ),
+            (
+                "with_ensembles",
+                fixtures::fake_bakeoff_report_mirror_with_ensembles(),
+            ),
+        ];
+        for (name, report) in &reports {
+            for (plan_name, plan) in [("bare", &bare), ("with", &with)] {
+                let out = export(plan, report);
+                if out.contains(LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT)
+                    && !out.contains(PLAN_EXPORT_SECTION_TRUST)
+                {
+                    fails.push(format!(
+                        "sweep {name} x {plan_name}: the hint printed with no TRUST section"
+                    ));
+                }
+            }
+        }
+        assert!(
+            fails.is_empty(),
+            "S1 #223: {} failure(s):\n  {}",
+            fails.len(),
+            fails.join("\n  ")
         );
     }
 
