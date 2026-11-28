@@ -240,20 +240,31 @@ DECLARED: dict[str, dict] = {
                "`--list` includes. `#![cfg(all(target_os = \"macos\", feature = "
                "\"live\"))]` (ADR-0057 D2), so Windows lists 0 by design.",
     },
-    # ── bug-log #231 (layout_invariants: one seed, no separators, canaries) ──
+    # ── bug-log #231 (layout_invariants: one seed, no separators, recorded labels) ──
     "layout_invariants": {
+        "macos": 18,
+        "windows": 18,
+        "why": "12 layout properties + 6 bug-log #231 tests (separator scan, "
+               "free_text two-sided, seed, no persistence, recorded labels laid out "
+               "raw, parameter allowlist); the cosmic-text canary was deleted by the "
+               "bug-log #239 fix (19 -> 18). No cfg on any item, so both legs list "
+               "the same.",
+    },
+    # ── bug-log #239 (the vendored cosmic-text bidi patch, ADR-0106) ─────────
+    "bidi_paragraph_separators": {
         "macos": 19,
-        "windows": 19,
-        "why": "12 layout properties + the 7 bug-log #231 tests (separator scan, "
-               "cosmic-text canary, free_text two-sided, seed, no persistence, "
-               "recorded labels, parameter allowlist). No cfg on any item, so both "
-               "legs list the same.",
+        "windows": 15,
+        "why": "W1, W2, B1-B3 + 5 parent/child pairs (C1, C2, C3, C3t, C4) on both "
+               "legs; + the 2 AD-10 pixel pairs LR-a/LR-b (4 items, item-level "
+               "`#[cfg(target_os = \"macos\")]`, ADR-0057 D1), so Windows lists 4 "
+               "fewer. The 7 children are `#[ignore]`d (run by their parents in a "
+               "child process) and `--list` includes them.",
     },
 }
 
 # Non-vacuity floor for the declaration itself: deleting rows must be deliberate.
 # Raise it when a row is added; lowering it is a decision, not a fix.
-MIN_DECLARED = 18
+MIN_DECLARED = 19
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
 

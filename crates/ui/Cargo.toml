@@ -272,6 +272,16 @@ base64 = "0.22"
 # HTML filename (`YYYYMMDDTHHMMSSZ`). Already in Cargo.lock at 0.4.44 via
 # transitive deps; dev-dep only (helper lives in tests/).
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# bug-log #239 (ADR-0106) — `tests/bidi_paragraph_separators.rs`. cosmic-text does
+# not re-export unicode-bidi, so the expected-value oracle (paragraph directions,
+# the independent class-B scan) needs it directly; `=0.3.18` is the build
+# cosmic-text shapes with, and W1 pins that the lock holds only that one. The
+# features are exactly the ones cosmic-text enables (`hardcoded-data`, and `std`
+# through its `std`), so the test build compiles the same unicode-bidi unit and
+# adds no variant. `sha2` hashes the vendored tree (W2). Both are already in
+# Cargo.lock.
+unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data", "std"] }
+sha2 = { workspace = true }
 
 [features]
 # Default features — operator's everyday-use bundle. Includes `live` (real

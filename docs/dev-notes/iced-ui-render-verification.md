@@ -129,13 +129,18 @@ TEMPORARY diagnostic build — revert before shipping.
   `#231`), so a failure there is deterministic, and re-running will not clear it. Its
   first panic is the cause; `Write font system: PoisonError` and `Read font system:
   PoisonError` panics after it are collateral (iced's font lock is process-wide). The
-  fuzzers never generate the bidi paragraph separators that panic cosmic-text 0.15
-  (`shape.rs:960`), and the text properties shape their case on a private font system
-  first. The product can still hit that panic (`#239`). `shape.rs:960` lines naming
-  thread `t231-private-shaping` in a green `--nocapture` log are the canary's own, and
-  so are the `proptest: Saving this and future failures in
-  …/planted.proptest-regressions` line and the hint after it (a test writing into its
-  own temp dir). A
+  fuzzers never generate the bidi paragraph separators that panicked unpatched
+  cosmic-text 0.15 (`shape.rs:960`), and the text properties shape their case on a
+  private font system first. That panic is fixed by ADR-0106 (the vendored
+  `vendor/cosmic-text/` hunk, bug-log `#239`); B2 in `bidi_paragraph_separators.rs`
+  pins it, and the exclusion and the guard stay as belt. A green `--nocapture` log
+  holds 0 panic lines located in cosmic-text's `src/shape.rs` (`panicked at
+  …/src/shape.rs:`, the kept `assert_eq!(line_rtl, rtl)`), so any such line is a real
+  trip (a private one names thread `bidi-private-shaping`). Match the file, not a line
+  number: the line moves with the hunk (`vendor/cosmic-text/src/shape.rs:971` with the
+  fork, `:960` in the unwired registry copy). The `proptest: Saving this and future
+  failures in …/planted.proptest-regressions` line and the hint after it are a test
+  writing into its own temp dir. A
   `crates/ui/tests/layout_invariants.proptest-regressions` left from before `#231` is
   never read; delete it.
 - The cockpit must run in `--release` (the dev `opt-level=0` tiny-skia path is ~40×

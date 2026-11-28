@@ -194,3 +194,9 @@ yahoo_finance_api = { version = "=4.1.0", default-features = false }
 # and only touches `src/layer.rs` and `src/lib.rs` (2 hunks total).
 [patch.crates-io]
 iced_tiny_skia = { path = "vendor/iced_tiny_skia" }
+# bug-log #239 (ADR-0106) — cosmic-text 0.15.0 panics (`assert_eq!(line_rtl, rtl)`
+# in `ShapeLine::build`) on a line whose bidi paragraphs disagree in direction,
+# e.g. a U+2029 between Hebrew and Latin, and iced's font lock is held when it
+# does. `vendor/cosmic-text/` is the registry crate plus ONE hunk in
+# `src/shape.rs` (see its VENDORED.md); iced 0.14 requires `^0.15`.
+cosmic-text = { path = "vendor/cosmic-text" }

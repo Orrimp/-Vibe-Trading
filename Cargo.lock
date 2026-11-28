@@ -1360,8 +1360,6 @@ dependencies = [
 [[package]]
 name = "cosmic-text"
 version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "173852283a9a57a3cbe365d86e74dc428a09c50421477d5ad6fe9d9509e37737"
 dependencies = [
  "bitflags 2.11.1",
  "fontdb",
@@ -8314,6 +8312,7 @@ dependencies = [
  "rust_decimal_macros",
  "serde",
  "serde_json",
+ "sha2",
  "smol_str 0.3.6",
  "tempfile",
  "thiserror 2.0.18",
@@ -8324,6 +8323,7 @@ dependencies = [
  "tracing-subscriber",
  "trading_core",
  "ttf-parser",
+ "unicode-bidi",
  "uuid",
  "windows",
 ]

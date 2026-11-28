@@ -37,28 +37,31 @@
 //! The two free-text parameters (`strategies_id_cell`'s `label`, `positions`'
 //! `error_msg`) draw from `free_text`: proptest's `.{0,64}` minus
 //! `IN_LINE_PARAGRAPH_SEPARATORS`, the five chars that start a new bidi
-//! paragraph inside one cosmic-text line. cosmic-text 0.15 asserts that every
-//! paragraph of a line has the first one's direction (`assert_eq!(line_rtl,
-//! rtl)`, `shape.rs:960`), so such a separator between left-to-right and
-//! right-to-left text panics it. Both text properties also shape their case on
-//! a private font system first (`guard_shaping`), so a trip the exclusion
-//! misses fails that one property instead of the whole binary.
+//! paragraph inside one cosmic-text line. Unpatched, cosmic-text 0.15 asserts
+//! that every paragraph of a line has the first one's direction
+//! (`assert_eq!(line_rtl, rtl)`, `shape.rs:960`), so such a separator between
+//! left-to-right and right-to-left text panicked it. Both text properties also
+//! shape their case on a private font system first (`guard_shaping`), so a trip
+//! the exclusion misses fails that one property instead of the whole binary.
 //!
 //! - **Blast radius.** A panic inside iced's text layout poisons iced's
 //!   process-wide font lock, and cargo runs this file as one process. The
 //!   first failure is the cause; every later `Write font system: PoisonError`
 //!   (or `Read font system`), with its trivially shrunk input, is collateral.
 //!   `PROPTEST_VERBOSE=2` prints each input before it runs.
-//! - **Triage.** A green `--nocapture` log holds exactly
-//!   `2 × |IN_LINE_PARAGRAPH_SEPARATORS| + |RECORDED_FAILING_LABELS|`
-//!   `shape.rs:960` panics (T2's canary rows and T6's preconditions), all on
-//!   thread `t231-private-shaping`. Any other `shape.rs:960` line is a real trip.
-//!   It also holds two `proptest:` lines, `Saving this and future failures in
-//!   …/planted.proptest-regressions` and the CI hint after it: T5's control
-//!   writing into its own TempDir, not a failure of this file.
-//! - **Scope.** The exclusion bounds this file's input domain only; the cockpit
-//!   can still hit the panic (bug-log `#239`). T2 goes red when cosmic-text
-//!   stops panicking, and then the exclusion and the guard can be dropped.
+//! - **Triage.** A green `--nocapture` log holds 0 panic lines located in
+//!   cosmic-text's `src/shape.rs` (`panicked at …/src/shape.rs:`, the kept
+//!   `assert_eq!(line_rtl, rtl)`): any such line is a real trip, and a private
+//!   one names thread `bidi-private-shaping`. Match the file, not a line
+//!   number: the line moves with the ADR-0106 hunk
+//!   (`vendor/cosmic-text/src/shape.rs:971` with the fork, `:960` in the
+//!   unwired registry copy). It also holds two `proptest:` lines, `Saving this
+//!   and future failures in …/planted.proptest-regressions` and the CI hint
+//!   after it: T5's control writing into its own TempDir, not a failure of this
+//!   file.
+//! - **Scope.** The product panic is fixed by ADR-0106 (the vendored
+//!   `vendor/cosmic-text/` hunk); B2 in `bidi_paragraph_separators.rs` pins it.
+//!   The exclusion and the guard stay as documented belt (bug-log `#239`).
 //!
 //! ## Scope (per architect Q4 — 6 widgets)
 //!
@@ -73,10 +76,14 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use std::collections::BTreeSet;
-use std::sync::OnceLock;
+// The class-B scan and the private shaper, shared with
+// `bidi_paragraph_separators.rs` (bug-log #239).
+#[path = "fixtures/bidi.rs"]
+mod bidi;
 
-use iced::advanced::graphics::text::cosmic_text as ct;
+use std::collections::BTreeSet;
+
+use bidi::{class_b_chars, shape_on_a_private_font_system};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::widget::Tree;
 use iced::{Element, Size};
@@ -213,25 +220,23 @@ fn proptest_config() -> ProptestConfig {
 
 // ─── Free text the fuzzers draw (bug-log #231) ─────────────────────────────
 //
-// Self-contained on purpose: the consts and fns of this section depend on nothing
-// else in the file, so a sibling test file can lift them whole (the bidi-separator
-// fix, bug-log #239, plans one shared `tests/fixtures/bidi.rs`).
+// The class-B scan (`class_b_chars`) and the private shaper
+// (`shape_on_a_private_font_system`) live in the shared `tests/fixtures/bidi.rs`
+// (bug-log #239), so this file and `bidi_paragraph_separators.rs` use one copy.
+// The consts and fns here depend on nothing else in the file.
 
 /// The characters that start a new bidi paragraph INSIDE one cosmic-text line:
 /// Bidi_Class = B (unicode-bidi 0.3.18, which cosmic-text 0.15 shapes with) minus
 /// cosmic-text's own line endings, which `LineIter` (`line_ending.rs`) splits on first.
-/// Any of them between text of different direction panics cosmic-text 0.15
-/// (`assert_eq!(line_rtl, rtl)`, `shape.rs:960`).
-/// Derived, not chosen: T1 scans every char for class B; T2 shapes every candidate.
-/// A slice, so a probe adds or drops a member with one token.
+/// Any of them between text of different direction panicked unpatched cosmic-text
+/// 0.15 (`assert_eq!(line_rtl, rtl)`, `shape.rs:960`; fixed by ADR-0106).
+/// Derived, not chosen: T1 scans every char for class B; `bidi_paragraph_separators`
+/// B2 shapes every candidate. A slice, so a probe adds or drops a member with one
+/// token.
 const IN_LINE_PARAGRAPH_SEPARATORS: &[char] = &['\u{1C}', '\u{1D}', '\u{1E}', '\u{85}', '\u{2029}'];
 
 /// cosmic-text 0.15's two line endings (`LineIter`, cosmic-text-0.15.0/src/line_ending.rs:55).
 const COSMIC_TEXT_LINE_ENDINGS: &[char] = &['\n', '\r'];
-
-/// Every private shaping runs on a thread of this name. A `shape.rs:960` panic line
-/// naming it is this file's own canary or guard, not a real trip (bug-log #231).
-const PRIVATE_SHAPING_THREAD: &str = "t231-private-shaping";
 
 /// `raw` without its in-line paragraph separators.
 fn strip_in_line_paragraph_separators(raw: &str) -> String {
@@ -250,76 +255,17 @@ fn free_text(max_len: usize) -> impl Strategy<Value = String> {
         .prop_map(|raw| strip_in_line_paragraph_separators(&raw))
 }
 
-/// Every `char` of Bidi_Class B, scanned once per binary: `c` is class B iff
-/// `"\u{5d0}{c}\u{5d0}"` splits into two bidi paragraphs. The probe is non-ASCII, so
-/// `BidiParagraphs` takes its `BidiInfo` path (`bidi_para.rs`): the same unicode-bidi
-/// build cosmic-text shapes with, so the scan cannot skew from the shaper.
-fn class_b_chars() -> &'static [char] {
-    static SCAN: OnceLock<Vec<char>> = OnceLock::new();
-    SCAN.get_or_init(|| {
-        let mut probe = String::with_capacity(12);
-        (0..=u32::from(char::MAX))
-            .filter_map(char::from_u32)
-            .filter(|&c| {
-                probe.clear();
-                probe.push('\u{5d0}');
-                probe.push(c);
-                probe.push('\u{5d0}');
-                ct::BidiParagraphs::new(&probe).count() == 2
-            })
-            .collect()
-    })
-}
-
-/// The UI face's family name, derived from the theme (as `embedded_font_contract.rs` does).
-fn ui_family() -> &'static str {
-    match ui::theme::font::UI.family {
-        iced::font::Family::Name(name) => name,
-        other => panic!("the UI font must name a family, not a generic one: {other:?}"),
-    }
-}
-
-/// Shape `text` the way iced's `Paragraph::with_text` does (`Buffer::set_text`,
-/// iced_graphics-0.14.0/src/text/paragraph.rs:87-93), but on a PRIVATE font system
-/// holding only the embedded UI face, on its own named thread, so a cosmic-text panic
-/// here can never poison iced's process-wide lock. `Err` carries the panic message.
-fn shape_on_a_private_font_system(text: &str) -> Result<(), String> {
-    static UI_FACE: OnceLock<ct::fontdb::Database> = OnceLock::new();
-    let db = UI_FACE
-        .get_or_init(|| {
-            let mut db = ct::fontdb::Database::new();
-            db.load_font_data(ui::theme::font::UI_REGULAR.to_vec());
-            db
-        })
-        .clone();
-    let text = text.to_owned();
-    std::thread::Builder::new()
-        .name(PRIVATE_SHAPING_THREAD.to_owned())
-        .spawn(move || {
-            let mut fonts = ct::FontSystem::new_with_locale_and_db(String::from("en-US"), db);
-            let attrs = ct::Attrs::new().family(ct::Family::Name(ui_family()));
-            let mut buffer = ct::Buffer::new(&mut fonts, ct::Metrics::new(14.0, 20.0));
-            buffer.set_text(&mut fonts, &text, &attrs, ct::Shaping::Advanced, None);
-        })
-        .expect("spawn the private-shaping thread")
-        .join()
-        .map_err(|p| {
-            p.downcast_ref::<String>()
-                .cloned()
-                .or_else(|| p.downcast_ref::<&str>().map(|s| (*s).to_owned()))
-                .unwrap_or_else(|| String::from("<non-string panic>"))
-        })
-}
-
 /// A text property's first step: the case's text, as the widget renders it, must
 /// shape privately. A trip then fails ONE property and shrinks on a healthy lock,
 /// instead of poisoning it under all of them (bug-log #231). Wired by T7.
 fn guard_shaping(text: &str) -> Result<(), TestCaseError> {
-    shape_on_a_private_font_system(text).map_err(|panic| {
-        TestCaseError::fail(format!(
-            "cosmic-text panics shaping {text:?} (bug-log #231): {panic}"
-        ))
-    })
+    shape_on_a_private_font_system(text, false)
+        .map(|_| ())
+        .map_err(|panic| {
+            TestCaseError::fail(format!(
+                "cosmic-text panics shaping {text:?} (bug-log #231): {panic}"
+            ))
+        })
 }
 
 // ─── PoC: strategies::id_cell (the F1 case) ─────────────────────────────
@@ -1025,10 +971,12 @@ fn build_assistant_llm_forecaster_cockpit(
 
 // ─── bug-log #231: the exclusion, the seed and persistence, pinned ─────────
 //
-// T1-T7. T1 and T2 derive the separator set two independent ways (a class-B
-// scan, and shaping); T3 pins `free_text` two-sided; T4 the seed, T5 that a
-// failure writes nothing; T6 the labels a run is known to have failed on; T7
-// that every property parameter draws from a classified strategy.
+// T1 and T3-T7. T1 derives the separator set from a class-B scan; T3 pins
+// `free_text` two-sided; T4 the seed, T5 that a failure writes nothing; T6 the
+// labels a run is known to have failed on; T7 that every property parameter
+// draws from a classified strategy. T2, the canary that cosmic-text still
+// trips, was deleted by the bug-log #239 fix (ADR-0106): nothing trips now, and
+// `bidi_paragraph_separators.rs` B2 pins that.
 
 /// Labels a run of this file is known to have failed on, pinned as named cases
 /// (bug-log #231). The first is the minimal form (a separator, then an RTL
@@ -1085,67 +1033,6 @@ fn in_line_paragraph_separators_are_class_b_minus_the_line_endings() {
          (bug-log #231)"
     );
     println!("t231 T1: class B = {class_b:?}; in-line separators = {in_line:?}");
-}
-
-/// T2, the canary, on a private font system. Every candidate (the derived class B,
-/// the const, and U+2028 as the near-miss) is shaped in four rows, each pair
-/// differing in one dimension. A row trips iff its candidate is in
-/// `IN_LINE_PARAGRAPH_SEPARATORS` and its two paragraphs differ in direction: the
-/// expectation is DERIVED from the const T1 pins, not measured off cosmic-text.
-/// When cosmic-text stops panicking, the trip rows go red: drop the exclusion.
-#[test]
-fn cosmic_text_trips_exactly_on_an_in_line_separator_between_directions() {
-    let mut candidates: BTreeSet<char> = class_b_chars().iter().copied().collect();
-    candidates.extend(IN_LINE_PARAGRAPH_SEPARATORS.iter().copied());
-    candidates.insert('\u{2028}');
-
-    let mut tripped = 0usize;
-    let mut newline_rows_shaped = 0usize;
-    let mut wrong = Vec::new();
-    for c in candidates {
-        let trips = IN_LINE_PARAGRAPH_SEPARATORS.contains(&c);
-        // (row, the polarity a trip prints, or None when the row must shape)
-        let rows = [
-            (format!("{c}\u{5d0}"), trips.then_some("left: true")), // LTR | RTL
-            (format!("{c}a"), None),                                // LTR | LTR
-            (format!("\u{5d0}{c}a"), trips.then_some("left: false")), // RTL | LTR
-            (format!("\u{5d0}{c}\u{5d1}"), None),                   // RTL | RTL
-        ];
-        for (row, expected_trip) in rows {
-            let outcome = shape_on_a_private_font_system(&row);
-            match (expected_trip, &outcome) {
-                (Some(polarity), Err(panic))
-                    if panic.contains("left == right") && panic.contains(polarity) =>
-                {
-                    tripped += 1;
-                }
-                (None, Ok(())) => {
-                    if c == '\n' {
-                        newline_rows_shaped += 1;
-                    }
-                }
-                _ => wrong.push(format!(
-                    "{row:?}: expected {}, got {outcome:?}",
-                    expected_trip.map_or_else(
-                        || String::from("it to shape"),
-                        |p| format!("a `left == right` trip with `{p}`")
-                    )
-                )),
-            }
-        }
-    }
-    assert!(
-        wrong.is_empty(),
-        "cosmic-text's trip set moved (bug-log #231; drop the exclusion only if it \
-         stopped tripping):\n{}",
-        wrong.join("\n")
-    );
-    assert!(tripped > 0, "non-vacuity: no row tripped");
-    assert_eq!(
-        newline_rows_shaped, 4,
-        "non-vacuity: the four `\\n` rows must be candidates and shape"
-    );
-    println!("t231 T2: {tripped} rows tripped as expected");
 }
 
 /// T3. `free_text` draws exactly the bare regex's cases minus the separators,
@@ -1302,37 +1189,33 @@ fn a_failing_property_in_this_file_writes_no_regressions_file() {
     );
 }
 
-/// T6. The recorded failing labels trip cosmic-text raw, and once filtered they
-/// shape and lay out in the widget the property fuzzes.
+/// T6. The recorded failing labels each tripped unpatched cosmic-text 0.15; with
+/// ADR-0106's hunk they shape privately RAW and lay out raw in the widget the
+/// property fuzzes (bug-log #239). Before the fix this test laid out their
+/// filtered forms behind a "raw trips" precondition (bug-log #231).
 #[test]
-fn strategies_id_cell_lays_out_the_recorded_failing_labels_once_filtered() {
-    // Non-vacuity, and the header's triage count (`|RECORDED_FAILING_LABELS|`).
+fn strategies_id_cell_lays_out_the_recorded_failing_labels_raw() {
+    // Non-vacuity: the minimal form and the 2026-11-24 label.
     assert_eq!(
         RECORDED_FAILING_LABELS.len(),
         2,
         "RECORDED_FAILING_LABELS must hold the minimal form and the 2026-11-24 label"
     );
     for raw in RECORDED_FAILING_LABELS {
-        let tripped = shape_on_a_private_font_system(raw);
-        assert!(
-            matches!(&tripped, Err(panic) if panic.contains("left == right")),
-            "precondition: {raw:?} must trip cosmic-text privately (bug-log #231), \
-             got {tripped:?}"
-        );
-        let filtered = strip_in_line_paragraph_separators(raw);
-        if let Err(panic) = shape_on_a_private_font_system(&filtered) {
+        if let Err(panic) = shape_on_a_private_font_system(raw, false) {
             panic!(
-                "{filtered:?} (from {raw:?}) still panics cosmic-text privately, so \
-                 the filter misses a separator (bug-log #231): {panic}"
+                "precondition: {raw:?} must shape privately, since ADR-0106's \
+                 vendored cosmic-text hunk resolves the paragraph directions \
+                 (bug-log #239); it panics: {panic}"
             );
         }
         let element = widgets_for_test::strategies_id_cell(
             StrategyId::new("v0.sma"),
-            filtered.clone(),
+            (*raw).to_owned(),
             false,
         );
         if let Err(e) = check_element_layout(element) {
-            panic!("strategies_id_cell({filtered:?}) layout: {e}");
+            panic!("strategies_id_cell({raw:?}) layout: {e}");
         }
     }
 }

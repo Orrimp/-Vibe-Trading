@@ -80,7 +80,9 @@ trading/
 │   └── skills/               # 14 project harness skills + ~47 bmad-* workflow skills
 ├── research/                 # 900-paper knowledge base (complete)
 ├── scripts/                  # Gates: verify_anchors.sh, spec_lint.py, adr_registry_check.py, …
-└── vendor/iced_tiny_skia/    # Operator-locked long-term fork (see below)
+└── vendor/
+    ├── iced_tiny_skia/       # Operator-locked long-term fork (see below)
+    └── cosmic-text/          # Operator-locked long-term fork, one bidi hunk (ADR-0106)
 ```
 
 ## Language & toolchain
@@ -168,9 +170,27 @@ caller names, so the union is not belt-and-braces: each half covers the other's 
   for the maintenance contract — any future iced bump MUST audit
   the `Transformation::scale(scale_factor) * group.transformation()`
   ordering before retiring the fork.
+- `vendor/cosmic-text/` is a **long-term local fork** of
+  `cosmic-text 0.15.0` (the registry crate, copied from the local
+  cache) plus ONE hunk in `ShapeLine::build` (`src/shape.rs`): a
+  line whose bidi paragraphs disagree in direction takes paragraph
+  0's direction instead of panicking inside iced's font lock
+  (bug-log `#239`). Wired via `[patch.crates-io]`. **Operator-
+  approved 2026-11-28.** Maintenance contract:
+  [ADR-0106](_bmad-output/planning-artifacts/architecture/decisions/0106-cosmic-text-is-vendored-with-one-bidi-patch.md)
+  D4 — never edited beyond D1's manifest delta and D2's hunk
+  (`VENDORED.md`, `VENDORED.sha256`; the ui test
+  `bidi_paragraph_separators` W2 fails on any change not re-recorded
+  there, skipping OS/editor cruft and `target/`, and B2/B3/C1-C4
+  catch a re-recorded behaviour change); every toolchain bump must build
+  it (a path package is not lint-capped, so its rustc `deny`
+  attributes are hard errors); every iced/cosmic-text bump re-checks
+  the upstream assert, and the fork retires only after B2 and B3
+  are green without it.
 - Any change to `vendor/*` other than the documented patch is out
   of scope — those files are upstream source. Bug reports go
-  upstream.
+  upstream (cosmic-text: none posted, operator decision 2026-11-28,
+  ADR-0106).
 
 ## Non-negotiables
 

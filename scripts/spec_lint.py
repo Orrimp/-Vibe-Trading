@@ -2140,7 +2140,10 @@ UNWALKED_TREES: dict[str, str] = {
     ".git": "not content",
     ".codegraph": "gitignored index, not content",
     "target": "build output, untracked",
-    "vendor": "upstream source (the operator-locked iced_tiny_skia fork) — bug reports go upstream",
+    "vendor": (
+        "upstream source (the operator-locked iced_tiny_skia and cosmic-text forks, "
+        "the latter ADR-0106), not this repository's docs"
+    ),
     ".claude": (
         "37 dead links on 2026-11-09, every one inside the vendored BMAD skills install "
         "(bmad-document-project 28, bmad-index-docs 5, bmad-quick-dev 4). CLAUDE.md forbids "

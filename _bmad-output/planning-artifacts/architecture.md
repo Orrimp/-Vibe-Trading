@@ -457,6 +457,7 @@ parentheses where it differs.
 | Rust | stable, edition 2024 (toolchain 1.94.1 at authoring) |
 | iced (cockpit UI) | 0.14.0 |
 | iced_tiny_skia | 0.14.0 — **vendored long-term fork** (`vendor/iced_tiny_skia/`) + upstream canvas-clip fix `76b32d4906`; operator-locked 2026-05-20. Maintenance contract: `spec/v1/chart-fixture-line-clipping/feature.md` — any iced bump must audit the `Transformation::scale(scale_factor) * group.transformation()` ordering before retiring the fork |
+| cosmic-text | 0.15.0 — **vendored long-term fork** (`vendor/cosmic-text/`), one bidi patch in `ShapeLine::build` (bug-log `#239`); operator-approved 2026-11-28. Maintenance contract: ADR-0106 D4 — never edited beyond the hunk, every toolchain bump builds it, retirement only when `bidi_paragraph_separators` B2/B3 are green without it |
 | tokio | 1.44 pin (lock 1.52.3) |
 | rust_decimal | 1.36 pin (lock 1.42.0) |
 | rand / rand_chacha | 0.9 pin |
@@ -503,6 +504,7 @@ The workspace is 17 members (virtual workspace, root `Cargo.toml`). **There is n
 trading/
   crates/            # the 17 members above
   vendor/iced_tiny_skia/   # operator-locked fork (see Stack) — upstream source, do not edit beyond the documented patch
+  vendor/cosmic-text/      # operator-locked fork, one bidi hunk (ADR-0106) — upstream source, do not edit beyond the documented patch
   data/              # parquet corpora (pinned) + git-ignored dynamic cache
   lab-runs/          # git-ignored lab report root (ADR-0055 sibling-root model)
   plan-exports/      # git-ignored hand-off exports (ADR-0088; same sibling-root model)
