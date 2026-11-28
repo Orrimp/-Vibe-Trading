@@ -1659,7 +1659,17 @@ mod tests {
         assert!(tokens.contains(&"-5.00%".to_string()));
     }
 
-    /// Bug-log `#199`: run `f` on its own thread under a deadline, so a tokenizer that
+    /// How long [`within_deadline`] waits before it calls `f` hung (bug-log `#199`).
+    ///
+    /// The deadline only turns a hang into a failure; it measures no speed. It must
+    /// also cover a panicking `f`: the sender drops only after the panic hook returns,
+    /// and under CI's `RUST_BACKTRACE: 1` the hook captures and prints a backtrace.
+    /// On the Windows runner that took more than the old 5 s, so the panic test read
+    /// "did not return within 5 s" instead of the panic (bug-log `#251`, CI run
+    /// 46177523726). Locally on macOS the same capture costs about 0.1 s.
+    const DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
+    /// Bug-log `#199`: run `f` on its own thread under [`DEADLINE`], so a tokenizer that
     /// never returns fails the test instead of hanging the suite. (A spinning thread
     /// dies with the test process.) A panic inside `f` is re-raised as itself, not
     /// reported as a hang.
@@ -1669,10 +1679,13 @@ mod tests {
         let handle = std::thread::spawn(move || {
             let _ = tx.send(f());
         });
-        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        match rx.recv_timeout(DEADLINE) {
             Ok(value) => value,
             Err(RecvTimeoutError::Timeout) => {
-                panic!("{what} did not return within 5 s (bug-log #199)")
+                panic!(
+                    "{what} did not return within {} s (bug-log #199)",
+                    DEADLINE.as_secs()
+                )
             }
             // The only sender dropped without sending, so `f` panicked: re-raise it.
             Err(RecvTimeoutError::Disconnected) => match handle.join() {
@@ -1683,7 +1696,9 @@ mod tests {
     }
 
     /// The deadline helper reports a panic inside `f` as that panic. Before this, a
-    /// crash read "did not return within 5 s", the `#199` liveness message.
+    /// crash read "did not return within 5 s", the `#199` liveness message. On the
+    /// Windows CI runner the backtrace the panic hook prints outlasted that 5 s
+    /// (bug-log `#251`); [`DEADLINE`] now leaves room for it.
     #[test]
     #[should_panic(expected = "the original panic")]
     fn within_deadline_re_raises_a_panic_as_itself() {
