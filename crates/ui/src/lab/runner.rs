@@ -172,8 +172,11 @@ pub struct LabRunConfig {
     /// via `data::yahoo::binance_to_yahoo_ticker` (Q6 = (a) / D7).
     pub symbol: SmolStr,
     pub venue: SmolStr,
-    /// Human-readable range label, e.g. "Last90d".
-    pub range_label: SmolStr,
+    /// The window to run, typed (bug-log `#230`): the Lab's own `DateRange`, so a `Custom`
+    /// range's two bounds travel as two fields and a bound with a time reaches the parse whole.
+    /// It replaces `range_label: SmolStr`, which joined them with `:` and was split back on the
+    /// first `:`. [`lab_config_to_scenario`] maps it; [`LabRunConfig::range_label`] prints it.
+    pub range: crate::lab::state::DateRange,
     /// `ChaCha20` seed per ADR-0030.
     pub seed: [u8; 32],
     /// Write a Markdown report to `evidence/<slug>/reports/…` on completion.
@@ -186,6 +189,48 @@ pub struct LabRunConfig {
     pub sma_fast_len: Option<usize>,
     /// lab-polish-round-2 R2 — operator-tuned SMA slow window (None → 50 default).
     pub sma_slow_len: Option<usize>,
+}
+
+impl LabRunConfig {
+    /// The window as logs, activity labels and no-data notices print it: the text the
+    /// `range_label` field held before bug-log `#230`. Display only; nothing parses it.
+    #[must_use]
+    pub fn range_label(&self) -> SmolStr {
+        use crate::lab::state::{DateRange, Preset};
+        use crate::strings as s;
+        match &self.range {
+            DateRange::Preset(Preset::Last30d) => SmolStr::new_static(s::LAB_RUN_RANGE_LAST30D),
+            DateRange::Preset(Preset::Last90d) => SmolStr::new_static(s::LAB_RUN_RANGE_LAST90D),
+            DateRange::Preset(Preset::H1_2024) => SmolStr::new_static(s::LAB_RUN_RANGE_H1_2024),
+            DateRange::Preset(Preset::H2_2024) => SmolStr::new_static(s::LAB_RUN_RANGE_H2_2024),
+            DateRange::Custom { start_raw, end_raw } => {
+                SmolStr::new(s::fmt_lab_run_range_custom(start_raw, end_raw))
+            }
+        }
+    }
+}
+
+/// The run a Lab `Run` press dispatches (bug-log `#230`; was inline in `cockpit_live`'s
+/// `update`). `None` until a strategy and a pair are selected. The range is
+/// [`LabState::run_range`](crate::lab::state::LabState::run_range): what the range fields show.
+#[must_use]
+pub fn lab_run_config(lab: &crate::lab::state::LabState) -> Option<LabRunConfig> {
+    let (strategy, (venue, symbol)) = (lab.strategy.as_ref()?, lab.pair.as_ref()?);
+    Some(LabRunConfig {
+        strategy_id: SmolStr::new(&strategy.0),
+        symbol: SmolStr::new(symbol.0.as_str()),
+        venue: SmolStr::new(format!("{venue:?}")),
+        range: lab.run_range(),
+        seed: crate::lab::defaults::LAB_DEFAULT_SEED,
+        write_report: true,
+        // lab-yahoo-realdata T-C3.6: mirror the current UI data_source selection into the run
+        // config so the runner can dispatch accordingly.
+        data_source: lab.data_source,
+        // lab-polish-round-2 R2: pass operator-tuned SMA windows through. None → the engine
+        // falls back to the (20, 50) default.
+        sma_fast_len: lab.sma_fast_len,
+        sma_slow_len: lab.sma_slow_len,
+    })
 }
 
 /// Outcome of the in-process run for `iced::Task::perform`.
@@ -723,7 +768,7 @@ async fn preload_binance_bars(
         tracing::info!(
             target: "lab.binance",
             symbol = %cfg.symbol,
-            range = %cfg.range_label,
+            range = %cfg.range_label(),
             start_ms,
             end_ms,
             "requested window has no overlap with the pinned 2023-2024 corpus — \
@@ -811,7 +856,7 @@ async fn preload_binance_bars(
         tracing::info!(
             target: "lab.binance",
             symbol = %cfg.symbol,
-            range = %cfg.range_label,
+            range = %cfg.range_label(),
             "Binance corpus has 0 bars in range — emitting cache-miss notice"
         );
         return Err(binance_cache_miss_notice(
@@ -823,7 +868,7 @@ async fn preload_binance_bars(
     tracing::info!(
         target: "lab.binance",
         symbol = %cfg.symbol,
-        range = %cfg.range_label,
+        range = %cfg.range_label(),
         bars = bars.len(),
         revision_sha = %revision_sha,
         "Binance hourly bars ready for Lab run"
@@ -982,66 +1027,76 @@ async fn fetch_with_backoff(
 
 // ── LabRunConfig → ScenarioConfig mapper (T-D-N9 / R3.1–R3.5) ───────────────
 
-/// A Lab `Custom` range's epoch-millisecond bounds, from its ISO-8601 strings:
-/// full RFC 3339, or a date-only `YYYY-MM-DD` read as midnight UTC. The one
-/// parse the run mapper ([`lab_config_to_scenario`]) and the Lab's report
-/// lookup (`lab::equity_loader`, which matches a report's
-/// `custom<start_ms>to<end_ms>` token against it, bug-log #212) share.
+/// One bound of a Lab `Custom` range, in epoch ms: full RFC 3339, or a date-only `YYYY-MM-DD`
+/// read as midnight UTC. The only reader of a Custom bound (bug-log `#230`): the run mapper and
+/// the report lookup (through [`custom_range_ms`]), the Custom editor's colour
+/// (`widgets::date_range`) and commit rule (`LabState::classify_custom_edit`), and the cadence
+/// badge.
 ///
 /// # Errors
 ///
-/// `Err("invalid custom date '<s>': …")` when either bound parses as neither.
+/// `Err("invalid custom date '<raw>': …")`, naming the bound whole, as typed.
+pub(crate) fn custom_bound_ms(raw: &str) -> Result<i64, SmolStr> {
+    // Accept full RFC 3339 or date-only "YYYY-MM-DD".
+    let dt = time::OffsetDateTime::parse(raw, &time::format_description::well_known::Rfc3339)
+        .or_else(|_| {
+            // Try date-only: append T00:00:00Z
+            let padded = format!("{raw}T00:00:00Z");
+            time::OffsetDateTime::parse(&padded, &time::format_description::well_known::Rfc3339)
+        })
+        .map_err(|e| SmolStr::new(format!("invalid custom date '{raw}': {e}")))?;
+    Ok(dt.unix_timestamp() * 1000)
+}
+
+/// A Lab `Custom` range's epoch-millisecond bounds, each read by [`custom_bound_ms`]. The one
+/// parse the run mapper ([`lab_config_to_scenario`]) and the Lab's report lookup
+/// (`lab::equity_loader`, which matches a report's `custom<start_ms>to<end_ms>` token against
+/// it, bug-log #212) share.
+///
+/// # Errors
+///
+/// `Err("invalid custom date '<raw>': …")` when either bound parses as neither, naming that
+/// bound whole (the start's error first).
 pub(crate) fn custom_range_ms(start_raw: &str, end_raw: &str) -> Result<(i64, i64), SmolStr> {
-    let parse_ms = |s: &str| -> Result<i64, SmolStr> {
-        // Accept full ISO-8601 or date-only "YYYY-MM-DD".
-        let dt = time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .or_else(|_| {
-                // Try date-only: append T00:00:00Z
-                let padded = format!("{s}T00:00:00Z");
-                time::OffsetDateTime::parse(&padded, &time::format_description::well_known::Rfc3339)
-            })
-            .map_err(|e| SmolStr::new(format!("invalid custom date '{s}': {e}")))?;
-        Ok(dt.unix_timestamp() * 1000)
-    };
-    Ok((parse_ms(start_raw)?, parse_ms(end_raw)?))
+    Ok((custom_bound_ms(start_raw)?, custom_bound_ms(end_raw)?))
 }
 
 /// Map a `LabRunConfig` to a `backtest::ScenarioConfig`.
 ///
-/// The `range_label` `SmolStr` maps to `backtest::engine::DateRange` presets.
-/// `Custom` ranges are parsed from ISO-8601 strings to epoch-milliseconds.
-///
-/// Returns `Err(SmolStr)` if the range label is unrecognised or a custom
-/// date string fails to parse.
+/// The typed `range` (bug-log `#230`) maps preset for preset onto
+/// `backtest::engine::DateRange`; a `Custom` range's two bounds are parsed to epoch-milliseconds
+/// by [`custom_range_ms`], each bound whole, and the pair must increase.
 ///
 /// # Errors
 ///
-/// - Unrecognised `range_label` → `Err("unknown range: <label>")`
-/// - Invalid ISO-8601 custom date → `Err("invalid custom date: <msg>")`
+/// - A `Custom` bound that parses as neither RFC 3339 nor `YYYY-MM-DD` →
+///   `Err("invalid custom date '<raw>': …")`, naming the bound as typed.
+/// - A `Custom` pair whose start is not before its end →
+///   `Err(strings::fmt_lab_custom_range_not_increasing(..))`, naming both bounds as typed. Every
+///   source's run maps here before any preload, so this is the one order rule.
 pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioConfig, SmolStr> {
+    use crate::lab::state::{DateRange as LabRange, Preset};
     use backtest::engine::DateRange;
     use trading_core::StrategyId;
 
-    let range = match cfg.range_label.as_str() {
-        "Last30d" | "Last 30d" => DateRange::Last30d,
-        "Last90d" | "Last 90d" => DateRange::Last90d,
-        "H1_2024" | "2024 H1" => DateRange::H1_2024,
-        "H2_2024" | "2024 H2" => DateRange::H2_2024,
-        other => {
-            // Try to parse as "Custom:start_raw:end_raw" encoded form.
-            // Phase A range labels are always presets; custom falls through
-            // to this branch when a user manually types a range.
-            if let Some(rest) = other.strip_prefix("Custom:") {
-                let parts: Vec<&str> = rest.splitn(2, ':').collect();
-                if parts.len() == 2 {
-                    let (start_ms, end_ms) = custom_range_ms(parts[0], parts[1])?;
-                    DateRange::Custom { start_ms, end_ms }
-                } else {
-                    return Err(SmolStr::new(format!("unknown range: {other}")));
-                }
-            } else {
-                return Err(SmolStr::new(format!("unknown range: {other}")));
+    let range = match &cfg.range {
+        LabRange::Preset(Preset::Last30d) => DateRange::Last30d,
+        LabRange::Preset(Preset::Last90d) => DateRange::Last90d,
+        LabRange::Preset(Preset::H1_2024) => DateRange::H1_2024,
+        LabRange::Preset(Preset::H2_2024) => DateRange::H2_2024,
+        // bug-log #230: two fields, so `2024-01-01T00:00:00Z` reaches the parse whole.
+        LabRange::Custom { start_raw, end_raw } => {
+            let (start_ms, end_ms) = custom_range_ms(start_raw, end_raw)?;
+            // bug-log #230 review: the one order rule, for every source and before any preload
+            // (a Binance or Yahoo preload would otherwise answer a reversed pair with a
+            // misleading no-data notice; the engine's `InvalidRange` is reached only on
+            // Synthetic). Each bound still commits on its own parse; Run refuses the pair here.
+            if start_ms >= end_ms {
+                return Err(SmolStr::new(
+                    crate::strings::fmt_lab_custom_range_not_increasing(start_raw, end_raw),
+                ));
             }
+            DateRange::Custom { start_ms, end_ms }
         }
     };
 
@@ -1119,27 +1174,27 @@ fn classify_preload_result(
             // Review patch 11: the copy + tracing target are SOURCE-aware — a
             // Binance run must not ship Yahoo-branded copy under a `lab.yahoo`
             // target (tracing targets must be literals, hence two macro arms).
-            let window = cfg.range_label.as_str();
+            let window = cfg.range_label();
             let body = if cfg.data_source == crate::lab::state::LabDataSource::BinanceCache {
                 tracing::info!(
                     target: "lab.binance",
                     symbol = %cfg.symbol,
-                    range = %cfg.range_label,
+                    range = %cfg.range_label(),
                     "preload returned 0 bars — emitting no-data notice"
                 );
                 crate::strings::LAB_BINANCE_OUT_OF_SPAN_NOTICE
                     .replace("{symbol}", cfg.symbol.as_str())
-                    .replace("{window}", window)
+                    .replace("{window}", &window)
             } else {
                 tracing::info!(
                     target: "lab.yahoo",
                     symbol = %cfg.symbol,
-                    range = %cfg.range_label,
+                    range = %cfg.range_label(),
                     "preload returned 0 bars — emitting no-data notice"
                 );
                 crate::strings::LAB_YAHOO_NO_DATA_NOTICE
                     .replace("{ticker}", cfg.symbol.as_str())
-                    .replace("{window}", window)
+                    .replace("{window}", &window)
             };
             Err(SmolStr::new(format!(
                 "{}{}",
@@ -1307,7 +1362,7 @@ pub async fn run_yahoo_preload_arm(
     // `ActivityHandle` is Send but not Sync; it is held across this
     // function's awaits inside `spawn_lab_run`'s Send-required
     // `iced::Task::perform` future and never leaves this arm.
-    let yahoo_label = format!("Yahoo {} · {}", cfg.symbol, cfg.range_label);
+    let yahoo_label = format!("Yahoo {} · {}", cfg.symbol, cfg.range_label());
     let yahoo_activity_handle = activity.map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
 
     // ADR-0050 § D4 (rt.spawn fix — recurrence #3): route through
@@ -1498,7 +1553,7 @@ pub fn spawn_lab_run(
         };
 
         // T-D-N9: Map LabRunConfig → backtest::ScenarioConfig.
-        // Returns Err immediately if the range label is unrecognised.
+        // Returns Err immediately if a Custom bound does not parse (bug-log #230).
         #[allow(unused_mut)]
         let mut scenario_cfg = match lab_config_to_scenario(&cfg) {
             Ok(c) => c,
@@ -1912,7 +1967,7 @@ pub mod preload_notice {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -1937,55 +1992,242 @@ mod tests {
         let _ = handle; // drop here — compiler warning suppressed
     }
 
-    /// T-D-N9 — `lab_config_to_scenario` maps preset range labels correctly.
-    #[test]
-    fn lab_config_to_scenario_preset_labels() {
-        let labels = [
-            ("Last30d", "Last30d"),
-            ("Last 30d", "Last30d"),
-            ("Last90d", "Last90d"),
-            ("Last 90d", "Last90d"),
-            ("H1_2024", "H1_2024"),
-            ("2024 H1", "H1_2024"),
-            ("H2_2024", "H2_2024"),
-            ("2024 H2", "H2_2024"),
-        ];
-        for (input, _expected) in &labels {
-            let cfg = LabRunConfig {
-                strategy_id: SmolStr::new("v1.momentum"),
-                symbol: SmolStr::new("XRPUSDT"),
-                venue: SmolStr::new("Binance"),
-                range_label: SmolStr::new(*input),
-                seed: crate::lab::defaults::LAB_DEFAULT_SEED,
-                write_report: false,
-                data_source: crate::lab::state::LabDataSource::default(),
-                sma_fast_len: None,
-                sma_slow_len: None,
-            };
-            let result = lab_config_to_scenario(&cfg);
-            assert!(
-                result.is_ok(),
-                "range_label {input:?} must map to a valid DateRange; got: {result:?}"
-            );
+    // ── bug-log #230: the typed range carrier and the one bound parse ─────────
+
+    use crate::lab::state::{CustomRangeDraft, DateRange as LabRange, LabState, Preset};
+
+    /// A Lab `Custom` range of the two bounds, as typed.
+    fn custom(start: &str, end: &str) -> LabRange {
+        LabRange::Custom {
+            start_raw: SmolStr::new(start),
+            end_raw: SmolStr::new(end),
         }
     }
 
-    /// T-D-N9 — `lab_config_to_scenario` returns Err on unknown range label.
-    #[test]
-    fn lab_config_to_scenario_unknown_range_is_err() {
-        let cfg = LabRunConfig {
+    /// A run config over `range`, every other field fixed.
+    fn cfg_over(range: LabRange) -> LabRunConfig {
+        LabRunConfig {
             strategy_id: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             venue: SmolStr::new("Binance"),
-            range_label: SmolStr::new("NotAPreset"),
+            range,
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             write_report: false,
             data_source: crate::lab::state::LabDataSource::default(),
             sma_fast_len: None,
             sma_slow_len: None,
+        }
+    }
+
+    /// The engine's `Custom` bounds a config maps to, or the mapper's error.
+    fn engine_custom_ms(cfg: &LabRunConfig) -> Result<(i64, i64), SmolStr> {
+        match lab_config_to_scenario(cfg)?.range {
+            backtest::engine::DateRange::Custom { start_ms, end_ms } => Ok((start_ms, end_ms)),
+            other => panic!("a Custom range must map to the engine's Custom, got {other:?}"),
+        }
+    }
+
+    /// R1 (bug-log #230) — a start bound with a time reaches the engine whole: at HEAD it was cut
+    /// at its first `:` and refused as `'2024-01-01T12'`.
+    #[test]
+    fn a_custom_start_bound_with_a_time_reaches_the_engine_whole() {
+        let got = engine_custom_ms(&cfg_over(custom("2024-01-01T12:30:00Z", "2024-02-01")));
+        assert_eq!(got, Ok((1_704_112_200_000, 1_706_745_600_000)));
+    }
+
+    /// R2 — R1's twin in the dimension "the start bound holds a `:`": a date-only pair reaches
+    /// the engine at midnight UTC (green at HEAD too).
+    #[test]
+    fn a_date_only_custom_range_reaches_the_engine_at_midnight_utc() {
+        let got = engine_custom_ms(&cfg_over(custom("2024-01-01", "2024-02-01")));
+        assert_eq!(got, Ok((1_704_067_200_000, 1_706_745_600_000)));
+    }
+
+    /// R3 — a bound that does not parse is refused by its whole text, start and end alike.
+    #[test]
+    fn a_custom_bound_that_does_not_parse_is_refused_by_its_whole_text() {
+        let start = engine_custom_ms(&cfg_over(custom("2024-01-01T00:00:00Q", "2024-02-01")));
+        let end = engine_custom_ms(&cfg_over(custom("2024-01-01", "2024-02-01T00:00:00Q")));
+        let start_err = start.expect_err("an unparseable start bound is refused");
+        let end_err = end.expect_err("an unparseable end bound is refused");
+        assert!(
+            start_err.contains("'2024-01-01T00:00:00Q'"),
+            "the start's refusal names it whole: {start_err}"
+        );
+        assert!(
+            end_err.contains("'2024-02-01T00:00:00Q'"),
+            "the end's refusal names it whole: {end_err}"
+        );
+    }
+
+    /// R4 — every preset maps to its own engine range (replaces the label-alias test; an
+    /// unknown range can no longer be represented).
+    #[test]
+    fn every_preset_maps_to_its_engine_range() {
+        use backtest::engine::DateRange as E;
+        let map = |p| lab_config_to_scenario(&cfg_over(LabRange::Preset(p))).map(|sc| sc.range);
+        assert!(matches!(map(Preset::Last30d), Ok(E::Last30d)));
+        assert!(matches!(map(Preset::Last90d), Ok(E::Last90d)));
+        assert!(matches!(map(Preset::H1_2024), Ok(E::H1_2024)));
+        assert!(matches!(map(Preset::H2_2024), Ok(E::H2_2024)));
+    }
+
+    /// R5 — `range_label()` prints the text the `range_label` field held before #230, and
+    /// operator text that holds a `{…}` placeholder prints as typed.
+    #[test]
+    fn range_label_prints_the_text_the_field_held_before_230() {
+        let label = |r| cfg_over(r).range_label();
+        assert_eq!(label(LabRange::Preset(Preset::Last30d)), "Last30d");
+        assert_eq!(label(LabRange::Preset(Preset::Last90d)), "Last90d");
+        assert_eq!(label(LabRange::Preset(Preset::H1_2024)), "H1_2024");
+        assert_eq!(label(LabRange::Preset(Preset::H2_2024)), "H2_2024");
+        assert_eq!(
+            label(custom("2024-01-01T00:00:00Z", "2024-02-01")),
+            "Custom:2024-01-01T00:00:00Z:2024-02-01"
+        );
+        assert_eq!(label(custom("{end}x", "E")), "Custom:{end}x:E");
+    }
+
+    /// R6 — `custom_bound_ms` reads RFC 3339 and `YYYY-MM-DD` and nothing else, in pairs that
+    /// differ in one dimension. The last five Err rows are the deleted `is_valid_date` cases.
+    #[test]
+    fn custom_bound_ms_reads_rfc3339_and_date_only_and_nothing_else() {
+        assert_eq!(custom_bound_ms("2024-02-29"), Ok(1_709_164_800_000));
+        assert!(custom_bound_ms("2024-02-30").is_err());
+        assert_eq!(
+            custom_bound_ms("2024-01-01T00:00:00Z"),
+            Ok(1_704_067_200_000)
+        );
+        assert!(custom_bound_ms("2024-01-01T00:00:00").is_err());
+        assert_eq!(
+            custom_bound_ms("2024-01-01T01:00:00+01:00"),
+            Ok(1_704_067_200_000)
+        );
+        for raw in [
+            "",
+            "2024-1-1",
+            "20240101",
+            "not-a-date",
+            "2024-01-01T00",
+            "2024-13-01",
+            "2024-00-01",
+            "2024-01-00",
+            "2024-01-32",
+            "abcd-01-01",
+        ] {
+            assert!(custom_bound_ms(raw).is_err(), "{raw:?} must not parse");
+        }
+    }
+
+    /// R9 (bug-log #230 review) — a Custom pair that does not increase is refused by name, for
+    /// every source; its twin one day longer maps. The reversed and the equal pair differ from
+    /// the valid one only in the end bound (#161: the equal pair is the boundary).
+    #[test]
+    fn a_custom_range_that_does_not_increase_is_refused_by_name_for_every_source() {
+        use crate::lab::state::LabDataSource;
+        for source in [
+            LabDataSource::Synthetic,
+            LabDataSource::YahooCache,
+            LabDataSource::BinanceCache,
+        ] {
+            let over = |start: &str, end: &str| {
+                let mut cfg = cfg_over(custom(start, end));
+                cfg.data_source = source;
+                cfg
+            };
+            let refusal = |start: &str, end: &str| -> Result<(i64, i64), SmolStr> {
+                Err(SmolStr::new(refusal_text(start, end)))
+            };
+            assert_eq!(
+                engine_custom_ms(&over("2024-03-01", "2024-02-01")),
+                refusal("2024-03-01", "2024-02-01"),
+                "{source:?}: a reversed pair"
+            );
+            assert_eq!(
+                engine_custom_ms(&over("2024-02-01", "2024-02-01")),
+                refusal("2024-02-01", "2024-02-01"),
+                "{source:?}: an equal pair"
+            );
+            assert_eq!(
+                engine_custom_ms(&over("2024-02-01", "2024-02-02")),
+                Ok((1_706_745_600_000, 1_706_832_000_000)),
+                "{source:?}: the next day maps"
+            );
+        }
+        let named = refusal_text("2024-03-01", "2024-02-01");
+        assert!(
+            named.contains("'2024-03-01'") && named.contains("'2024-02-01'"),
+            "the refusal names both bounds as typed: {named}"
+        );
+    }
+
+    fn refusal_text(start: &str, end: &str) -> String {
+        crate::strings::fmt_lab_custom_range_not_increasing(start, end)
+    }
+
+    /// The Lab of R7/R8: v0.sma × Binance BTCUSDT over `range`.
+    // `LabState`'s compare set is private to `lab::state`, so struct-update syntax cannot
+    // build it from here.
+    #[allow(clippy::field_reassign_with_default)]
+    fn lab_over(range: LabRange) -> LabState {
+        let mut lab = LabState::default();
+        lab.strategy = Some(trading_core::StrategyId::new("v0.sma"));
+        lab.pair = Some((Venue::Binance, Symbol::new("BTCUSDT")));
+        lab.range = range;
+        lab
+    }
+
+    /// R7 — a range committed from the editor with a time runs: the keystroke goes through
+    /// `state::update`, the run config through the production seam `lab_run_config`.
+    #[test]
+    fn a_custom_range_committed_from_the_editor_with_a_time_runs() {
+        let mut cockpit = crate::state::Cockpit {
+            lab_state: lab_over(custom("", "")),
+            ..Default::default()
         };
-        let result = lab_config_to_scenario(&cfg);
-        assert!(result.is_err(), "unknown range label must return Err");
+        crate::state::update(
+            &mut cockpit,
+            crate::state::Message::LabCustomRangeEdited {
+                start_raw: SmolStr::new("2024-01-01T12:30:00Z"),
+                end_raw: SmolStr::new("2024-02-01"),
+            },
+        );
+        let cfg = lab_run_config(&cockpit.lab_state).expect("strategy and pair are selected");
+        assert_eq!(
+            engine_custom_ms(&cfg),
+            Ok((1_704_112_200_000, 1_706_745_600_000))
+        );
+    }
+
+    /// R8a — a Run from an uncommitted edit runs what the fields show, and is refused naming the
+    /// bound as typed.
+    #[test]
+    fn a_run_from_an_uncommitted_edit_is_refused_naming_the_typed_bound() {
+        let mut lab = lab_over(custom("2024-01-15", "2024-02-01"));
+        lab.custom_draft = Some(CustomRangeDraft {
+            base: lab.range.clone(),
+            start_raw: SmolStr::new("2024-01-1"),
+            end_raw: SmolStr::new("2024-02-01"),
+        });
+        assert!(
+            lab.custom_draft.is_some(),
+            "precondition: an edit is pending"
+        );
+        let cfg = lab_run_config(&lab).expect("strategy and pair are selected");
+        let err = engine_custom_ms(&cfg).expect_err("the draft never parses");
+        assert!(err.contains("'2024-01-1'"), "names the typed bound: {err}");
+    }
+
+    /// R8b — R8a's twin without the draft: the committed pair runs.
+    #[test]
+    fn a_run_with_no_uncommitted_edit_maps_the_committed_pair() {
+        let lab = lab_over(custom("2024-01-15", "2024-02-01"));
+        assert!(lab.custom_draft.is_none());
+        let cfg = lab_run_config(&lab).expect("strategy and pair are selected");
+        assert_eq!(
+            engine_custom_ms(&cfg),
+            Ok((1_705_276_800_000, 1_706_745_600_000))
+        );
     }
 
     /// T-D-N9 — `lab_config_to_scenario` passes seed and `write_report` through.
@@ -1996,7 +2238,7 @@ mod tests {
             strategy_id: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             venue: SmolStr::new("Binance"),
-            range_label: SmolStr::new("Last90d"),
+            range: crate::lab::state::DateRange::Preset(crate::lab::state::Preset::Last90d),
             seed,
             write_report: true,
             data_source: crate::lab::state::LabDataSource::default(),
@@ -2047,7 +2289,7 @@ mod tests {
             strategy_id: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             venue: SmolStr::new("Binance"),
-            range_label: SmolStr::new("Last90d"),
+            range: crate::lab::state::DateRange::Preset(crate::lab::state::Preset::Last90d),
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             write_report: false,
             data_source: crate::lab::state::LabDataSource::default(),

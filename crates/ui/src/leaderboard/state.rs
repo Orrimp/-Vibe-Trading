@@ -1008,8 +1008,8 @@ impl LeaderboardLookback {
     /// The two fixed presets map to the Lab's named `Preset`s (so the Lab's
     /// date-range picker shows the matching chip); the relative windows map to a
     /// `Custom` ISO-date pair (`now - N days` → `now`, `YYYY-MM-DD`). The Lab run
-    /// path (`cockpit_live.rs` → `lab_config_to_scenario`) accepts date-only
-    /// `Custom:<start>:<end>` labels, so a `Custom` window runs faithfully — the
+    /// path carries the range typed (`LabRunConfig::range`, bug-log `#230`) and parses
+    /// each bound with `custom_bound_ms`, so a `Custom` window runs faithfully — the
     /// byte-identical window the leaderboard scored.
     ///
     /// `now_ms` is wall-clock UTC epoch-millis, passed in (like `to_date_range`)
@@ -1022,7 +1022,8 @@ impl LeaderboardLookback {
         match self.relative_days() {
             Some(days) => {
                 // `YYYY-MM-DD` ISO date for `now` and `now - N days`. The Lab's
-                // `lab_config_to_scenario` parser accepts the date-only form.
+                // bound parse (`lab::runner::custom_bound_ms`, bug-log #230) accepts the
+                // date-only form.
                 let fmt = time::macros::format_description!("[year]-[month]-[day]");
                 let to_iso = |epoch_ms: i64| -> Option<SmolStr> {
                     let secs = epoch_ms.div_euclid(1_000);

@@ -21,7 +21,7 @@ use trading_core::{
 use trading_core::ActivityEvent;
 
 use crate::lab::activity::ActivityTape;
-use crate::lab::state::{DateRange, LabState};
+use crate::lab::state::{CustomEdit, DateRange, LabState};
 
 /// Operator-locked XRP-first pair ordering (ui-rethink-phase-a-lab R3.2 /
 /// T-D-8). Re-exported from `lab::universe` so call sites can use
@@ -2294,8 +2294,18 @@ pub enum Message {
     /// (returns `false`; caller emits a toast in M2.5 / Wave 2).
     LabToggleCompare(StrategyId),
     /// Operator selected a date-range preset or committed a custom range.
-    /// Pure assignment to `Cockpit::lab_state.range`.
+    /// Assigns `Cockpit::lab_state.range` through `LabState::set_range`.
     LabSelectRange(DateRange),
+    /// One keystroke in a Custom range field (bug-log `#230`): the two texts as shown. `update`
+    /// decides against the live range whether it commits (`LabState::classify_custom_edit`): a
+    /// commit moves `range` exactly like `LabSelectRange`; anything else moves only the
+    /// editor's text.
+    LabCustomRangeEdited {
+        /// The start field's text, as shown.
+        start_raw: SmolStr,
+        /// The end field's text, as shown.
+        end_raw: SmolStr,
+    },
     /// Operator toggled the data-source chip between `Synthetic` and `YahooCache`
     /// (lab-yahoo-realdata T-C3.5 / R3.1). Pure assignment to
     /// `Cockpit::lab_state.data_source`.
@@ -2873,6 +2883,9 @@ fn open_session_log() -> Option<std::sync::Arc<dyn crate::session_log::SessionSi
 /// Deliberately the SAME four the persistence schema records — strategy, pair, range,
 /// data source. A log that described a run by different inputs than the ones the
 /// product saves would be a second, quietly diverging description of the same thing.
+/// With a Custom edit pending, a Run runs the edit and is refused (`LabState::run_range`);
+/// the log keeps `range`, the committed value the session file saves, and
+/// `RunFinished.detail` names the typed bound (bug-log `#230`).
 fn lab_run_inputs(lab: &LabState) -> std::collections::BTreeMap<String, String> {
     let mut m = std::collections::BTreeMap::new();
     m.insert(
@@ -2901,6 +2914,9 @@ fn lab_run_inputs(lab: &LabState) -> std::collections::BTreeMap<String, String> 
 /// (`persistence::LabStateJson`) is the contract — strategy, pair, range,
 /// compare set, training-panel state. Nothing else is persisted, so nothing
 /// else belongs here.
+///
+/// `LabCustomRangeEdited` persists only when it commits, which depends on the state, so the
+/// wrapper asks [`commits_custom_range`] (bug-log `#230`, ADR-0094 § D2 amendment).
 #[must_use]
 pub const fn persists_lab_state(msg: &Message) -> bool {
     matches!(
@@ -2922,7 +2938,7 @@ pub const fn persists_lab_state(msg: &Message) -> bool {
 /// `update` at least once a second, so a change reaches disk within ~1.5 s of
 /// the operator going quiet without a subscription of its own.
 pub fn update(model: &mut Cockpit, msg: Message) {
-    if persists_lab_state(&msg) {
+    if persists_lab_state(&msg) || commits_custom_range(&model.lab_state, &msg) {
         model.lab_persist.mark_dirty();
     }
     update_state_machine(model, msg);
@@ -2933,6 +2949,16 @@ pub fn update(model: &mut Cockpit, msg: Message) {
     {
         model.lab_persist.flush_if_due(&model.lab_state, &path);
     }
+}
+
+/// Does this Custom-field keystroke commit a range (bug-log `#230`, ADR-0105 D3, ADR-0094 D2
+/// amendment)? Decided against the LIVE range by the same classifier its arm applies, so the
+/// session is marked dirty exactly when `range` changes, and a draft keystroke writes nothing.
+/// Not in [`persists_lab_state`], a pure list of messages, because this one message's answer
+/// depends on the state.
+fn commits_custom_range(lab: &LabState, msg: &Message) -> bool {
+    matches!(msg, Message::LabCustomRangeEdited { start_raw, end_raw }
+        if lab.classify_custom_edit(start_raw, end_raw) == CustomEdit::Commit)
 }
 
 /// The state machine itself. Split out only so the early `return`s in its arms
@@ -3367,7 +3393,10 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             // so the subsequent Lab run is faithful (relative windows resolve
             // against wall-clock `now` HERE, at the message boundary).
             let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
-            model.lab_state.range = lookback.to_lab_date_range(now_ms);
+            // bug-log #230: through `set_range`, so an uncommitted Custom edit is dropped.
+            model
+                .lab_state
+                .set_range(lookback.to_lab_date_range(now_ms));
         }
         Message::RiskStateRefreshed(state) => {
             model.risk_state = PanelState::Ready(state);
@@ -3472,10 +3501,21 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             }
         }
         Message::LabSelectRange(range) => {
-            model.lab_state.range = range;
+            // bug-log #230: through `set_range`, so an uncommitted Custom edit is dropped.
+            model.lab_state.set_range(range);
             // T-D-N10: tuple changed — clear both run report mirrors.
             model.lab_state.last_run_report = None;
             model.lab_state.prev_run_report = None;
+        }
+        // bug-log #230 (ADR-0105 D3): one keystroke in a Custom field, decided against the live
+        // range. A commit is a range change, so the run mirrors go exactly as in
+        // `LabSelectRange` (the wrapper marked the session dirty). A draft moves only the
+        // editor's text: tuple, mirrors, equity cache and saved session stay.
+        Message::LabCustomRangeEdited { start_raw, end_raw } => {
+            if model.lab_state.apply_custom_edit(start_raw, end_raw) == CustomEdit::Commit {
+                model.lab_state.last_run_report = None;
+                model.lab_state.prev_run_report = None;
+            }
         }
         // lab-yahoo-realdata T-C3.5 / R3.1 — data-source toggle.
         Message::LabSelectDataSource(src) => {
@@ -3819,7 +3859,8 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             if let Some((venue, symbol)) = pair {
                 model.lab_state.pair = Some((venue, symbol));
             }
-            model.lab_state.range = range.clone();
+            // bug-log #230: through `set_range`, so an uncommitted Custom edit is dropped.
+            model.lab_state.set_range(range.clone());
             // R3.4 isolation: also write the range to compare_screen_state
             // so subsequent Compare-screen opens reflect the last-used range.
             model.compare_screen_state.range = range;
@@ -7217,5 +7258,195 @@ mod tests {
             Cockpit::boot(Some(&tmp.path().join("lab_state.json"))).lab_report_roots,
             union
         );
+    }
+
+    // ── bug-log #230: a Custom keystroke, decided in `update` against the live range ──
+
+    fn custom_230(start: &str, end: &str) -> DateRange {
+        DateRange::Custom {
+            start_raw: SmolStr::new(start),
+            end_raw: SmolStr::new(end),
+        }
+    }
+
+    fn edited_230(start: &str, end: &str) -> Message {
+        Message::LabCustomRangeEdited {
+            start_raw: SmolStr::new(start),
+            end_raw: SmolStr::new(end),
+        }
+    }
+
+    fn shown_230(c: &Cockpit) -> Option<(String, String)> {
+        c.lab_state
+            .custom_fields()
+            .map(|(s, e)| (s.to_string(), e.to_string()))
+    }
+
+    fn pair_230(s: &str, e: &str) -> (String, String) {
+        (s.to_owned(), e.to_owned())
+    }
+
+    /// Seed a draft over the committed range directly (the seeding rule: not through the
+    /// classifier, so a probe of it does not redden tests whose subject is something else).
+    fn seed_draft_230(c: &mut Cockpit, start: &str, end: &str) {
+        c.lab_state.custom_draft = Some(crate::lab::state::CustomRangeDraft {
+            base: c.lab_state.range.clone(),
+            start_raw: SmolStr::new(start),
+            end_raw: SmolStr::new(end),
+        });
+    }
+
+    /// D1/D2/D8's setup, all by direct assignment (not through `update`, which would mark the
+    /// session dirty first): a committed `(2024-01-15, 2024-02-01)` and both run mirrors.
+    fn committed_with_mirrors_230() -> Cockpit {
+        let mut c = Cockpit::default();
+        c.lab_state.range = custom_230("2024-01-15", "2024-02-01");
+        let (last, prev) = crate::fixtures::fake_run_report_mirror_pair();
+        c.lab_state.last_run_report = Some(last);
+        c.lab_state.prev_run_report = Some(prev);
+        assert!(
+            !c.lab_persist.is_dirty(),
+            "precondition: the session is clean"
+        );
+        c
+    }
+
+    /// D1 — a partial bound moves nothing but the editor's text: no range, no mirror, no save.
+    #[test]
+    fn a_partial_custom_bound_moves_nothing_but_the_editor_text() {
+        let mut c = committed_with_mirrors_230();
+        update(&mut c, edited_230("2024-01-1", "2024-02-01"));
+        assert_eq!(c.lab_state.range, custom_230("2024-01-15", "2024-02-01"));
+        assert!(c.lab_state.last_run_report.is_some(), "last run kept");
+        assert!(c.lab_state.prev_run_report.is_some(), "previous run kept");
+        assert!(!c.lab_persist.is_dirty(), "a draft writes nothing");
+        assert!(c.lab_state.custom_draft.is_some());
+        assert_eq!(shown_230(&c), Some(pair_230("2024-01-1", "2024-02-01")));
+    }
+
+    /// D2 — D1's twin: a completed bound commits, clears the mirrors and persists.
+    #[test]
+    fn a_completed_custom_bound_commits_clears_the_mirrors_and_persists() {
+        let mut c = committed_with_mirrors_230();
+        update(&mut c, edited_230("2024-01-16", "2024-02-01"));
+        assert_eq!(c.lab_state.range, custom_230("2024-01-16", "2024-02-01"));
+        assert!(c.lab_state.last_run_report.is_none(), "last run cleared");
+        assert!(
+            c.lab_state.prev_run_report.is_none(),
+            "previous run cleared"
+        );
+        assert!(c.lab_persist.is_dirty(), "a commit is saved");
+        assert!(c.lab_state.custom_draft.is_none());
+    }
+
+    /// D3 — `persists_lab_state` names the commit (`LabSelectRange`), not the keystroke.
+    #[test]
+    fn persists_lab_state_names_the_commit_not_the_edit() {
+        assert!(persists_lab_state(&Message::LabSelectRange(custom_230(
+            "2024-01-15",
+            "2024-02-01"
+        ))));
+        assert!(!persists_lab_state(&edited_230("2024-01-16", "2024-02-01")));
+    }
+
+    /// D4 — the Custom chip (`LabSelectRange(Custom{"",""})`) resets the editor's text.
+    #[test]
+    fn the_custom_chip_resets_the_editor_text() {
+        let mut c = Cockpit::default();
+        c.lab_state.range = custom_230("", "");
+        update(&mut c, edited_230("2024-0", ""));
+        assert_eq!(
+            shown_230(&c),
+            Some(pair_230("2024-0", "")),
+            "precondition: the draft is shown"
+        );
+        assert!(
+            c.lab_state.custom_draft.is_some(),
+            "precondition: the keystroke is a draft, not a commit"
+        );
+        update(&mut c, Message::LabSelectRange(custom_230("", "")));
+        assert_eq!(shown_230(&c), Some(pair_230("", "")));
+        assert!(c.lab_state.custom_draft.is_none());
+    }
+
+    /// D5 — the session log records the committed range, not the edit (story 6-11 AC1).
+    #[test]
+    fn the_session_log_records_the_committed_range_not_the_edit() {
+        let mut c = Cockpit::default();
+        c.lab_state.range = custom_230("2024-01-15", "2024-02-01");
+        seed_draft_230(&mut c, "2024-01-1", "2024-02-01");
+        assert!(
+            c.lab_state.custom_draft.is_some(),
+            "precondition: an edit is pending"
+        );
+        let logged = lab_run_inputs(&c.lab_state)["range"].clone();
+        assert_eq!(logged, format!("{:?}", c.lab_state.range));
+        assert_ne!(logged, format!("{:?}", c.lab_state.run_range()));
+    }
+
+    /// D6 — an Inspect that re-opens the window the edit started from drops the edit. Both
+    /// assertions hold whatever the arm's clock reads (equal range, or a UTC-midnight rollover).
+    #[test]
+    fn inspect_with_the_window_an_edit_started_from_drops_the_edit() {
+        use crate::leaderboard::LeaderboardLookback;
+        let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
+        let mut c = Cockpit::default();
+        c.lab_state.range = LeaderboardLookback::OneMonth.to_lab_date_range(now_ms);
+        seed_draft_230(&mut c, "2024-01-1", "2024-02-01");
+        assert_eq!(
+            shown_230(&c),
+            Some(pair_230("2024-01-1", "2024-02-01")),
+            "precondition: shown"
+        );
+        update(
+            &mut c,
+            Message::InspectStrategyFromLeaderboard {
+                strategy: StrategyId::new("v0.sma"),
+                coin: Symbol::new("BTCUSDT"),
+                lookback: LeaderboardLookback::OneMonth,
+            },
+        );
+        assert!(c.lab_state.custom_draft.is_none());
+        assert_eq!(c.lab_state.run_range(), c.lab_state.range);
+    }
+
+    /// D7 — a Compare cell that opens the window the edit started from drops the edit.
+    #[test]
+    fn open_lab_from_compare_with_the_same_range_drops_the_edit() {
+        let r = custom_230("2024-01-15", "2024-02-01");
+        let mut c = Cockpit::default();
+        c.lab_state.range = r.clone();
+        seed_draft_230(&mut c, "2024-01-1", "2024-02-01");
+        assert_eq!(
+            shown_230(&c),
+            Some(pair_230("2024-01-1", "2024-02-01")),
+            "precondition: shown"
+        );
+        update(
+            &mut c,
+            Message::OpenLabFromCompare {
+                strategy: StrategyId::new("v0.sma"),
+                pair: Some((Venue::Binance, Symbol::new("BTCUSDT"))),
+                range: r,
+            },
+        );
+        assert!(c.lab_state.custom_draft.is_none());
+        assert_eq!(shown_230(&c), Some(pair_230("2024-01-15", "2024-02-01")));
+    }
+
+    /// D8 — typing a character and deleting it again keeps the last run and saves nothing.
+    #[test]
+    fn typing_a_character_and_deleting_it_keeps_the_last_run() {
+        let mut c = committed_with_mirrors_230();
+        update(&mut c, edited_230("2024-01-159", "2024-02-01"));
+        update(&mut c, edited_230("2024-01-15", "2024-02-01"));
+        assert!(c.lab_state.last_run_report.is_some(), "last run kept");
+        assert!(c.lab_state.prev_run_report.is_some(), "previous run kept");
+        assert!(
+            !c.lab_persist.is_dirty(),
+            "nothing committed, nothing saved"
+        );
+        assert!(c.lab_state.custom_draft.is_none());
+        assert_eq!(c.lab_state.range, custom_230("2024-01-15", "2024-02-01"));
     }
 }

@@ -827,4 +827,88 @@ mod tests {
             "pre-feature JSON must load with training_panel_collapsed=true (R8.1 / Q4)"
         );
     }
+
+    // ── bug-log #230: a session written before the fix still loads ────────────
+    //
+    // The schema is unchanged (`version: 1`, ADR-0105 D6); this literal is the file a pre-#230
+    // cockpit writes for a Custom range saved MID-TYPING (the old dispatch committed every
+    // keystroke, so a half-typed end bound could reach the file). Written by hand from the
+    // schema above, not captured from `encode`.
+    const PRE_230_SESSION: &str = r#"{
+  "version": 1,
+  "strategy": "v0.sma",
+  "pair": {
+    "venue": "Binance",
+    "symbol": "BTCUSDT"
+  },
+  "range": {
+    "kind": "custom",
+    "start": "2024-01-01T00:00:00Z",
+    "end": "2024-02-0"
+  },
+  "params": null,
+  "compare_set": [],
+  "training_panel_collapsed": true
+}"#;
+
+    /// #230 / ADR-0105 D6 — a pre-#230 session loads as typed: the half-typed pair is the
+    /// committed range, with no draft; the fields show it, Run runs it, and the mapper refuses it
+    /// naming the typed bound, as the old cockpit did.
+    #[test]
+    fn a_session_saved_before_230_loads_as_typed_and_runs_what_it_shows() {
+        use crate::lab::state::DateRange;
+        let state = decode(PRE_230_SESSION, "test").expect("a pre-#230 session must load");
+        let saved = DateRange::Custom {
+            start_raw: SmolStr::new("2024-01-01T00:00:00Z"),
+            end_raw: SmolStr::new("2024-02-0"),
+        };
+        assert_eq!(state.range, saved);
+        assert!(state.custom_draft.is_none(), "a draft is never loaded");
+        assert_eq!(state.run_range(), saved);
+        let cfg = crate::lab::runner::lab_run_config(&state).expect("strategy and pair saved");
+        let err = crate::lab::runner::lab_config_to_scenario(&cfg)
+            .expect_err("a half-typed end bound does not parse");
+        assert!(
+            err.contains("'2024-02-0'"),
+            "names the bound as typed: {err}"
+        );
+    }
+
+    /// #230 / ADR-0105 D6 — the file format is unchanged and never holds the draft: the loaded
+    /// pre-#230 session re-encodes byte for byte, with or without an uncommitted edit over it;
+    /// a different committed range does not (the encoder is not blind to `range`, #161).
+    #[test]
+    fn the_session_file_is_unchanged_by_230_and_never_holds_the_draft() {
+        use crate::lab::state::{CustomRangeDraft, DateRange};
+        let mut state = decode(PRE_230_SESSION, "test").expect("a pre-#230 session must load");
+        assert_eq!(
+            encode(&state).unwrap(),
+            PRE_230_SESSION,
+            "the format is unchanged"
+        );
+        state.custom_draft = Some(CustomRangeDraft {
+            base: state.range.clone(),
+            start_raw: SmolStr::new("2024-01-01T00:00:00Z"),
+            end_raw: SmolStr::new("2024-02-01T00"),
+        });
+        assert!(
+            state
+                .custom_fields()
+                .is_some_and(|(_, e)| e == "2024-02-01T00")
+        );
+        assert_eq!(
+            encode(&state).unwrap(),
+            PRE_230_SESSION,
+            "the draft is never saved"
+        );
+        state.set_range(DateRange::Custom {
+            start_raw: SmolStr::new("2024-01-01"),
+            end_raw: SmolStr::new("2024-02-01"),
+        });
+        assert_ne!(
+            encode(&state).unwrap(),
+            PRE_230_SESSION,
+            "a commit is saved"
+        );
+    }
 }

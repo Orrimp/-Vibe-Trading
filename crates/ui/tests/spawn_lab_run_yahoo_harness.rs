@@ -262,9 +262,12 @@ fn yahoo_arm_empty_bars_returns_no_data_notice() {
         }
     };
     let cfg = support::yahoo_cache_cfg();
+    // `{window}` is the fixture's `Last30d` preset as displayed: a literal derived from the
+    // fixture (`yahoo_arm_support::yahoo_cache_cfg`), not read off the subject's
+    // `range_label()` (bug-log #230, #161).
     let expected = ui::strings::LAB_YAHOO_NO_DATA_NOTICE
         .replace("{ticker}", cfg.symbol.as_str())
-        .replace("{window}", cfg.range_label.as_str());
+        .replace("{window}", "Last30d");
     assert_eq!(
         body.as_str(),
         expected,

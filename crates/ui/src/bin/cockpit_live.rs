@@ -1418,43 +1418,11 @@ impl AppState {
         // cockpit (lab_run_inflight flips to true inside state::update). We
         // need the pre-update LabState to build LabRunConfig.
         let lab_run_requested = matches!(msg, Message::LabRunRequested);
+        // bug-log #230: the run is built by the library seam `lab_run_config`, so a `Custom`
+        // range travels as two typed bounds (`LabRunConfig::range`) and the range is what the
+        // fields show (`LabState::run_range`). It was a colon-joined label built inline here.
         let lab_run_cfg = if lab_run_requested {
-            // Build LabRunConfig from current LabState before state::update.
-            use smol_str::SmolStr;
-            use ui::lab::runner::LabRunConfig;
-            use ui::lab::state::DateRange as LabDateRange;
-            use ui::lab::state::Preset;
-            let ls = &self.cockpit.lab_state;
-            if let (Some(strategy), Some((venue, symbol))) =
-                (ls.strategy.as_ref(), ls.pair.as_ref())
-            {
-                let range_label = match &ls.range {
-                    LabDateRange::Preset(Preset::Last30d) => SmolStr::new("Last30d"),
-                    LabDateRange::Preset(Preset::Last90d) => SmolStr::new("Last90d"),
-                    LabDateRange::Preset(Preset::H1_2024) => SmolStr::new("H1_2024"),
-                    LabDateRange::Preset(Preset::H2_2024) => SmolStr::new("H2_2024"),
-                    LabDateRange::Custom { start_raw, end_raw } => {
-                        SmolStr::new(format!("Custom:{start_raw}:{end_raw}"))
-                    }
-                };
-                Some(LabRunConfig {
-                    strategy_id: SmolStr::new(&strategy.0),
-                    symbol: SmolStr::new(symbol.0.as_str()),
-                    venue: SmolStr::new(format!("{venue:?}")),
-                    range_label,
-                    seed: ui::lab::defaults::LAB_DEFAULT_SEED,
-                    write_report: true,
-                    // lab-yahoo-realdata T-C3.6: mirror the current UI data_source
-                    // selection into the run config so runner can dispatch accordingly.
-                    data_source: self.cockpit.lab_state.data_source,
-                    // lab-polish-round-2 R2: pass operator-tuned SMA windows
-                    // through. None → engine falls back to the (20, 50) default.
-                    sma_fast_len: self.cockpit.lab_state.sma_fast_len,
-                    sma_slow_len: self.cockpit.lab_state.sma_slow_len,
-                })
-            } else {
-                None
-            }
+            ui::lab::runner::lab_run_config(&self.cockpit.lab_state)
         } else {
             None
         };
@@ -2161,7 +2129,9 @@ impl AppState {
             // ended on LabRunCompleted). Label: "<strategy> · <symbol> · <range>".
             let lab_activity_label = format!(
                 "Backtest {} · {} · {}",
-                run_cfg.strategy_id, run_cfg.symbol, run_cfg.range_label
+                run_cfg.strategy_id,
+                run_cfg.symbol,
+                run_cfg.range_label()
             );
             let lab_activity_sender = self.bus.activity();
             self.lab_activity_handle = Some(

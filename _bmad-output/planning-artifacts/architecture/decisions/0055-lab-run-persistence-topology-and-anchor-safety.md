@@ -5,7 +5,7 @@ status: accepted
 date: 2026-06-12
 supersedes: none
 superseded-by: none
-updated: 2026-11-24
+updated: 2026-11-28
 ---
 
 # ADR-0055: Lab run persistence topology & anchor-safety
@@ -437,6 +437,15 @@ report did not name, and let `Last30d`, `Last90d` and `Custom` accept every repo
    score cannot drift). A `Custom` tuple matches only a `custom…` token equal to what the run
    mapper derives from its date strings (`lab::runner::custom_range_ms`, the mapper's own parse).
    Nothing else matches.
+
+   **Amended 2026-11-28 (bug-log `#230`, ADR-0105).** Since bug-log `#230` the mapper reads the
+   two bounds as two typed fields (`LabRunConfig.range`, which replaced the colon-joined
+   `range_label`), and the same per-bound parse (`lab::runner::custom_bound_ms`, which
+   `custom_range_ms` calls for each bound) also colours the Custom editor, decides its commits
+   and feeds the cadence badge. The tuple a report answers is the committed range, never the
+   editor's draft: a keystroke that does not commit moves no tuple, so it walks no root and
+   matches no report. The `custom<start_ms>to<end_ms>` token of every pair that ran before is
+   unchanged.
 4. **Source.** The tiers are unchanged: a report tagged with the tuple's `data_source:` beats an
    untagged legacy one; a differently tagged one never matches.
 
@@ -664,6 +673,12 @@ pair: with no tagged report the untagged one resolves). Pixels (AD-10): LR-209
 
 ## Changelog
 
+- 2026-11-28 (orchestrator, bug-log `#230` fix): **D9 item 3 gains a dated note.** The Custom
+  range reaches the mapper as two typed bounds (`LabRunConfig.range`, ADR-0105 D1), and one
+  per-bound parse, `lab::runner::custom_bound_ms`, serves the mapper, the report lookup, the
+  Custom editor's colour and commit rule, and the cadence badge (ADR-0105 D2). The tuple a report
+  answers is the committed range, never the editor's draft (ADR-0105 D3). The match itself, the
+  token and the tiers are unchanged. No other decision changes. Anchor-neutral, 119/119.
 - 2026-11-24 (orchestrator, bug-log `#209` fix): **the Lab follows § D5.** The amendment
   "2026-11-24 (bug-log `#209`)" above: over the union of `lab-runs/` and `evidence/` the Lab keeps
   the greatest (tier, range score, `generated:`); an identical filename keeps its first copy

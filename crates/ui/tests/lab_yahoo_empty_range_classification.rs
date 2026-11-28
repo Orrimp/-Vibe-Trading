@@ -147,7 +147,7 @@ fn yahoo_cache_cfg() -> LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("Last30d"),
+        range: ui::lab::state::DateRange::Preset(ui::lab::state::Preset::Last30d),
         seed: ui::lab::defaults::LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::YahooCache,
@@ -243,7 +243,7 @@ async fn case_a_empty_source_routes_to_notice() {
     );
 
     // Notice must reference the range — operator's primary confusion source.
-    // Under Last30d the window label will be "Last30d" from range_label.
+    // Under Last30d the window label will be "Last30d" from `range_label()`.
     assert!(
         notice.contains("BTCUSDT") || notice.contains("Last30d"),
         "notice must name the ticker or range so the operator understands the context: {notice:?}"

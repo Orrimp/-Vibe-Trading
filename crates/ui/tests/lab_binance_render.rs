@@ -296,7 +296,10 @@ fn binance_sourced_run(root: &std::path::Path) -> (Vec<trading_core::Bar>, Vec<(
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("Custom:2023-01-01:2023-07-01"),
+        range: ui::lab::state::DateRange::Custom {
+            start_raw: SmolStr::new("2023-01-01"),
+            end_raw: SmolStr::new("2023-07-01"),
+        },
         seed: LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::BinanceCache,

@@ -176,12 +176,12 @@ use ui::state::{Cockpit, Message};
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Build a `LabRunConfig` with Synthetic data source (default path).
-fn synthetic_cfg(strategy: &str, symbol: &str, range_label: &str) -> LabRunConfig {
+fn synthetic_cfg(strategy: &str, symbol: &str, range: DateRange) -> LabRunConfig {
     LabRunConfig {
         strategy_id: smol_str::SmolStr::new(strategy),
         symbol: smol_str::SmolStr::new(symbol),
         venue: smol_str::SmolStr::new("Binance"),
-        range_label: smol_str::SmolStr::new(range_label),
+        range,
         seed: ui::lab::defaults::LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::Synthetic,
@@ -338,7 +338,7 @@ fn apply_wrapper(cockpit: &mut Cockpit, summary: &RunSummary) {
 /// `ProgressSender` + `progress_pair()` actually delivers events to the UI.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn smoke_synthetic_short_range() {
-    let cfg = synthetic_cfg("v0.sma", "BTCUSDT", "Last30d");
+    let cfg = synthetic_cfg("v0.sma", "BTCUSDT", DateRange::Preset(Preset::Last30d));
 
     let mut cockpit = Cockpit::new();
     cockpit.lab_state.strategy = Some(StrategyId::new("v0.sma"));
@@ -395,7 +395,7 @@ async fn smoke_synthetic_short_range() {
 /// works across multiple cycles, not just the first one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn smoke_synthetic_longer_range() {
-    let cfg = synthetic_cfg("v0.sma", "BTCUSDT", "Last90d");
+    let cfg = synthetic_cfg("v0.sma", "BTCUSDT", DateRange::Preset(Preset::Last90d));
 
     let mut cockpit = Cockpit::new();
     cockpit.lab_state.strategy = Some(StrategyId::new("v0.sma"));
@@ -570,7 +570,7 @@ async fn smoke_cancel_mid_run() {
     use backtest::engine::{RunError, ScenarioDataSource};
 
     let scenario_cfg = {
-        let cfg = synthetic_cfg("v0.sma", "BTCUSDT", "Last90d");
+        let cfg = synthetic_cfg("v0.sma", "BTCUSDT", DateRange::Preset(Preset::Last90d));
         let mut sc = lab_config_to_scenario(&cfg).expect("lab_config_to_scenario");
         sc.data_source = ScenarioDataSource::default();
         // The run length: Synthetic bars the engine takes verbatim.
@@ -786,7 +786,7 @@ async fn run_yahoo_smoke(root: std::path::PathBuf) {
     // M1 — the corpus at the root the caller passed (never the cwd).
     assert_sample_corpus(&root);
 
-    let cfg = synthetic_cfg("v0.sma", "BTCUSDT", "H1_2024");
+    let cfg = synthetic_cfg("v0.sma", "BTCUSDT", DateRange::Preset(Preset::H1_2024));
     let mut scenario_cfg = lab_config_to_scenario(&cfg).expect("lab_config_to_scenario");
 
     // Step 2 of preload_yahoo_bars — the window, from the production fn.

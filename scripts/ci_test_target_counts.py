@@ -38,12 +38,13 @@ THE COUNTS ARE DECLARED, NOT MEASURED OFF THE SUBJECT. Each one was read off
 the source at the stage that ships it: the `#[test]` / `#[tokio::test]` items
 that survive the leg's cfg set. Both legs build ui's default features (`live`,
 `yahoo`, `binance`, `live-fx`); Windows adds `fixtures`, which no declared file
-has a cfg on. Four declared files are OS-gated at file level (ADR-0057 D2, pixels
+has a cfg on. Five declared files are OS-gated at file level (ADR-0057 D2, pixels
 are macOS-canonical), so each declares its count on macOS and 0 on Windows:
-`activity_tape_failed_hold_render` (bug-log `#217`) and
+`activity_tape_failed_hold_render` (bug-log `#217`),
 `plan_export_button_render` and `forward_plan_populated_render` (bug-log `#223`
-and `#222`) are `#![cfg(target_os = "macos")]`, and `lab_stop_render` (bug-log
-`#215`) is `#![cfg(all(target_os = "macos", feature = "live"))]`. One more,
+and `#222`) and `lab_custom_range_render` (bug-log `#230`) are
+`#![cfg(target_os = "macos")]`, and `lab_stop_render` (bug-log `#215`) is
+`#![cfg(all(target_os = "macos", feature = "live"))]`. One more,
 `bidi_paragraph_separators` (bug-log `#239`), puts `#[cfg(target_os = "macos")]`
 on its 4 pixel items only, so Windows lists 4 fewer. The rows make the macOS-only
 AD-10 proofs' counts a measurement instead of a silent zero. No other declared
@@ -288,11 +289,34 @@ DECLARED: dict[str, dict] = {
                "plan's header is not the crowned one. `#![cfg(target_os = \"macos\")]` "
                "(ADR-0057 D2), so Windows lists 0 by design.",
     },
+    # ── bug-log #230 (the Lab's Custom range editor; ADR-0105) ───────────────
+    "lab_custom_range_render": {
+        "macos": 11,
+        "windows": 0,
+        "why": "F1, F2, F2b, F3a, F3b, F4, F5, F6, F7, F8, the AD-10 pixel proof that the "
+               "Custom editor colours a bound by the run's own parse, draws an "
+               "uncommitted edit, keeps the last run drawn through a partial bound, that "
+               "the Yahoo cadence badge reads an RFC 3339 range and that a whole RFC 3339 "
+               "bound shows in its field (F8, the review round), + the `#[ignore]` "
+               "`measure` test, which `--list` includes. `#![cfg(target_os = "
+               "\"macos\")]` (ADR-0057 D2), so Windows lists 0 by design. The "
+               "`iced_test::Simulator` tests of the same fix (W2, W5, W5b, K1-K4) live in "
+               "the lib, which no row declares, and run on both legs.",
+    },
+    "lab_custom_range_order": {
+        "macos": 3,
+        "windows": 3,
+        "why": "O1-O3, the real `spawn_lab_run` Task on Synthetic, Yahoo and Binance: a "
+               "reversed Custom pair is refused by name before any preload, its valid twin "
+               "passes the mapper (bug-log #230 review, ADR-0105 D8). "
+               "`#![cfg(feature = \"live\")]`, a default ui feature on both legs, no OS "
+               "cfg; without `live` the count is 0, the silent drop this row catches.",
+    },
 }
 
 # Non-vacuity floor for the declaration itself: deleting rows must be deliberate.
 # Raise it when a row is added; lowering it is a decision, not a fix.
-MIN_DECLARED = 22
+MIN_DECLARED = 24
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
 

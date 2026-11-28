@@ -13,7 +13,7 @@
 //!    This is the conversion boundary (Q6 = (a) / D7) called inside `preload_yahoo_bars`.
 //!
 //! 2. **`lab_config_to_scenario` ScenarioConfig shape** — verifies that
-//!    `LabRunConfig { data_source: YahooCache, symbol: "BTCUSDT", range_label: "H1_2024" }`
+//!    `LabRunConfig { data_source: YahooCache, symbol: "BTCUSDT", range: Preset(H1_2024) }`
 //!    maps to the expected `ScenarioConfig` (strategy, pair, range, seed, write_report).
 //!    The `data_source` + `bars_override` fields are set by the Yahoo preload arm
 //!    after the preload (the `ScenarioDataSource::YahooCache` assignment in
@@ -148,7 +148,7 @@ fn lab_config_to_scenario_yahoo_btcusdt_h1_2024() {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("H1_2024"),
+        range: ui::lab::state::DateRange::Preset(ui::lab::state::Preset::H1_2024),
         seed: LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::YahooCache,
@@ -195,7 +195,7 @@ fn lab_config_to_scenario_yahoo_last30d_is_ok() {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("Last30d"),
+        range: ui::lab::state::DateRange::Preset(ui::lab::state::Preset::Last30d),
         seed: LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::YahooCache,

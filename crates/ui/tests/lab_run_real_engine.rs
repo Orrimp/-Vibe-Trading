@@ -22,12 +22,12 @@ use ui::lab::runner::{LabRunConfig, RunReportMirror, RunSummary};
 use ui::lab::state::{DateRange, LabDataSource, Preset};
 use ui::state::{Cockpit, Message, PanelState};
 
-fn lab_config(strategy: &str, symbol: &str, range_label: &str) -> LabRunConfig {
+fn lab_config(strategy: &str, symbol: &str, range: DateRange) -> LabRunConfig {
     LabRunConfig {
         strategy_id: smol_str::SmolStr::new(strategy),
         symbol: smol_str::SmolStr::new(symbol),
         venue: smol_str::SmolStr::new("Binance"),
-        range_label: smol_str::SmolStr::new(range_label),
+        range,
         seed: ui::lab::defaults::LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::Synthetic,
@@ -110,7 +110,12 @@ async fn e2e_btc_sma_last30d_renders_triangles() {
     cockpit.lab_state.pair = Some((Venue::Binance, Symbol::new("BTCUSDT")));
     cockpit.lab_state.range = DateRange::Preset(Preset::Last30d);
 
-    let summary = execute_run(lab_config("v0.sma", "BTCUSDT", "Last30d")).await;
+    let summary = execute_run(lab_config(
+        "v0.sma",
+        "BTCUSDT",
+        DateRange::Preset(Preset::Last30d),
+    ))
+    .await;
 
     assert!(
         !summary.fills.is_empty(),
@@ -160,7 +165,12 @@ async fn e2e_eth_sma_last30d_renders_triangles() {
     cockpit.lab_state.pair = Some((Venue::Binance, Symbol::new("ETHUSDT")));
     cockpit.lab_state.range = DateRange::Preset(Preset::Last30d);
 
-    let summary = execute_run(lab_config("v0.sma", "ETHUSDT", "Last30d")).await;
+    let summary = execute_run(lab_config(
+        "v0.sma",
+        "ETHUSDT",
+        DateRange::Preset(Preset::Last30d),
+    ))
+    .await;
 
     assert!(
         !summary.fills.is_empty(),
@@ -181,7 +191,12 @@ async fn e2e_momentum_xrp_last90d_cold_start_renders() {
     cockpit.lab_state.pair = Some((Venue::Binance, Symbol::new("XRPUSDT")));
     cockpit.lab_state.range = DateRange::Preset(Preset::Last90d);
 
-    let summary = execute_run(lab_config("v1.momentum", "XRPUSDT", "Last90d")).await;
+    let summary = execute_run(lab_config(
+        "v1.momentum",
+        "XRPUSDT",
+        DateRange::Preset(Preset::Last90d),
+    ))
+    .await;
     // Cross-sectional path: F3 fix surfaces fills + bars. With Last90d we
     // should see many fills + thousands of bars (interleaved across the top10).
     println!(

@@ -129,9 +129,13 @@ fn binance_cfg() -> LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         venue: SmolStr::new("Binance"),
-        // range_label is informational for the loader; the actual window comes
-        // from the DateRange passed to preload (RANGE_2023_H1).
-        range_label: SmolStr::new("Custom:2023-01-01:2023-07-01"),
+        // `range` is informational for the loader; the actual window comes from the
+        // engine `DateRange` passed to preload (RANGE_2023_H1, the same ms). Written out
+        // in full: this file imports `backtest::engine::DateRange` (bug-log #230).
+        range: ui::lab::state::DateRange::Custom {
+            start_raw: SmolStr::new("2023-01-01"),
+            end_raw: SmolStr::new("2023-07-01"),
+        },
         seed: LAB_DEFAULT_SEED,
         write_report: false,
         data_source: ui::lab::state::LabDataSource::BinanceCache,

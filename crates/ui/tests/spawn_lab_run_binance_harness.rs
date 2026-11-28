@@ -99,7 +99,7 @@ fn binance_cache_cfg() -> LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("H1_2024"),
+        range: ui::lab::state::DateRange::Preset(ui::lab::state::Preset::H1_2024),
         seed: ui::lab::defaults::LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::BinanceCache,

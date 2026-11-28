@@ -117,12 +117,14 @@ impl Preset {
 pub enum DateRange {
     /// One of the named presets.
     Preset(Preset),
-    /// Operator-entered ISO-8601 date pair (Phase A: text fields, no
-    /// calendar widget).
+    /// Operator-entered date pair (Phase A: text fields, no calendar widget): RFC 3339 or
+    /// `YYYY-MM-DD` bounds, as typed; a committed pair may still be unparseable (the Custom
+    /// chip's empty pair, a session restored from an older cockpit). Every reader parses a
+    /// bound with `lab::runner::custom_bound_ms` (bug-log `#230`).
     Custom {
-        /// ISO-8601 start date string.
+        /// The start bound, as typed.
         start_raw: SmolStr,
-        /// ISO-8601 end date string.
+        /// The end bound, as typed.
         end_raw: SmolStr,
     },
 }
@@ -130,6 +132,48 @@ pub enum DateRange {
 impl Default for DateRange {
     fn default() -> Self {
         DateRange::Preset(Preset::default())
+    }
+}
+
+/// The Custom editor's text while it differs from the committed range (bug-log `#230`). It
+/// never parses: a parsing new pair commits instead (`LabState::apply_custom_edit`). `base` is
+/// the committed range the edit started from. Every production write of `range` drops the
+/// draft (`LabState::set_range`); `base` is the belt for a direct write (tests): a draft whose
+/// `base` is no longer `range` is neither shown nor run. NOT serialized.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomRangeDraft {
+    /// The committed range the edit started from.
+    pub base: DateRange,
+    /// The start field's text, as shown.
+    pub start_raw: SmolStr,
+    /// The end field's text, as shown.
+    pub end_raw: SmolStr,
+}
+
+/// What one keystroke in a Custom range field does (bug-log `#230`, ADR-0105 D3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CustomEdit {
+    /// A pair that differs from the committed `range` and whose two bounds parse: it becomes
+    /// `range`.
+    Commit,
+    /// Any other pair that differs from the committed one: kept as the editor's text only.
+    Draft,
+    /// The committed pair itself, or a keystroke from a frame drawn before a preset was chosen
+    /// in the same event batch: no draft is kept.
+    Clear,
+}
+
+/// The two texts the Custom editor shows: the draft while it edits `range`, else the committed
+/// bounds; `None` while `range` is a preset.
+#[must_use]
+pub fn custom_fields<'a>(
+    range: &'a DateRange,
+    draft: Option<&'a CustomRangeDraft>,
+) -> Option<(&'a SmolStr, &'a SmolStr)> {
+    match (range, draft) {
+        (DateRange::Preset(_), _) => None,
+        (_, Some(d)) if d.base == *range => Some((&d.start_raw, &d.end_raw)),
+        (DateRange::Custom { start_raw, end_raw }, _) => Some((start_raw, end_raw)),
     }
 }
 
@@ -153,8 +197,12 @@ pub struct LabState {
     pub strategy: Option<StrategyId>,
     /// Currently selected `(Venue, Symbol)` pair. `None` on cold start.
     pub pair: Option<(Venue, Symbol)>,
-    /// Selected date range. Defaults to `Last90d` per Q-A3.
+    /// Selected date range. Defaults to `Last90d` per Q-A3. Production code writes it only
+    /// through [`LabState::set_range`] (bug-log `#230`).
     pub range: DateRange,
+    /// The Custom editor's uncommitted text (bug-log `#230`); cloned (a UI selection, like
+    /// `range` and `data_source`); NOT serialized.
+    pub custom_draft: Option<CustomRangeDraft>,
     /// Reserved for Phase B param sheet — always `None` at Phase A.
     pub params: Option<()>,
     /// Comparison set — up to 4 additional strategies (R8.1).
@@ -305,6 +353,7 @@ impl Clone for LabState {
             strategy: self.strategy.clone(),
             pair: self.pair.clone(),
             range: self.range.clone(),
+            custom_draft: self.custom_draft.clone(),
             params: self.params,
             compare_buf: self.compare_buf.clone(),
             compare_len: self.compare_len,
@@ -348,6 +397,7 @@ impl std::fmt::Debug for LabState {
             .field("strategy", &self.strategy)
             .field("pair", &self.pair)
             .field("range", &self.range)
+            .field("custom_draft", &self.custom_draft)
             .field("compare_buf", &self.compare_buf)
             .field("compare_len", &self.compare_len)
             .field("training_inflight", &self.training_inflight)
@@ -375,6 +425,7 @@ impl Default for LabState {
             strategy: None,
             pair: None,
             range: DateRange::default(),
+            custom_draft: None,
             params: None,
             compare_buf: [const { None }; COMPARE_SET_CAP],
             compare_len: 0,
@@ -417,6 +468,7 @@ impl LabState {
             strategy,
             pair,
             range,
+            custom_draft: None,
             params: None,
             compare_buf: [const { None }; COMPARE_SET_CAP],
             compare_len: 0,
@@ -445,6 +497,74 @@ impl LabState {
 }
 
 impl LabState {
+    /// The two texts the Custom editor shows (see the free [`custom_fields`]).
+    #[must_use]
+    pub fn custom_fields(&self) -> Option<(&SmolStr, &SmolStr)> {
+        custom_fields(&self.range, self.custom_draft.as_ref())
+    }
+
+    /// What the next Run runs (bug-log `#230`): what the range fields show. A draft never
+    /// parses, so a Run from a draft is refused by the mapper naming the bound as typed, which
+    /// is HEAD's behaviour for an invalid field. The session log still records `range`
+    /// (6-11 AC1).
+    #[must_use]
+    pub fn run_range(&self) -> DateRange {
+        self.custom_fields().map_or_else(
+            || self.range.clone(),
+            |(s, e)| DateRange::Custom {
+                start_raw: s.clone(),
+                end_raw: e.clone(),
+            },
+        )
+    }
+
+    /// Every production write of `range` goes through here (bug-log `#230`): the fields then
+    /// show the new range, so an uncommitted edit is dropped, even when the new range equals the
+    /// one the edit started from (an Inspect or a Compare cell re-opening the same window).
+    pub fn set_range(&mut self, range: DateRange) {
+        self.range = range;
+        self.custom_draft = None;
+    }
+
+    /// Classify one keystroke against the LIVE `range` (bug-log `#230`, ADR-0105 D3). iced
+    /// applies a whole batch of messages built from one view before it draws again, so a
+    /// decision taken in the view can be stale when the message lands; this one cannot. Pure:
+    /// `apply_custom_edit` and `state::update`'s dirty check share it.
+    #[must_use]
+    pub fn classify_custom_edit(&self, start_raw: &str, end_raw: &str) -> CustomEdit {
+        match &self.range {
+            DateRange::Preset(_) => CustomEdit::Clear,
+            DateRange::Custom {
+                start_raw: s,
+                end_raw: e,
+            } if s.as_str() == start_raw && e.as_str() == end_raw => CustomEdit::Clear,
+            DateRange::Custom { .. }
+                if crate::lab::runner::custom_range_ms(start_raw, end_raw).is_ok() =>
+            {
+                CustomEdit::Commit
+            }
+            DateRange::Custom { .. } => CustomEdit::Draft,
+        }
+    }
+
+    /// Apply one keystroke: commit it (through `set_range`), keep it as the draft, or clear the
+    /// draft.
+    pub fn apply_custom_edit(&mut self, start_raw: SmolStr, end_raw: SmolStr) -> CustomEdit {
+        let edit = self.classify_custom_edit(&start_raw, &end_raw);
+        match edit {
+            CustomEdit::Commit => self.set_range(DateRange::Custom { start_raw, end_raw }),
+            CustomEdit::Draft => {
+                self.custom_draft = Some(CustomRangeDraft {
+                    base: self.range.clone(),
+                    start_raw,
+                    end_raw,
+                });
+            }
+            CustomEdit::Clear => self.custom_draft = None,
+        }
+        edit
+    }
+
     /// Returns a read-only slice of the current comparison set.
     #[must_use]
     pub fn compare_set(&self) -> &[Option<StrategyId>] {
@@ -639,6 +759,163 @@ mod tests {
         };
         let cloned = state.clone();
         assert_eq!(cloned.data_source, LabDataSource::YahooCache);
+    }
+
+    // ── bug-log #230: the Custom editor's draft and its commit rule ──────────
+
+    fn custom(start: &str, end: &str) -> DateRange {
+        DateRange::Custom {
+            start_raw: SmolStr::new(start),
+            end_raw: SmolStr::new(end),
+        }
+    }
+
+    /// A Lab whose committed range is `range`, with no draft.
+    fn lab_over(range: DateRange) -> LabState {
+        LabState {
+            range,
+            ..Default::default()
+        }
+    }
+
+    /// Seed a draft over the committed range directly (not through the classifier), so a probe
+    /// of the classifier does not redden the tests whose subject is something else.
+    fn seed_draft(lab: &mut LabState, start: &str, end: &str) {
+        lab.custom_draft = Some(CustomRangeDraft {
+            base: lab.range.clone(),
+            start_raw: SmolStr::new(start),
+            end_raw: SmolStr::new(end),
+        });
+    }
+
+    fn shown(lab: &LabState) -> Option<(String, String)> {
+        lab.custom_fields()
+            .map(|(s, e)| (s.to_string(), e.to_string()))
+    }
+
+    fn pair(s: &str, e: &str) -> (String, String) {
+        (s.to_owned(), e.to_owned())
+    }
+
+    /// S1 — an uncommitted edit is what the fields show and what a Run runs; `range` stays.
+    #[test]
+    fn an_uncommitted_edit_is_what_the_fields_show_and_what_runs() {
+        let committed = custom("2024-01-15", "2024-02-01");
+        let mut lab = lab_over(committed.clone());
+        let edit = lab.apply_custom_edit(SmolStr::new("2024-01-1"), SmolStr::new("2024-02-01"));
+        assert_eq!(edit, CustomEdit::Draft);
+        assert_eq!(shown(&lab), Some(pair("2024-01-1", "2024-02-01")));
+        assert_eq!(lab.run_range(), custom("2024-01-1", "2024-02-01"));
+        assert_eq!(lab.range, committed);
+    }
+
+    /// S2 — the `base` belt: a draft of another range is neither shown nor run.
+    #[test]
+    fn an_edit_of_another_range_is_not_shown() {
+        let mut lab = lab_over(custom("2024-01-15", "2024-02-01"));
+        seed_draft(&mut lab, "2024-01-1", "2024-02-01");
+        assert_eq!(
+            shown(&lab),
+            Some(pair("2024-01-1", "2024-02-01")),
+            "precondition: shown"
+        );
+        lab.range = custom("2023-01-01", "2023-07-01");
+        assert_eq!(shown(&lab), Some(pair("2023-01-01", "2023-07-01")));
+        assert_eq!(lab.run_range(), custom("2023-01-01", "2023-07-01"));
+    }
+
+    /// S3 — typing back to the committed pair is Clear, and leaves no draft.
+    #[test]
+    fn an_edit_back_to_the_committed_pair_is_clear() {
+        let mut lab = lab_over(custom("2024-01-15", "2024-02-01"));
+        assert_eq!(
+            lab.classify_custom_edit("2024-01-15", "2024-02-01"),
+            CustomEdit::Clear
+        );
+        seed_draft(&mut lab, "2024-01-1", "2024-02-01");
+        assert!(
+            lab.custom_draft.is_some(),
+            "precondition: an edit is pending"
+        );
+        let edit = lab.apply_custom_edit(SmolStr::new("2024-01-15"), SmolStr::new("2024-02-01"));
+        assert_eq!(edit, CustomEdit::Clear);
+        assert!(lab.custom_draft.is_none());
+    }
+
+    /// S4 — a keystroke that lands while a preset is selected (a frame drawn before a chip
+    /// click in the same batch) is Clear and keeps no draft.
+    #[test]
+    fn a_keystroke_with_a_preset_selected_leaves_no_draft() {
+        let mut lab = lab_over(DateRange::Preset(Preset::H1_2024));
+        let edit = lab.apply_custom_edit(SmolStr::new("2024-01-1"), SmolStr::new("2024-02-01"));
+        assert_eq!(edit, CustomEdit::Clear);
+        assert!(lab.custom_draft.is_none());
+        assert_eq!(lab.range, DateRange::Preset(Preset::H1_2024));
+    }
+
+    /// S5 — a cloned `LabState` keeps the uncommitted edit (a UI selection, like `range`).
+    #[test]
+    fn a_cloned_lab_state_keeps_the_uncommitted_edit() {
+        let mut lab = lab_over(custom("2024-01-15", "2024-02-01"));
+        seed_draft(&mut lab, "2024-01-1", "2024-02-01");
+        assert!(
+            lab.custom_draft.is_some(),
+            "precondition: an edit is pending"
+        );
+        let cloned = lab.clone();
+        assert_eq!(cloned.custom_draft, lab.custom_draft);
+        assert_eq!(shown(&cloned), Some(pair("2024-01-1", "2024-02-01")));
+    }
+
+    /// S6 — a keystroke commits only a new pair whose two bounds parse.
+    #[test]
+    fn a_keystroke_commits_only_a_new_pair_whose_bounds_both_parse() {
+        let end = "2024-02-01";
+        let committed = custom("2024-01-01", end);
+        // (start typed, outcome, range after, draft after)
+        let rows = [
+            ("2024-01-1", CustomEdit::Draft, committed.clone(), true),
+            (
+                "2024-01-15",
+                CustomEdit::Commit,
+                custom("2024-01-15", end),
+                false,
+            ),
+            (
+                "2024-01-01T00:00:00Z",
+                CustomEdit::Commit,
+                custom("2024-01-01T00:00:00Z", end),
+                false,
+            ),
+            ("2024-02-30", CustomEdit::Draft, committed.clone(), true),
+            ("2024-01-01", CustomEdit::Clear, committed.clone(), false),
+        ];
+        for (start, outcome, range_after, draft_after) in rows {
+            let mut lab = lab_over(committed.clone());
+            let edit = lab.apply_custom_edit(SmolStr::new(start), SmolStr::new(end));
+            assert_eq!(edit, outcome, "{start:?}: outcome");
+            assert_eq!(lab.range, range_after, "{start:?}: range after");
+            assert_eq!(
+                lab.custom_draft.is_some(),
+                draft_after,
+                "{start:?}: draft after"
+            );
+        }
+    }
+
+    /// S7 — `set_range` drops an uncommitted edit, even for the range the edit started from.
+    #[test]
+    fn set_range_drops_an_uncommitted_edit_even_for_the_same_range() {
+        let mut lab = lab_over(custom("2024-01-15", "2024-02-01"));
+        seed_draft(&mut lab, "2024-01-1", "2024-02-01");
+        assert_eq!(
+            shown(&lab),
+            Some(pair("2024-01-1", "2024-02-01")),
+            "precondition: shown"
+        );
+        lab.set_range(lab.range.clone());
+        assert!(lab.custom_draft.is_none());
+        assert_eq!(shown(&lab), Some(pair("2024-01-15", "2024-02-01")));
     }
 
     // ── T-D-16 proptest: cap holds under randomised add/remove sequences ──────

@@ -653,7 +653,7 @@ fn render_strategy_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
 fn render_date_range(_model: &Cockpit) -> iced::Element<'_, Message> {
     use crate::lab::state::{DateRange, Preset};
     let range: &'static _ = Box::leak(Box::new(DateRange::Preset(Preset::Last90d)));
-    date_range::view(range, None, ThemeMode::Dark)
+    date_range::view(range, None, None, ThemeMode::Dark)
 }
 
 fn seed_run_button() -> Cockpit {

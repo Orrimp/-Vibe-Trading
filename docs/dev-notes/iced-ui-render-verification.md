@@ -154,3 +154,19 @@ TEMPORARY diagnostic build — revert before shipping.
   `test_support::program_from_build(|| …)`, which runs the build closure inside `boot`
   (bug-log `#215`; `tests/lab_stop_render.rs`, whose harness probe H-P1 measures the
   trap). The activity tape derives `Clone`, so it survives either way.
+- `text_input` is controlled and has no blur or focus callback (iced_widget 0.14.2's
+  builder has `on_input`, `on_submit` and `on_paste` only), so a message per keystroke
+  cannot be avoided, and a field shows only what the model holds. Gate the *effects* in
+  `update`, against the live model, and keep uncommitted text in a model draft (the Lab's
+  Custom range: `LabState::custom_draft`, ADR-0105, bug-log `#230`). One iced event batch
+  is many messages built from ONE view, all applied before the next draw
+  (`iced_winit-0.14.0/src/lib.rs:1214-1231`; `iced_test`'s `Simulator` likewise runs every
+  `simulate` against the one tree it was built with), so never capture a decision in a
+  view closure: a later keystroke of the same batch would be decided against the model as
+  drawn, which an earlier keystroke of the batch has already changed. Data a closure carries
+  goes stale the same way (the Lab's fields carry the other field's text as drawn; ADR-0105
+  D3 records the residual). A `Simulator` replays such a batch headless:
+  `widgets::date_range::tests` K4 types four keystrokes into one tree and applies them
+  through `update`. Select an empty field by its placeholder (the `&str` selector matches
+  a text input by `text()`, which is the placeholder while the value is empty), and tap
+  `End` after the click so the cursor position does not depend on where the click landed.

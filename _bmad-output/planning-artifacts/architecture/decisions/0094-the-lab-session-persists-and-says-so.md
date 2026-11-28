@@ -5,6 +5,7 @@ status: accepted
 date: 2026-09-24
 supersedes: none
 superseded-by: none
+updated: 2026-11-28
 ---
 
 # ADR-0094: The Lab session persists, and the cockpit says whether it came back
@@ -129,3 +130,23 @@ bug-log #96's gate passed on a scrollbar thumb.
   are different questions, and a green suite answers only the first. Ask
   `scripts/callers.sh` of any feature you are about to extend — the extension inherits its
   reachability, not its test count.
+
+## Amendment 2026-11-28 (bug-log #230)
+
+**To § D2.** Of the messages a Lab control sends, `persists_lab_state` still names the same five.
+One more, `LabCustomRangeEdited` (one keystroke in a Lab Custom range field, ADR-0105 D3), can
+change what the schema records, but only when it commits, and whether it commits depends on the
+live range. So the wrapper also asks `commits_custom_range`, which runs the same classifier the
+message's arm applies (`LabState::classify_custom_edit`), and a draft keystroke writes nothing.
+Not covered by D2's list, then or now: three navigation messages, `OpenStrategyInLab`,
+`InspectStrategyFromLeaderboard` and `OpenLabFromCompare`, also write schema-recorded fields
+(strategy, pair, range) and mark nothing dirty, so a Lab opened from the registry, the leaderboard
+or Compare is not saved until a listed message follows. That gap predates this amendment; it is
+filed as bug-log `#250` (open) and not changed here. The mark stays
+in the wrapper, so the writer is still driven from `ui::state::update` (this decision), and
+`persists_lab_state` stays a pure list of messages. Before this amendment every keystroke was a
+`LabSelectRange` and marked the session dirty, so a half-typed date reached the file about
+500 ms after the first keystroke (the writer throttles from the first mark). Pinned by
+`state::tests` D1, D2, D3 and D8 and `widgets::date_range::tests` K1 and K2. The schema
+(`version: 1`) is unchanged; a session written before the amendment loads unchanged
+(`lab::persistence::tests`).

@@ -230,7 +230,7 @@ pub fn yahoo_cache_cfg() -> LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("Last30d"),
+        range: ui::lab::state::DateRange::Preset(ui::lab::state::Preset::Last30d),
         seed: ui::lab::defaults::LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::YahooCache,

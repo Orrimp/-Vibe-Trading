@@ -396,27 +396,33 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // changes their meaning).
     //   - Yahoo: adaptive cadence from the selected range (1m / 1h / 1d).
     //   - Binance: PINNED hourly (Q-tf) — always "1h" regardless of range.
+    // bug-log #230: the picker is built once, with the Custom editor's draft, and pushed into
+    // either row, so one call site wires the draft for both.
+    let picker = date_range::view(
+        &model.lab_state.range,
+        model.lab_state.custom_draft.as_ref(),
+        None, // narrowed_from badge is M2 (equity_loader)
+        mode,
+    );
     let range_row = if is_realdata {
         let cadence = if is_binance {
             cadence_badge::CadenceLabel::Hours1
         } else {
-            // Derive cadence from the current date range for the badge.
-            let (start_ms, end_ms) = derive_range_ms_for_badge(&model.lab_state.range);
+            // Derive cadence from the current (committed) date range for the badge, as the
+            // tuple does; the clock is read here and passed in (bug-log #230).
+            let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
+            let (start_ms, end_ms) = derive_range_ms_for_badge(&model.lab_state.range, now_ms);
             cadence_badge::CadenceLabel::derive_from_range(start_ms, end_ms)
         };
         Row::new()
             .spacing(space::S)
-            .push(date_range::view(&model.lab_state.range, None, mode))
+            .push(picker)
             .push(cadence_badge::view(cadence, mode))
             .width(Length::Fill)
     } else {
         Row::new()
             .spacing(space::S)
-            .push(date_range::view(
-                &model.lab_state.range,
-                None, // narrowed_from badge is M2 (equity_loader)
-                mode,
-            ))
+            .push(picker)
             .width(Length::Fill)
     };
     // Keep `range_picker` for the column push below.
@@ -900,27 +906,25 @@ fn tune_entry_button(model: &Cockpit, mode: ThemeMode) -> crate::Element<'static
 
 /// Derive `(start_ms, end_ms)` UTC epoch-millis from a `DateRange` for the
 /// cadence badge. Uses fixed calendar boundaries for `H1_2024`/`H2_2024`;
-/// uses wall-clock `now()` for rolling presets (`Last30d`/`Last90d`).
+/// uses `now_ms` (the caller's wall-clock read, bug-log `#230`) for rolling
+/// presets (`Last30d`/`Last90d`) and for a Custom bound that does not parse.
+/// A Custom bound is read by the run's own parse, `lab::runner::custom_bound_ms`.
 ///
 /// This is view-layer only — does not affect the engine or anchors.
-fn derive_range_ms_for_badge(range: &crate::lab::state::DateRange) -> (i64, i64) {
+fn derive_range_ms_for_badge(range: &crate::lab::state::DateRange, now_ms: i64) -> (i64, i64) {
     use crate::lab::state::{DateRange, Preset};
     const MS_PER_DAY: i64 = 86_400_000;
-    let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
     match range {
         DateRange::Preset(Preset::Last30d) => (now_ms - 30 * MS_PER_DAY, now_ms),
         DateRange::Preset(Preset::Last90d) => (now_ms - 90 * MS_PER_DAY, now_ms),
         DateRange::Preset(Preset::H1_2024) => (1_704_067_200_000, 1_719_792_000_000),
         DateRange::Preset(Preset::H2_2024) => (1_719_792_000_000, 1_735_689_600_000),
         DateRange::Custom { start_raw, end_raw } => {
-            // Parse ISO-8601 date strings; fall back to (now-90d, now) on parse failure.
-            let parse_date = |s: &str| -> i64 {
-                let padded = format!("{s}T00:00:00Z");
-                time::OffsetDateTime::parse(&padded, &time::format_description::well_known::Rfc3339)
-                    .map(|dt| dt.unix_timestamp() * 1_000)
-                    .unwrap_or(now_ms - 90 * MS_PER_DAY)
-            };
-            (parse_date(start_raw.as_str()), parse_date(end_raw.as_str()))
+            // bug-log #230: the run's own bound parse; each bound still falls back on its own.
+            let fallback = now_ms - 90 * MS_PER_DAY;
+            let start_ms = crate::lab::runner::custom_bound_ms(start_raw).unwrap_or(fallback);
+            let end_ms = crate::lab::runner::custom_bound_ms(end_raw).unwrap_or(fallback);
+            (start_ms, end_ms)
         }
     }
 }
@@ -1486,5 +1490,57 @@ mod tests {
             pairs[2],
         );
         insta::assert_snapshot!("lab__top_bar_xrp_first", summary);
+    }
+
+    // ── bug-log #230: the cadence badge reads a Custom bound with the run's parse ──
+
+    fn custom_230(start: &str, end: &str) -> crate::lab::state::DateRange {
+        crate::lab::state::DateRange::Custom {
+            start_raw: SmolStr::new(start),
+            end_raw: SmolStr::new(end),
+        }
+    }
+
+    /// 2026-01-01T00:00:00Z: a fixed `now`, so the fallback rows are literals.
+    const NOW_2026: i64 = 1_767_225_600_000;
+
+    /// G1 — a Custom range with a time: the start is 12:00, not midnight, so a parse that drops
+    /// the time would move the ms. At HEAD both bounds fell back to now − 90 d.
+    #[test]
+    fn the_cadence_badge_reads_a_custom_range_with_a_time() {
+        let got = derive_range_ms_for_badge(
+            &custom_230("2024-01-01T12:00:00Z", "2024-01-31T00:00:00Z"),
+            NOW_2026,
+        );
+        assert_eq!(got, (1_704_110_400_000, 1_706_659_200_000));
+        assert_eq!(
+            cadence_badge::CadenceLabel::derive_from_range(got.0, got.1),
+            cadence_badge::CadenceLabel::Hours1
+        );
+    }
+
+    /// G2 — G1's twin, date-only (green at HEAD's parse too).
+    #[test]
+    fn the_cadence_badge_reads_a_date_only_custom_range() {
+        let got = derive_range_ms_for_badge(&custom_230("2024-01-01", "2024-01-31"), NOW_2026);
+        assert_eq!(got, (1_704_067_200_000, 1_706_659_200_000));
+        assert_eq!(
+            cadence_badge::CadenceLabel::derive_from_range(got.0, got.1),
+            cadence_badge::CadenceLabel::Hours1
+        );
+    }
+
+    /// G3 — each bound falls back on its own to now − 90 d (2025-10-03, `1_759_449_600_000`);
+    /// the two rows differ in which bound fails and expect different outcomes (#161).
+    #[test]
+    fn the_cadence_badge_falls_back_per_bound() {
+        assert_eq!(
+            derive_range_ms_for_badge(&custom_230("2024-01-01", ""), NOW_2026),
+            (1_704_067_200_000, 1_759_449_600_000)
+        );
+        assert_eq!(
+            derive_range_ms_for_badge(&custom_230("", "2024-01-31"), NOW_2026),
+            (1_759_449_600_000, 1_706_659_200_000)
+        );
     }
 }

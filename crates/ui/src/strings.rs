@@ -415,9 +415,11 @@ pub const DATE_RANGE_START_PLACEHOLDER: &str = "YYYY-MM-DD";
 /// Date-range custom end-field placeholder text.
 pub const DATE_RANGE_END_PLACEHOLDER: &str = "YYYY-MM-DD";
 
-/// Error copy shown on the start / end date fields when the input is not
-/// a valid ISO-8601 date (R5.1 parse-error highlight).
-pub const DATE_RANGE_INVALID_DATE: &str = "Invalid date (use YYYY-MM-DD)";
+/// Error copy shown on the start / end date fields when the input is not a bound the run
+/// accepts (R5.1 parse-error highlight): a date-only `YYYY-MM-DD`, or RFC 3339 with an offset
+/// (`lab::runner::custom_bound_ms`, bug-log `#230`; the placeholders keep the date-only form).
+pub const DATE_RANGE_INVALID_DATE: &str =
+    "Invalid date (use YYYY-MM-DD or RFC 3339 with an offset)";
 
 /// Toast shown when the operator tries to add a 5th comparison strategy
 /// (R8.2 / R4.2 / T-D-16): compare cap is 4.
@@ -450,6 +452,42 @@ pub const LAB_RUN_BUTTON_CANCELLED: &str = "Cancelled — Run again";
 /// Label on the Stop button rendered in the Lab top-bar while a run is
 /// in-flight (lab-end-to-end-v2 Wave D-3 T-D3.4 / R6.3).
 pub const LAB_STOP_BUTTON: &str = "Stop";
+
+// ── The Lab run window as displayed (bug-log `#230`) ─────────────────────────
+//
+// `LabRunConfig::range_label()` prints the run's window in tracing fields, the
+// activity tape's "Backtest … · <window>" and "Yahoo … · <window>" labels, and
+// the no-data notices' `{window}`. The text is unchanged from the
+// `range_label: SmolStr` field these replace, and nothing parses it: the run
+// carries the range typed (`LabRunConfig::range`).
+
+/// The run window as displayed for the `Last 30d` preset (bug-log `#230`; never parsed).
+pub const LAB_RUN_RANGE_LAST30D: &str = "Last30d";
+
+/// The run window as displayed for the `Last 90d` preset (bug-log `#230`; never parsed).
+pub const LAB_RUN_RANGE_LAST90D: &str = "Last90d";
+
+/// The run window as displayed for the `2024 H1` preset (bug-log `#230`; never parsed).
+pub const LAB_RUN_RANGE_H1_2024: &str = "H1_2024";
+
+/// The run window as displayed for the `2024 H2` preset (bug-log `#230`; never parsed).
+pub const LAB_RUN_RANGE_H2_2024: &str = "H2_2024";
+
+/// The run window as displayed for a `Custom` range: `Custom:<start>:<end>`, the two bounds as
+/// typed (bug-log `#230`; unchanged text, never parsed). One `format!`, not a chain of
+/// `.replace` calls, so operator text holding `{end}` prints as typed.
+#[must_use]
+pub fn fmt_lab_run_range_custom(start: &str, end: &str) -> String {
+    format!("Custom:{start}:{end}")
+}
+
+/// The Lab run's refusal of a `Custom` range whose start is not before its end (bug-log `#230`
+/// review): `lab::runner::lab_config_to_scenario` returns it for every data source, before any
+/// preload, naming both bounds as typed. One `format!`, so the typed text prints as typed.
+#[must_use]
+pub fn fmt_lab_custom_range_not_increasing(start: &str, end: &str) -> String {
+    format!("Custom range must start before it ends: '{start}' is not before '{end}'")
+}
 
 // ── Run delta badge — ui-rethink-phase-b-lab-run T-D-N13 ─────────────────────
 
@@ -2581,6 +2619,11 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_RUN_BUTTON_DISABLED", LAB_RUN_BUTTON_DISABLED),
         ("LAB_RUN_BUTTON_CANCELLED", LAB_RUN_BUTTON_CANCELLED),
         ("LAB_STOP_BUTTON", LAB_STOP_BUTTON),
+        // bug-log #230 — the Lab run window as displayed (never parsed)
+        ("LAB_RUN_RANGE_LAST30D", LAB_RUN_RANGE_LAST30D),
+        ("LAB_RUN_RANGE_LAST90D", LAB_RUN_RANGE_LAST90D),
+        ("LAB_RUN_RANGE_H1_2024", LAB_RUN_RANGE_H1_2024),
+        ("LAB_RUN_RANGE_H2_2024", LAB_RUN_RANGE_H2_2024),
         // Phase B — run delta badge (T-D-N13)
         ("RUN_DELTA_BADGE_PNL_LABEL", RUN_DELTA_BADGE_PNL_LABEL),
         ("RUN_DELTA_BADGE_DD_LABEL", RUN_DELTA_BADGE_DD_LABEL),

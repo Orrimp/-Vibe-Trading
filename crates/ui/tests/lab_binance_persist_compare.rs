@@ -127,7 +127,7 @@ fn load_binance_bars(root: &std::path::Path) -> Vec<trading_core::Bar> {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         venue: SmolStr::new("Binance"),
-        range_label: SmolStr::new("H1_2024"),
+        range: ui::lab::state::DateRange::Preset(ui::lab::state::Preset::H1_2024),
         seed: LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::BinanceCache,
