@@ -12734,3 +12734,24 @@ Every claim below is tagged. **MEASURED** = read off the tree at HEAD `ecfb1bed`
 **What the operator sees** (REASONED from the code). Click a leaderboard row's "Inspect", or a Compare cell, or a registry card's "Open in Lab": the Lab shows that strategy, coin and window, and nothing is written. Close the cockpit without touching a Lab chip, and the next launch restores the previous session's strategy, pair and range ("Restored from …"), not the one last shown. Any listed message afterwards (a chip click, a committed Custom range) writes the whole state, so the gap closes as soon as the operator interacts with the Lab.
 
 **Fix (proposed; its own change).** Add the three messages to `persists_lab_state` (each changes a schema field on every path), or mark dirty inside `open_strategy_in_lab` and `LabState::set_range`'s callers in these arms; fix the debouncer's doc to name the list. Pin: a two-sided pair through `state::update` on a clean cockpit: `InspectStrategyFromLeaderboard` marks the session dirty, and so does `LabSelectPair` (the listed control, the existing behaviour), while a non-Lab message (`SwitchScreen`) does not; one such pair per navigation message, and a `persists_lab_state` table test naming all eight.
+
+### `#251` — the narration deadline helper gave a panicking closure 5 s, and on the Windows CI runner the panic hook's backtrace outlasted it, so a panic read as a hang and failed a push that did not touch the agent crate
+
+**Status**: **`fixed` 2026-11-28 — `935679ceefde`** (the helper's deadline is a named `DEADLINE` of 60 s, documented: it turns a hang into a failure and measures no speed; probed both ways). Found by the orchestrator's one CI read of run `46177523726` (head `e01038d6`): the Windows leg failed "Test workspace (non-ui crates)" on one test. MEASURED: the CI annotation and the local probes below. REASONED: the Windows cause (backtrace capture under `RUST_BACKTRACE: 1`). Anchor-impacting: **no**. Paper/sim only. Test-only.
+
+**The code.** `crates/agent/src/narration.rs` tests: `within_deadline` (bug-log `#199`) runs `f` on its own thread and waits `recv_timeout(5 s)` for its value. A panic inside `f` drops the only sender, and the helper re-raises the panic on `Disconnected`. But the sender drops only after the panic hook returns. CI sets `RUST_BACKTRACE: 1` (`.github/workflows/ci.yml:133`), so the hook captures and prints a backtrace first.
+
+**What CI showed (MEASURED, annotations of job 141079494809).** `thread '<unnamed>' panicked at crates\agent\src\narration.rs:1690:57: the original panic`, then `thread 'narration::tests::within_deadline_re_raises_a_panic_as_itself' panicked at crates\agent\src\narration.rs:1675:17: a panicking closure did not return within 5 s (bug-log #199)`. The closure did panic; the helper timed out before the panic hook finished. The same test passed on the previous run (`46138886420`, head `da69ade3`). The push under test changed only `crates/ui`, docs and scripts.
+
+**Why it matters.** A gate that fails for a reason outside its subject (house rule `#189`) reads as flaky and invites re-runs or `--no-verify`; here it turned a green push red.
+
+**Fix (landed in `935679ceefde`).** One file, test code only: `const DEADLINE: Duration = 60 s` with a doc comment naming this cause; `within_deadline` waits `DEADLINE` and its liveness message prints it. A real hang still fails the test, after 60 s instead of 5 s.
+
+**Not done.** Other tests in the workspace wait 5 s for events on channels (e.g. `crates/agent/src/runtime.rs` health tests, `recipe_off_runtime_poll.rs`); they wait for an event, not for a panic hook, so this cause does not apply to them. Not changed; REASONED.
+
+**Pin / T-T4 (local, macOS, MEASURED).**
+- Local cost of the capture: `RUST_BACKTRACE=1` runs the test in 0.10 s of libtest time against 0.00 s without it.
+- P251-a: the panic test's closure sleeps 6 s and then panics (a slow hook, simulated): green with the fix (6.01 s).
+- P251-b: P251-a plus the old 5 s deadline: red, with exactly CI's message, "a panicking closure did not return within 5 s (bug-log #199)".
+- Restored byte-identical (`cmp`); narration tests 39/39.
+- Gates: fmt; forced `clippy -p agent --lib --tests -D warnings`; agent narration tests 39 passed. The next CI read confirms the Windows leg.
